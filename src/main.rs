@@ -1,10 +1,49 @@
 extern crate sdl2;
 
+use colors::Color;
 use sdl2::event::Event;
 use sdl2::image::{InitFlag, LoadTexture};
 use sdl2::keyboard::Keycode;
 use sdl2::rect::Rect;
+use sdl2::render::{Canvas, Texture};
+use sdl2::video::Window;
 use std::{path::Path, time::Duration};
+
+mod colors {
+    pub struct Color(pub u8, pub u8, pub u8);
+    pub const RED: Color = Color(255, 0, 0);
+    pub const GREEN: Color = Color(0, 255, 0);
+    pub const BLUE: Color = Color(0, 0, 255);
+}
+
+enum Tile {
+    Dude,
+    Grass,
+}
+
+fn source_rect_from_tile(tile: &Tile) -> Rect {
+    match tile {
+        Tile::Dude => Rect::new(1 * 10, 0 * 10, 10, 10),
+        Tile::Grass => Rect::new(13 * 10, 3 * 10, 10, 10),
+    }
+}
+
+fn draw_tile(
+    canvas: &mut Canvas<Window>,
+    tiles_texture: &mut Texture<'_>,
+    tile: &Tile,
+    color: &Color,
+) {
+    tiles_texture.set_color_mod(color.0, color.1, color.2);
+
+    canvas
+        .copy(
+            tiles_texture,
+            Some(source_rect_from_tile(tile)),
+            Some(Rect::new(200, 200, 10, 10)),
+        )
+        .unwrap();
+}
 
 pub fn main() {
     let sdl_context = sdl2::init().unwrap();
@@ -18,20 +57,12 @@ pub fn main() {
         .unwrap();
 
     let mut canvas = window.into_canvas().software().build().unwrap();
-
     let texture_creator = canvas.texture_creator();
-    let tiles_texture = texture_creator
+
+    let mut tiles_texture = texture_creator
         .load_texture(Path::new("tiles.png"))
         .unwrap();
 
-    canvas
-        .copy(
-            &tiles_texture,
-            Some(Rect::new(10, 0, 10, 10)),
-            Some(Rect::new(200, 200, 10, 10)),
-        )
-        .unwrap();
-    canvas.present();
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut i = 0;
     'running: loop {
@@ -49,6 +80,24 @@ pub fn main() {
         // The rest of the game loop goes here...
 
         canvas.present();
-        ::std::thread::sleep(Duration::new(1 / 60, 0));
+
+        draw_tile(&mut canvas, &mut tiles_texture, &Tile::Dude, &colors::GREEN);
+
+        canvas.present();
+
+        std::thread::sleep(Duration::from_secs(4));
+
+        canvas.clear();
+
+        draw_tile(
+            &mut canvas,
+            &mut tiles_texture,
+            &Tile::Grass,
+            &colors::GREEN,
+        );
+
+        canvas.present();
+
+        std::thread::sleep(Duration::from_secs(1 / 60));
     }
 }
