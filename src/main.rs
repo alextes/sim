@@ -14,6 +14,7 @@ mod colors {
     pub const RED: Color = Color(255, 0, 0);
     pub const GREEN: Color = Color(0, 255, 0);
     pub const BLUE: Color = Color(0, 0, 255);
+    pub const WHITE: Color = Color(255, 255, 255);
 }
 
 enum Tile {
@@ -23,8 +24,8 @@ enum Tile {
 
 fn source_rect_from_tile(tile: &Tile) -> Rect {
     match tile {
-        Tile::Dude => Rect::new(1 * 10, 0 * 10, 10, 10),
-        Tile::Grass => Rect::new(13 * 10, 3 * 10, 10, 10),
+        Tile::Dude => Rect::new(1 * 9, 0 * 9, 9, 9),
+        Tile::Grass => Rect::new(13 * 9, 3 * 9, 9, 9),
     }
 }
 
@@ -40,7 +41,7 @@ fn draw_tile(
         .copy(
             tiles_texture,
             Some(source_rect_from_tile(tile)),
-            Some(Rect::new(200, 200, 10, 10)),
+            Some(Rect::new(200, 200, 9, 9)),
         )
         .unwrap();
 }
@@ -60,8 +61,11 @@ pub fn main() {
     let texture_creator = canvas.texture_creator();
 
     let mut tiles_texture = texture_creator
-        .load_texture(Path::new("tiles.png"))
+        .load_texture(Path::new("taffer.png"))
         .unwrap();
+
+    draw_tile(&mut canvas, &mut tiles_texture, &Tile::Dude, &colors::WHITE);
+    canvas.present();
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut i = 0;
@@ -78,26 +82,6 @@ pub fn main() {
             }
         }
         // The rest of the game loop goes here...
-
-        canvas.present();
-
-        draw_tile(&mut canvas, &mut tiles_texture, &Tile::Dude, &colors::GREEN);
-
-        canvas.present();
-
-        std::thread::sleep(Duration::from_secs(4));
-
-        canvas.clear();
-
-        draw_tile(
-            &mut canvas,
-            &mut tiles_texture,
-            &Tile::Grass,
-            &colors::GREEN,
-        );
-
-        canvas.present();
-
         std::thread::sleep(Duration::from_secs(1 / 60));
     }
 }
