@@ -14,12 +14,25 @@ mod render {
     use sdl2::render::{Canvas, Texture};
     use sdl2::video::Window;
 
-    fn rect_from_pos(x: u8, y: u8) -> Rect {
+    pub fn make_tile_rect(x: u8, y: u8) -> Rect {
         Rect::new(
             x as i32 * TILE_PIXEL_WIDTH as i32,
             y as i32 * TILE_PIXEL_WIDTH as i32,
             TILE_PIXEL_WIDTH as u32,
             TILE_PIXEL_WIDTH as u32,
+        )
+    }
+
+    pub fn make_tileset_rect(x: u8, y: u8) -> Rect {
+        make_tile_rect(x - 1, y - 1)
+    }
+
+    pub fn make_multi_tile_rect(x: u8, y: u8, width: u8, height: u8) -> Rect {
+        Rect::new(
+            x as i32 * TILE_PIXEL_WIDTH as i32,
+            y as i32 * TILE_PIXEL_WIDTH as i32,
+            width as u32 * TILE_PIXEL_WIDTH as u32,
+            height as u32 * TILE_PIXEL_WIDTH as u32,
         )
     }
 
