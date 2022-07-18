@@ -1,50 +1,113 @@
-extern crate sdl2;
-
-use colors::Color;
+use render::render_tiles;
 use sdl2::event::Event;
 use sdl2::image::{InitFlag, LoadTexture};
 use sdl2::keyboard::Keycode;
-use sdl2::rect::Rect;
-use sdl2::render::{Canvas, Texture};
-use sdl2::video::Window;
 use std::{path::Path, time::Duration};
+use tile::fill_tiles_with_earth;
 
-mod colors {
-    pub struct Color(pub u8, pub u8, pub u8);
-    pub const RED: Color = Color(255, 0, 0);
-    pub const GREEN: Color = Color(0, 255, 0);
-    pub const BLUE: Color = Color(0, 0, 255);
-    pub const WHITE: Color = Color(255, 255, 255);
-}
+mod render {
+    use crate::tile::Entity;
+    use crate::tile::Tile;
+    use crate::tile::Tiles;
+    use crate::tile::TILE_PIXEL_WIDTH;
+    use sdl2::rect::Rect;
+    use sdl2::render::{Canvas, Texture};
+    use sdl2::video::Window;
 
-enum Tile {
-    Dude,
-    Grass,
-}
+    fn rect_from_pos(x: u8, y: u8) -> Rect {
+        Rect::new(
+            x as i32 * TILE_PIXEL_WIDTH as i32,
+            y as i32 * TILE_PIXEL_WIDTH as i32,
+            TILE_PIXEL_WIDTH as u32,
+            TILE_PIXEL_WIDTH as u32,
+        )
+    }
 
-fn source_rect_from_tile(tile: &Tile) -> Rect {
-    match tile {
-        Tile::Dude => Rect::new(1 * 9, 0 * 9, 9, 9),
-        Tile::Grass => Rect::new(13 * 9, 3 * 9, 9, 9),
+    fn source_rect_from_tile(entity: &Entity) -> Rect {
+        match entity {
+            Entity::Dude => rect_from_pos(1, 0),
+            Entity::Grass => rect_from_pos(13, 9),
+            Entity::ThickGrass => rect_from_pos(13, 9),
+            Entity::Earth => rect_from_pos(14, 2),
+        }
+    }
+
+    fn render_tile(canvas: &mut Canvas<Window>, tiles_texture: &mut Texture<'_>, tile: &Tile) {
+        tiles_texture.set_color_mod(tile.color.0, tile.color.1, tile.color.2);
+
+        canvas
+            .copy(
+                tiles_texture,
+                Some(source_rect_from_tile(&tile.entity)),
+                Some(Rect::new(
+                    tile.x as i32 * TILE_PIXEL_WIDTH as i32,
+                    tile.y as i32 * TILE_PIXEL_WIDTH as i32,
+                    TILE_PIXEL_WIDTH as u32,
+                    TILE_PIXEL_WIDTH as u32,
+                )),
+            )
+            .unwrap();
+    }
+
+    pub fn render_tiles(
+        canvas: &mut Canvas<Window>,
+        tiles_texture: &mut Texture<'_>,
+        tiles: &mut Tiles,
+    ) {
+        for tile in tiles {
+            render_tile(canvas, tiles_texture, tile)
+        }
+        canvas.present();
     }
 }
 
-fn draw_tile(
-    canvas: &mut Canvas<Window>,
-    tiles_texture: &mut Texture<'_>,
-    tile: &Tile,
-    color: &Color,
-) {
-    tiles_texture.set_color_mod(color.0, color.1, color.2);
+mod tile {
+    // 64x64 plane.
+    pub type Tiles = Vec<Tile>;
 
-    canvas
-        .copy(
-            tiles_texture,
-            Some(source_rect_from_tile(tile)),
-            Some(Rect::new(200, 200, 9, 9)),
-        )
-        .unwrap();
+    pub const TILES_WIDTH: u8 = 64;
+    pub const TILE_PIXEL_WIDTH: u8 = 9;
+
+    #[derive(Debug)]
+    pub struct Color(pub u8, pub u8, pub u8);
+    // pub const RED: Color = Color(255, 0, 0);
+    // pub const GREEN: Color = Color(0, 255, 0);
+    // pub const BLUE: Color = Color(0, 0, 255);
+    // pub const WHITE: Color = Color(255, 255, 255);
+    pub const BROWN: Color = Color(150, 75, 55);
+
+    #[derive(Debug)]
+    pub enum Entity {
+        Dude,
+        Grass,
+        ThickGrass,
+        Earth,
+    }
+
+    #[derive(Debug)]
+    pub struct Tile {
+        pub x: u8,
+        pub y: u8,
+        pub entity: Entity,
+        pub color: Color,
+    }
+
+    pub fn fill_tiles_with_earth(tiles: &mut Tiles) {
+        for x in 0..TILES_WIDTH {
+            for y in 0..TILES_WIDTH {
+                let tile = Tile {
+                    x,
+                    y,
+                    entity: Entity::Earth,
+                    color: BROWN,
+                };
+                tiles.push(tile);
+            }
+        }
+    }
 }
+
+mod text {}
 
 pub fn main() {
     let sdl_context = sdl2::init().unwrap();
@@ -52,7 +115,7 @@ pub fn main() {
     let _image_context = sdl2::image::init(InitFlag::PNG).unwrap();
 
     let window = video_subsystem
-        .window("sim", 400, 400)
+        .window("sim", 576, 576)
         .position_centered()
         .build()
         .unwrap();
@@ -64,8 +127,8 @@ pub fn main() {
         .load_texture(Path::new("taffer.png"))
         .unwrap();
 
-    draw_tile(&mut canvas, &mut tiles_texture, &Tile::Dude, &colors::WHITE);
-    canvas.present();
+    let mut tiles = Vec::with_capacity(4096);
+    fill_tiles_with_earth(&mut tiles);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut i = 0;
@@ -81,7 +144,11 @@ pub fn main() {
                 _ => {}
             }
         }
-        // The rest of the game loop goes here...
+
+        render_tiles(&mut canvas, &mut tiles_texture, &mut tiles);
+
+        // Sleep so we don't loop crazy fast.
+        // Replace this with an adjustable simulation rate.
         std::thread::sleep(Duration::from_secs(1 / 60));
     }
 }
