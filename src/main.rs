@@ -14,10 +14,10 @@ mod render {
 
     fn source_rect_from_tile(entity: &Entity) -> Rect {
         match entity {
-            Entity::Dude => rect_from_pos(1, 0),
-            Entity::Grass => rect_from_pos(13, 9),
-            Entity::ThickGrass => rect_from_pos(13, 9),
-            Entity::Earth => rect_from_pos(14, 2),
+            // Entity::Dude => make_tile_rect(1, 0),
+            // Entity::Grass => make_tile_rect(13, 9),
+            // Entity::ThickGrass => make_tile_rect(13, 9),
+            Entity::Earth => make_tileset_rect(15, 3),
         }
     }
 
@@ -73,15 +73,13 @@ mod tiles {
     pub const TILES_WIDTH: u8 = 64;
     pub const TILE_PIXEL_WIDTH: u8 = 9;
 
-    #[derive(Debug)]
     pub enum Entity {
-        Dude,
-        Grass,
-        ThickGrass,
+        // Dude,
+        // Grass,
+        // ThickGrass,
         Earth,
     }
 
-    #[derive(Debug)]
     pub struct Tile {
         pub x: u8,
         pub y: u8,
