@@ -33,7 +33,7 @@ mod render {
     }
 
     fn render_tile(canvas: &mut Canvas<Window>, tiles_texture: &mut Texture<'_>, tile: &Tile) {
-        tiles_texture.set_color_mod(tile.color.0, tile.color.1, tile.color.2);
+        tiles_texture.set_color_mod(tile.color.r, tile.color.g, tile.color.b);
 
         canvas
             .copy(
@@ -61,20 +61,27 @@ mod render {
     }
 }
 
+mod colors {
+    use sdl2::pixels::Color;
+
+    pub const BLACK: Color = Color::RGB(21, 19, 15);
+    // pub const BLUE: Color = Color::RGB(0, 0, 255);
+    pub const BROWN: Color = Color::RGB(150, 75, 55);
+    // pub const GREEN: Color = Color::RGB(0, 255, 0);
+    // pub const RED: Color = Color::RGB(255, 0, 0);
+    pub const WHITE: Color = Color::RGB(255, 255, 255);
+}
+
 mod tile {
+    use sdl2::pixels::Color;
+
+    use crate::colors;
+
     // 64x64 plane.
     pub type Tiles = Vec<Tile>;
 
     pub const TILES_WIDTH: u8 = 64;
     pub const TILE_PIXEL_WIDTH: u8 = 9;
-
-    #[derive(Debug)]
-    pub struct Color(pub u8, pub u8, pub u8);
-    // pub const RED: Color = Color(255, 0, 0);
-    // pub const GREEN: Color = Color(0, 255, 0);
-    // pub const BLUE: Color = Color(0, 0, 255);
-    // pub const WHITE: Color = Color(255, 255, 255);
-    pub const BROWN: Color = Color(150, 75, 55);
 
     #[derive(Debug)]
     pub enum Entity {
@@ -99,7 +106,7 @@ mod tile {
                     x,
                     y,
                     entity: Entity::Earth,
-                    color: BROWN,
+                    color: colors::BROWN,
                 };
                 tiles.push(tile);
             }
