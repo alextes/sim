@@ -12,7 +12,7 @@ mod render {
 
     use crate::tiles::{make_tileset_rect, Entity, Tile, Tiles, TILE_PIXEL_WIDTH};
 
-    fn source_rect_from_tile(entity: &Entity) -> Rect {
+    fn source_rect_from_entity(entity: &Entity) -> Rect {
         match entity {
             // Entity::Dude => make_tile_rect(1, 0),
             // Entity::Grass => make_tile_rect(13, 9),
@@ -27,7 +27,7 @@ mod render {
         canvas
             .copy(
                 tiles_texture,
-                Some(source_rect_from_tile(&tile.entity)),
+                Some(source_rect_from_entity(&tile.entity)),
                 Some(Rect::new(
                     tile.x as i32 * TILE_PIXEL_WIDTH as i32,
                     tile.y as i32 * TILE_PIXEL_WIDTH as i32,
