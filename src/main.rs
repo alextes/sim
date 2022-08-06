@@ -2,8 +2,11 @@ use render::render_tiles;
 use sdl2::event::Event;
 use sdl2::image::{InitFlag, LoadTexture};
 use sdl2::keyboard::Keycode;
+use std::cmp::Ordering;
+use std::collections::VecDeque;
+use std::time::Instant;
 use std::{path::Path, time::Duration};
-use text::render_text;
+use text::render_status_text;
 use tiles::fill_tiles_with_earth;
 
 mod render {
@@ -134,8 +137,45 @@ mod text {
 
     fn rect_from_char(char: char) -> Rect {
         match char {
+            ' ' => make_tileset_rect(1, 1),
             '!' => make_tileset_rect(2, 3),
+            '0' => make_tileset_rect(1, 4),
+            '1' => make_tileset_rect(2, 4),
+            '2' => make_tileset_rect(3, 4),
+            '3' => make_tileset_rect(4, 4),
+            '4' => make_tileset_rect(5, 4),
+            '5' => make_tileset_rect(6, 4),
+            '6' => make_tileset_rect(7, 4),
+            '7' => make_tileset_rect(8, 4),
+            '8' => make_tileset_rect(9, 4),
+            '9' => make_tileset_rect(10, 4),
             '?' => make_tileset_rect(16, 4),
+            'A' => make_tileset_rect(2, 5),
+            'B' => make_tileset_rect(3, 5),
+            'C' => make_tileset_rect(4, 5),
+            'D' => make_tileset_rect(5, 5),
+            'E' => make_tileset_rect(6, 5),
+            'F' => make_tileset_rect(7, 5),
+            'G' => make_tileset_rect(8, 5),
+            'H' => make_tileset_rect(9, 5),
+            'I' => make_tileset_rect(10, 5),
+            'J' => make_tileset_rect(11, 5),
+            'K' => make_tileset_rect(12, 5),
+            'L' => make_tileset_rect(13, 5),
+            'M' => make_tileset_rect(14, 5),
+            'N' => make_tileset_rect(15, 5),
+            'O' => make_tileset_rect(16, 5),
+            'P' => make_tileset_rect(1, 6),
+            'Q' => make_tileset_rect(2, 6),
+            'R' => make_tileset_rect(3, 6),
+            'S' => make_tileset_rect(4, 6),
+            'T' => make_tileset_rect(5, 6),
+            'U' => make_tileset_rect(6, 6),
+            'V' => make_tileset_rect(7, 6),
+            'W' => make_tileset_rect(8, 6),
+            'X' => make_tileset_rect(9, 6),
+            'Y' => make_tileset_rect(10, 6),
+            'Z' => make_tileset_rect(11, 6),
             'a' => make_tileset_rect(2, 7),
             'b' => make_tileset_rect(3, 7),
             'c' => make_tileset_rect(4, 7),
@@ -162,12 +202,11 @@ mod text {
             'x' => make_tileset_rect(9, 8),
             'y' => make_tileset_rect(10, 8),
             'z' => make_tileset_rect(11, 8),
-            ' ' => make_tileset_rect(1, 1),
-            char => panic!("tried to get rect for unsupported character: {char}"),
+            char => panic!("tried to get rect for unsupported character: '{char}'"),
         }
     }
 
-    pub fn render_text(
+    pub fn render_status_text(
         canvas: &mut Canvas<Window>,
         tiles_texture: &mut Texture<'_>,
         text: &str,
@@ -200,6 +239,25 @@ mod text {
     }
 }
 
+const SIMULATION_UNIT_DURATION: Duration = Duration::from_millis(100);
+const SIMULATION_UNIT_BUDGET: Duration = SIMULATION_UNIT_DURATION;
+
+fn get_load_indicator_from_duration(duration: Duration) -> char {
+    match duration {
+        num if num <= Duration::from_millis(10) => '0',
+        num if num > Duration::from_millis(10) && num <= Duration::from_millis(20) => '1',
+        num if num > Duration::from_millis(20) && num <= Duration::from_millis(30) => '2',
+        num if num > Duration::from_millis(30) && num <= Duration::from_millis(40) => '3',
+        num if num > Duration::from_millis(40) && num <= Duration::from_millis(50) => '4',
+        num if num > Duration::from_millis(50) && num <= Duration::from_millis(60) => '5',
+        num if num > Duration::from_millis(60) && num <= Duration::from_millis(70) => '6',
+        num if num > Duration::from_millis(70) && num <= Duration::from_millis(80) => '7',
+        num if num > Duration::from_millis(80) && num <= Duration::from_millis(90) => '8',
+        num if num > Duration::from_millis(90) && num <= Duration::from_millis(100) => '9',
+        _ => '?',
+    }
+}
+
 pub fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -222,9 +280,21 @@ pub fn main() {
     fill_tiles_with_earth(&mut tiles);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
-    let mut i = 0;
+
+    // Tracks how much time has passed since we started counting up to one second.
+    let mut loop_start;
+    let mut simulation_load_history = VecDeque::from(vec!['?', '?', '?', '?', '?']);
+
+    // Tracks how many simulation units (loops) were completed.
+    let mut last_second_start = Instant::now();
+    let mut simulation_units_counter = 0;
+    let mut simulation_units_per_second = 0;
+
     'running: loop {
-        i = (i + 1) % 255;
+        // Mark loop start.
+        loop_start = Instant::now();
+
+        // Handle events.
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -236,19 +306,52 @@ pub fn main() {
             }
         }
 
+        canvas.clear();
+
+        // Render our tiles.
         render_tiles(&mut canvas, &mut tiles_texture, &mut tiles);
-        render_text(
+
+        // Calculate how long we took to complete the loop, and report the simulation speed.
+
+        // First we print a load indicator. This is a simple measure of how much time was left out
+        // of the time budget a single Simulation Unit has, namely 100ms. 0 indicates low load, 9
+        // high.
+        simulation_load_history.pop_front();
+        let loop_elapsed = loop_start.elapsed();
+        let load_indicator = get_load_indicator_from_duration(loop_elapsed);
+        simulation_load_history.push_back(load_indicator);
+        let simulation_load_history_text: String = simulation_load_history.iter().collect();
+
+        simulation_units_counter = simulation_units_counter + 1;
+
+        render_status_text(
             &mut canvas,
             &mut tiles_texture,
-            "hello world!",
+            &format!(
+                "LOAD {} SUPS {}",
+                simulation_load_history_text, simulation_units_per_second
+            ),
             colors::BLACK,
             colors::WHITE,
         );
 
+        // We update an indication of how many Simulation Units we're completing per second. Ideally this is
+        // 10.
+        match last_second_start.elapsed().cmp(&Duration::from_secs(1)) {
+            Ordering::Less => (),
+            Ordering::Equal | Ordering::Greater => {
+                simulation_units_per_second = simulation_units_counter;
+                simulation_units_counter = 0;
+                last_second_start = Instant::now();
+            }
+        }
+
         canvas.present();
 
-        // Sleep so we don't loop crazy fast.
-        // Replace this with an adjustable simulation rate.
-        std::thread::sleep(Duration::from_secs(1 / 60));
+        // Sleep the rest of our budget.
+        let simulation_unit_budget_left =
+            SIMULATION_UNIT_BUDGET.as_millis() as i64 - loop_elapsed.as_millis() as i64;
+        let duration_to_sleep = Duration::from_millis(simulation_unit_budget_left.max(0) as u64);
+        std::thread::sleep(duration_to_sleep);
     }
 }
