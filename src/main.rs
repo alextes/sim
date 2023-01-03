@@ -122,8 +122,8 @@ pub fn main() {
 
     // Tracks how many simulation units (loops) were completed.
     let mut last_second_start = Instant::now();
-    let mut simulation_units_counter = 0;
-    let mut simulation_units_per_second = 0;
+    let mut simulation_units_counter: SimulationUnit = 0;
+    let mut simulation_units_per_second: SimulationUnit = 0;
 
     let one_second_duration = Duration::from_secs(1);
 
