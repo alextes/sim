@@ -1,4 +1,5 @@
 mod entity;
+mod load;
 mod location;
 mod render;
 
@@ -21,22 +22,6 @@ mod colors {
 
 const SIMULATION_UNIT_DURATION: Duration = Duration::from_millis(100);
 const SIMULATION_UNIT_BUDGET: Duration = SIMULATION_UNIT_DURATION;
-
-fn get_load_indicator_from_duration(duration: Duration) -> char {
-    match duration {
-        num if num <= Duration::from_millis(10) => '0',
-        num if num > Duration::from_millis(10) && num <= Duration::from_millis(20) => '1',
-        num if num > Duration::from_millis(20) && num <= Duration::from_millis(30) => '2',
-        num if num > Duration::from_millis(30) && num <= Duration::from_millis(40) => '3',
-        num if num > Duration::from_millis(40) && num <= Duration::from_millis(50) => '4',
-        num if num > Duration::from_millis(50) && num <= Duration::from_millis(60) => '5',
-        num if num > Duration::from_millis(60) && num <= Duration::from_millis(70) => '6',
-        num if num > Duration::from_millis(70) && num <= Duration::from_millis(80) => '7',
-        num if num > Duration::from_millis(80) && num <= Duration::from_millis(90) => '8',
-        num if num > Duration::from_millis(90) && num <= Duration::from_millis(100) => '9',
-        _ => '?',
-    }
-}
 
 trait Simulate {
     fn get_simulation_interval() -> u32;
@@ -161,7 +146,7 @@ pub fn main() {
         // high.
         simulation_load_history.pop_front();
         let loop_elapsed = loop_start.elapsed();
-        let load_indicator = get_load_indicator_from_duration(loop_elapsed);
+        let load_indicator = load::get_load_indicator_from_duration(loop_elapsed);
         simulation_load_history.push_back(load_indicator);
         let simulation_load_history_text: String = simulation_load_history.iter().collect();
 
