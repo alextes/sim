@@ -98,7 +98,7 @@ pub fn main() {
     let texture_creator = canvas.texture_creator();
 
     let mut tiles_texture = texture_creator
-        .load_texture(Path::new("taffer.png"))
+        .load_texture(Path::new("res/taffer.png"))
         .unwrap();
 
     let mut entities = vec![];
