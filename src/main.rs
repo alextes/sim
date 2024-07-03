@@ -11,6 +11,8 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
 use std::{path::Path, time::Duration};
+use tracing::{debug, info};
+use tracing_subscriber::EnvFilter;
 
 mod colors {
     use sdl2::pixels::Color;
@@ -69,19 +71,29 @@ impl Viewport {
 type SimulationUnit = u32;
 
 pub fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
+    info!("starting sim");
+
+    debug!("setting up SDL context");
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let _image_context = sdl2::image::init(InitFlag::PNG).unwrap();
 
+    debug!("creating SDL window");
     let window = video_subsystem
         .window("sim", 576, 576)
         .position_centered()
         .build()
         .unwrap();
 
+    debug!("creating SDL canvas");
     let mut canvas = window.into_canvas().software().build().unwrap();
-    let texture_creator = canvas.texture_creator();
 
+    debug!("loading tiles texture");
+    let texture_creator = canvas.texture_creator();
     let mut tiles_texture = texture_creator
         .load_texture(Path::new("res/taffer.png"))
         .unwrap();
