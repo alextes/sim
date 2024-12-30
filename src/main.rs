@@ -146,6 +146,40 @@ pub fn main() {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => break 'running,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Up),
+                    ..
+                } => {
+                    location_viewport.anchor.y -= 1;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Down),
+                    ..
+                } => {
+                    location_viewport.anchor.y += 1;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => {
+                    location_viewport.anchor.x -= 1;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => {
+                    location_viewport.anchor.x += 1;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Tab),
+                    ..
+                } => {
+                    entity_focus_index = (entity_focus_index + 1) % entities.len();
+                    let entity_id = entities[entity_focus_index];
+                    let Point { x: ex, y: ey } =
+                        location_map.get(&entity_id).cloned().unwrap_or_default();
+                    location_viewport.center_on_entity(ex, ey);
+                }
                 _ => {}
             }
         }
