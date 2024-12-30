@@ -7,16 +7,20 @@ use super::TILE_PIXEL_WIDTH;
 
 lazy_static! {
     static ref EMPTY_TILE: Rect = make_tile_rect(0, 0);
-    static ref LOWER_P_TILE: Rect = make_tile_rect(0, 7);
     static ref EXCLAMATION_POINT_TILE: Rect = make_tile_rect(1, 2);
+    static ref LOWER_M_TILE: Rect = make_tile_rect(13, 6);
+    static ref LOWER_P_TILE: Rect = make_tile_rect(0, 7);
+    static ref LOWER_S_TILE: Rect = make_tile_rect(3, 7);
 }
 
 impl From<&EntityType> for Rect {
     fn from(entity: &EntityType) -> Self {
         use EntityType::*;
         match entity {
-            Space => *EMPTY_TILE,
+            Moon => *LOWER_M_TILE,
             Planet => *LOWER_P_TILE,
+            Space => *EMPTY_TILE,
+            Star => *LOWER_S_TILE,
         }
     }
 }

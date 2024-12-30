@@ -101,15 +101,25 @@ pub fn main() {
     let mut entities = vec![];
     let mut entity_type_map: EntityTypeMap = HashMap::new();
     let mut location_map = location::LocationMap::new();
-    let location_viewport = Viewport {
-        center: Point { x: 0, y: 0 },
-        width: 64,
-        height: 64,
-    };
+    let mut location_viewport = Viewport::default();
 
-    entities.push(0);
-    entity_type_map.insert(0, EntityType::Planet);
-    location_map.add_entity(0, 32, 32);
+    // Add Sol
+    let sol_id = 0;
+    entities.push(sol_id);
+    entity_type_map.insert(sol_id, EntityType::Star);
+    location_map.add_entity(sol_id, 0, 0);
+
+    // Add Earth
+    let earth_id = 1;
+    entities.push(earth_id);
+    entity_type_map.insert(earth_id, EntityType::Planet);
+    location_map.add_entity(earth_id, -16, 0);
+
+    // Add Moon
+    let moon_id = 2;
+    entities.push(moon_id);
+    entity_type_map.insert(moon_id, EntityType::Moon);
+    location_map.add_entity(moon_id, -16, 2);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
 
