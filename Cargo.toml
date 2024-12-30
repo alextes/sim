@@ -11,6 +11,6 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [dependencies.sdl2]
-version = "0.35"
+version = "0.37"
 default-features = false
 features = ["image"]
