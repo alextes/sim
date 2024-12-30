@@ -8,8 +8,8 @@ use sdl2::render::{Canvas, Texture};
 use sdl2::video::Window;
 
 use crate::entity::EntityId;
-use crate::location::LocationMap;
-use crate::{colors, EntityType, Viewport};
+use crate::location::{LocationMap, Point};
+use crate::{colors, EntityType};
 
 pub const TILE_PIXEL_WIDTH: u8 = 9;
 
@@ -105,5 +105,48 @@ pub fn render_viewport(
         };
 
         render_tile(canvas, tiles_texture, &renderable);
+    }
+}
+
+pub struct Viewport {
+    /// Specifies which universe coordinate the top left corner of the viewport is centered on.
+    pub anchor: Point,
+    /// Specifies how far we're zoomed in on the universe, and therefore how many tiles are visible.
+    pub zoom: f64,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Default for Viewport {
+    fn default() -> Self {
+        Self {
+            anchor: Point { x: -32, y: -32 },
+            zoom: 1.0,
+            width: 64,
+            height: 64,
+        }
+    }
+}
+
+impl Viewport {
+    pub fn min_x(&self) -> i32 {
+        self.anchor.x
+    }
+
+    pub fn max_x(&self) -> i32 {
+        self.anchor.x + self.width as i32
+    }
+
+    pub fn min_y(&self) -> i32 {
+        self.anchor.y
+    }
+
+    pub fn max_y(&self) -> i32 {
+        self.anchor.y + self.height as i32
+    }
+
+    pub fn center_on_entity(&mut self, x: i32, y: i32) {
+        self.anchor.x = x - (self.width as i32 / 2);
+        self.anchor.y = y - (self.height as i32 / 2);
     }
 }

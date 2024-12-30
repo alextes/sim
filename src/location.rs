@@ -3,7 +3,13 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{entity::EntityId, Point, Viewport};
+use crate::{entity::EntityId, Viewport};
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Point {
+    pub x: i32,
+    pub y: i32,
+}
 
 #[derive(Debug)]
 pub struct LocationMap(HashMap<EntityId, Point>);

@@ -2,8 +2,11 @@ mod entity;
 mod load;
 mod location;
 mod render;
+mod simulation;
 
-use entity::{EntityType, EntityTypeMap};
+use entity::{EntityType, EntityTypeMap, OrbitalEntity};
+use location::{LocationMap, Point};
+use render::Viewport;
 use sdl2::event::Event;
 use sdl2::image::{InitFlag, LoadTexture};
 use sdl2::keyboard::Keycode;
@@ -25,80 +28,7 @@ mod colors {
 const SIMULATION_UNIT_DURATION: Duration = Duration::from_millis(100);
 const SIMULATION_UNIT_BUDGET: Duration = SIMULATION_UNIT_DURATION;
 
-#[derive(Debug, Default, Clone)]
-pub struct Point {
-    x: i32,
-    y: i32,
-}
-
-pub struct Viewport {
-    /// Specifies which universe coordinate the top left corner of the viewport is centered on.
-    anchor: Point,
-    /// Specifies how far we're zoomed in on the universe, and therefore how many tiles are visible.
-    zoom: f64,
-    width: u32,
-    height: u32,
-}
-
-impl Default for Viewport {
-    fn default() -> Self {
-        Self {
-            anchor: Point { x: -32, y: -32 },
-            zoom: 1.0,
-            width: 64,
-            height: 64,
-        }
-    }
-}
-
-/// The viewport allows us to observe the universe at a chosen location, zoom level, overlay, etc.
-/// TODO: the viewport should be bounded by the universe.
-/// TODO: zooming should be capped at maybe 8x8 tiles minimum.
-impl Viewport {
-    fn min_x(&self) -> i32 {
-        self.anchor.x
-    }
-
-    fn max_x(&self) -> i32 {
-        self.anchor.x + self.width as i32
-    }
-
-    fn min_y(&self) -> i32 {
-        self.anchor.y
-    }
-
-    fn max_y(&self) -> i32 {
-        self.anchor.y + self.height as i32
-    }
-
-    pub fn center_on_entity(&mut self, x: i32, y: i32) {
-        self.anchor.x = x - (self.width as i32 / 2);
-        self.anchor.y = y - (self.height as i32 / 2);
-    }
-}
-
 type SimulationUnit = u32;
-
-trait Orbital {
-    fn update_position(&mut self, anchor_x: i32, anchor_y: i32, time_delta: f64);
-}
-
-struct OrbitalEntity {
-    id: u32,
-    anchor_id: u32,
-    radius: f64,
-    angle: f64,
-    angular_velocity: f64, // radians per second
-    position: Point,
-}
-
-impl Orbital for OrbitalEntity {
-    fn update_position(&mut self, anchor_x: i32, anchor_y: i32, time_delta: f64) {
-        self.angle += self.angular_velocity * time_delta;
-        self.position.x = anchor_x + (self.radius * self.angle.cos()) as i32;
-        self.position.y = anchor_y + (self.radius * self.angle.sin()) as i32;
-    }
-}
 
 pub fn main() {
     tracing_subscriber::fmt()
@@ -130,7 +60,7 @@ pub fn main() {
 
     let mut entities = vec![];
     let mut entity_type_map: EntityTypeMap = HashMap::new();
-    let mut location_map = location::LocationMap::new();
+    let mut location_map = LocationMap::new();
     let mut location_viewport = Viewport::default();
 
     // Add Sol
@@ -191,15 +121,7 @@ pub fn main() {
         loop_start = Instant::now();
 
         // Update positions of orbital entities
-        for entity in &mut orbital_entities {
-            let anchor_position = location_map.get(&entity.anchor_id).unwrap();
-            entity.update_position(
-                anchor_position.x,
-                anchor_position.y,
-                SIMULATION_UNIT_DURATION.as_secs_f64(),
-            );
-            location_map.add_entity(entity.id, entity.position.x, entity.position.y);
-        }
+        simulation::update_orbital_entities(&mut orbital_entities, &mut location_map);
 
         // Handle events.
         for event in event_pump.poll_iter() {
