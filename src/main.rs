@@ -1,19 +1,23 @@
 mod entity;
+mod entity_setup;
+mod event_handling;
+mod initialization;
 mod load;
 mod location;
 mod render;
 mod simulation;
 
-use entity::{EntityType, EntityTypeMap, OrbitalEntity};
-use location::{LocationMap, Point};
+use entity::{EntityTypeMap, OrbitalEntity};
+use location::LocationMap;
 use render::Viewport;
 use sdl2::event::Event;
-use sdl2::image::{InitFlag, LoadTexture};
+use sdl2::image::LoadTexture;
 use sdl2::keyboard::Keycode;
 use std::cmp::Ordering;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+use std::path::Path;
+use std::time::Duration;
 use std::time::Instant;
-use std::{path::Path, time::Duration};
 use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
 
@@ -37,57 +41,22 @@ pub fn main() {
 
     info!("starting sim");
 
-    debug!("setting up SDL context");
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let _image_context = sdl2::image::init(InitFlag::PNG).unwrap();
+    let (sdl_context, mut canvas, texture_creator) = initialization::setup_sdl();
 
-    debug!("creating SDL window");
-    let window = video_subsystem
-        .window("sim", 576, 576)
-        .position_centered()
-        .build()
-        .unwrap();
-
-    debug!("creating SDL canvas");
-    let mut canvas = window.into_canvas().software().build().unwrap();
-
-    debug!("loading tiles texture");
-    let texture_creator = canvas.texture_creator();
     let mut tiles_texture = texture_creator
         .load_texture(Path::new("res/taffer.png"))
         .unwrap();
 
-    let mut entities = vec![];
-    let mut entity_type_map: EntityTypeMap = HashMap::new();
-    let mut location_map = LocationMap::new();
+    let (entities, entity_type_map, mut location_map, mut orbital_entities) =
+        entity_setup::initialize_entities();
+
     let mut location_viewport = Viewport::default();
-
-    // Add Sol
-    let sol_id = 0;
-    entities.push(sol_id);
-    entity_type_map.insert(sol_id, EntityType::Star);
-    location_map.add_entity(sol_id, 0, 0);
-
-    // Add Earth
-    let earth_id = 1;
-    entities.push(earth_id);
-    entity_type_map.insert(earth_id, EntityType::Planet);
-    location_map.add_entity(earth_id, -16, 0);
-
-    // Add Moon
-    let moon_id = 2;
-    entities.push(moon_id);
-    entity_type_map.insert(moon_id, EntityType::Moon);
-    location_map.add_entity(moon_id, -16, 2);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    // Tracks how much time has passed since we started counting up to one second.
     let mut loop_start;
     let mut simulation_load_history = VecDeque::from(vec!['?', '?', '?', '?', '?']);
 
-    // Tracks how many simulation units (loops) were completed.
     let mut last_second_start = Instant::now();
     let mut simulation_units_counter: SimulationUnit = 0;
     let mut simulation_units_per_second: SimulationUnit = 0;
@@ -96,82 +65,23 @@ pub fn main() {
 
     let mut entity_focus_index = 0;
 
-    // Initialize orbital entities
-    let mut orbital_entities = vec![
-        OrbitalEntity {
-            id: earth_id,
-            anchor_id: sol_id,
-            radius: 16.0,
-            angle: 0.0,
-            angular_velocity: 0.1,
-            position: Point { x: 0, y: 0 },
-        },
-        OrbitalEntity {
-            id: moon_id,
-            anchor_id: earth_id,
-            radius: 2.0,
-            angle: 0.0,
-            angular_velocity: 0.2,
-            position: Point { x: 0, y: 0 },
-        },
-    ];
-
     'running: loop {
-        // Mark loop start.
         loop_start = Instant::now();
 
-        // Update positions of orbital entities
         simulation::update_orbital_entities(&mut orbital_entities, &mut location_map);
 
-        // Handle events.
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                Event::KeyDown {
-                    keycode: Some(Keycode::Up),
-                    ..
-                } => {
-                    location_viewport.anchor.y -= 1;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Down),
-                    ..
-                } => {
-                    location_viewport.anchor.y += 1;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Left),
-                    ..
-                } => {
-                    location_viewport.anchor.x -= 1;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Right),
-                    ..
-                } => {
-                    location_viewport.anchor.x += 1;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Tab),
-                    ..
-                } => {
-                    entity_focus_index = (entity_focus_index + 1) % entities.len();
-                    let entity_id = entities[entity_focus_index];
-                    let Point { x: ex, y: ey } =
-                        location_map.get(&entity_id).cloned().unwrap_or_default();
-                    location_viewport.center_on_entity(ex, ey);
-                }
-                _ => {}
-            }
+        if !event_handling::handle_events(
+            &mut event_pump,
+            &mut location_viewport,
+            &entities,
+            &location_map,
+            &mut entity_focus_index,
+        ) {
+            break 'running;
         }
 
         canvas.clear();
 
-        // Render our tiles.
         render::render_viewport(
             &mut canvas,
             &mut tiles_texture,
@@ -180,11 +90,6 @@ pub fn main() {
             &location_viewport,
         );
 
-        // Calculate how long we took to complete the loop, and report the simulation speed.
-
-        // First we print a load indicator. This is a simple measure of how much time was left out
-        // of the time budget a single Simulation Unit has, namely 100ms. 0 indicates low load, 9
-        // high.
         simulation_load_history.pop_front();
         let loop_elapsed = loop_start.elapsed();
         let load_indicator = load::get_load_indicator_from_duration(loop_elapsed);
@@ -204,8 +109,6 @@ pub fn main() {
             colors::WHITE,
         );
 
-        // We update an indication of how many Simulation Units we're completing per second. Ideally this is
-        // 10.
         match last_second_start.elapsed().cmp(&one_second_duration) {
             Ordering::Less => (),
             Ordering::Equal | Ordering::Greater => {
@@ -217,7 +120,6 @@ pub fn main() {
 
         canvas.present();
 
-        // Sleep the rest of our budget.
         let simulation_unit_budget_left =
             SIMULATION_UNIT_BUDGET.as_millis() as i64 - loop_elapsed.as_millis() as i64;
         let duration_to_sleep = Duration::from_millis(simulation_unit_budget_left.max(0) as u64);

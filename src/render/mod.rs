@@ -7,9 +7,9 @@ use sdl2::rect::Rect;
 use sdl2::render::{Canvas, Texture};
 use sdl2::video::Window;
 
-use crate::entity::EntityId;
+use crate::colors;
+use crate::entity::{EntityId, EntityType};
 use crate::location::{LocationMap, Point};
-use crate::{colors, EntityType};
 
 pub const TILE_PIXEL_WIDTH: u8 = 9;
 

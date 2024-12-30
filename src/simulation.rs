@@ -18,8 +18,3 @@ pub fn update_orbital_entities(
         location_map.add_entity(entity.id, entity.position.x, entity.position.y);
     }
 }
-
-pub fn run_simulation_loop() {
-    // This function can be expanded to include the main simulation loop logic.
-    // For now, it serves as a placeholder for where the loop logic would go.
-}
