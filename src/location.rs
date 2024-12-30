@@ -17,10 +17,12 @@ impl LocationMap {
         self.0.insert(entity_id, Point { x, y });
     }
 
-    pub fn translate_location(point: &Point, viewport: &Viewport) -> Point {
+    // We render the viewport, the anchor is the top left corner of the viewport. So we need to
+    // subtract the anchor from the universe coordinate to get the viewport coordinate.
+    pub fn translate_location(uni_coord: &Point, viewport: &Viewport) -> Point {
         Point {
-            x: point.x - viewport.center.x,
-            y: point.y - viewport.center.y,
+            x: uni_coord.x - viewport.anchor.x,
+            y: uni_coord.y - viewport.anchor.y,
         }
     }
 }

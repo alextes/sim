@@ -9,7 +9,7 @@ use sdl2::video::Window;
 
 use crate::entity::EntityId;
 use crate::location::LocationMap;
-use crate::{colors, EntityType, Point, Viewport};
+use crate::{colors, EntityType, Viewport};
 
 pub const TILE_PIXEL_WIDTH: u8 = 9;
 
@@ -83,30 +83,23 @@ pub fn render_viewport(
     location_map: &LocationMap,
     viewport: &Viewport,
 ) {
-    let visible_translated_location_map =
-        location_map.iter().filter_map(|(entity_id, location)| {
-            if location.x >= viewport.min_x()
-                && location.x <= viewport.max_x()
-                && location.y >= viewport.min_y()
-                && location.y <= viewport.max_y()
-            {
-                Some((
-                    entity_id,
-                    LocationMap::translate_location(location, viewport),
-                ))
-            } else {
-                None
-            }
-        });
+    let visible_entities = location_map.iter().filter(|(_, location)| {
+        location.x >= viewport.min_x()
+            && location.x <= viewport.max_x()
+            && location.y >= viewport.min_y()
+            && location.y <= viewport.max_y()
+    });
 
-    for (entity_id, Point { x, y }) in visible_translated_location_map {
+    for (entity_id, point) in visible_entities {
+        let translated_location = LocationMap::translate_location(point, viewport);
+
         let entity_type = entity_type_map
             .get(entity_id)
             .expect("expect entity type to be stored for entity id");
 
         let renderable = Renderable {
-            x: x as u8,
-            y: y as u8,
+            x: translated_location.x as u8,
+            y: translated_location.y as u8,
             tileset_rect: entity_type.into(),
             color: colors::BLUE,
         };
