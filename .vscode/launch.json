@@ -1,0 +1,19 @@
+{
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "debug sim",
+      "cwd": "${workspaceFolder}",
+      "program": "${workspaceFolder}/target/debug/sim",
+      "env": {
+        "RUST_BACKTRACE": "short",
+        "RUSTC_TOOLCHAIN": "/opt/homebrew/Cellar/rust/1.83.0",
+        "RUST_LOG": "debug"
+      },
+      "args": [],
+      "sourceMap": {},
+      "sourceLanguages": ["rust"]
+    }
+  ]
+}
