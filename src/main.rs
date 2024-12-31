@@ -75,6 +75,7 @@ pub fn main() {
             break 'running;
         }
 
+        canvas.set_draw_color(colors::BASE);
         canvas.clear();
 
         render::render_viewport(
