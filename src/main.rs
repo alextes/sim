@@ -40,6 +40,8 @@ pub fn main() {
         .load_texture(Path::new("res/taffer.png"))
         .unwrap();
 
+    debug!("tiles texture loaded");
+
     let (entities, entity_type_map, mut location_map, mut orbital_entities) =
         entity_setup::initialize_entities();
 
