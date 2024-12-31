@@ -10,6 +10,7 @@ pub fn handle_events(
     entities: &Vec<u32>,
     location_map: &LocationMap,
     entity_focus_index: &mut usize,
+    debug_enabled: &mut bool,
 ) -> bool {
     for event in event_pump.poll_iter() {
         match event {
@@ -18,6 +19,12 @@ pub fn handle_events(
                 keycode: Some(Keycode::Escape),
                 ..
             } => return false,
+            Event::KeyDown {
+                keycode: Some(Keycode::F4),
+                ..
+            } => {
+                *debug_enabled = !*debug_enabled;
+            }
             Event::KeyDown {
                 keycode: Some(Keycode::Up),
                 ..

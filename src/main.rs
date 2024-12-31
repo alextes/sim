@@ -57,6 +57,7 @@ pub fn main() {
     let one_second_duration = Duration::from_secs(1);
 
     let mut entity_focus_index = 0;
+    let mut debug_enabled = false;
 
     'running: loop {
         loop_start = Instant::now();
@@ -69,6 +70,7 @@ pub fn main() {
             &entities,
             &location_map,
             &mut entity_focus_index,
+            &mut debug_enabled,
         ) {
             break 'running;
         }
