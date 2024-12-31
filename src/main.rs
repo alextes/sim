@@ -8,12 +8,8 @@ mod location;
 mod render;
 mod simulation;
 
-use entity::{EntityTypeMap, OrbitalEntity};
-use location::LocationMap;
 use render::Viewport;
-use sdl2::event::Event;
 use sdl2::image::LoadTexture;
-use sdl2::keyboard::Keycode;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::path::Path;
