@@ -1,3 +1,4 @@
+mod colors;
 mod entity;
 mod entity_setup;
 mod event_handling;
@@ -20,14 +21,6 @@ use std::time::Duration;
 use std::time::Instant;
 use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
-
-mod colors {
-    use sdl2::pixels::Color;
-
-    pub const BASE: Color = Color::RGB(36, 39, 58);
-    pub const BLUE: Color = Color::RGB(138, 173, 244);
-    pub const WHITE: Color = Color::RGB(202, 211, 245);
-}
 
 const SIMULATION_UNIT_DURATION: Duration = Duration::from_millis(100);
 const SIMULATION_UNIT_BUDGET: Duration = SIMULATION_UNIT_DURATION;
