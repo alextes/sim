@@ -85,24 +85,37 @@ pub fn main() {
             &location_viewport,
         );
 
-        simulation_load_history.pop_front();
         let loop_elapsed = loop_start.elapsed();
-        let load_indicator = load::get_load_indicator_from_duration(loop_elapsed);
-        simulation_load_history.push_back(load_indicator);
-        let simulation_load_history_text: String = simulation_load_history.iter().collect();
+
+        if debug_enabled {
+            simulation_load_history.pop_front();
+            let load_indicator = load::get_load_indicator_from_duration(loop_elapsed);
+            simulation_load_history.push_back(load_indicator);
+            let simulation_load_history_text: String = simulation_load_history.iter().collect();
+
+            render::render_status_text(
+                &mut canvas,
+                &mut tiles_texture,
+                &format!(
+                    "LOAD {} SUPS {}",
+                    simulation_load_history_text, simulation_units_per_second
+                ),
+                colors::BASE,
+                colors::WHITE,
+                0,
+            );
+
+            render::render_status_text(
+                &mut canvas,
+                &mut tiles_texture,
+                &format!("zoom: {:.2}", location_viewport.zoom),
+                colors::BASE,
+                colors::WHITE,
+                1,
+            );
+        }
 
         simulation_units_counter += 1;
-
-        render::render_status_text(
-            &mut canvas,
-            &mut tiles_texture,
-            &format!(
-                "LOAD {} SUPS {}",
-                simulation_load_history_text, simulation_units_per_second
-            ),
-            colors::BASE,
-            colors::WHITE,
-        );
 
         match last_second_start.elapsed().cmp(&one_second_duration) {
             Ordering::Less => (),
