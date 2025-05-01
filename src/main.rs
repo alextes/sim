@@ -12,7 +12,6 @@ use debug::render_debug_overlay;
 use location::Point;
 use render::Viewport;
 use sdl2::image::LoadTexture;
-use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
 use std::path::Path;
