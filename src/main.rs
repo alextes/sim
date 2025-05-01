@@ -1,25 +1,31 @@
 mod colors;
+mod debug;
 mod entity;
-mod entity_setup;
 mod event_handling;
 mod initialization;
 mod load;
 mod location;
 mod render;
-mod simulation;
+mod world;
 
+use debug::render_debug_overlay;
+use location::Point;
 use render::Viewport;
 use sdl2::image::LoadTexture;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
+use std::f64::consts::TAU;
 use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
+use world::World;
 
-const SIMULATION_UNIT_DURATION: Duration = Duration::from_millis(100);
-const SIMULATION_UNIT_BUDGET: Duration = SIMULATION_UNIT_DURATION;
+/// Fixed simulation timestep (100Hz)
+const SIMULATION_DT: Duration = Duration::from_millis(10);
+/// Render interval (10FPS)
+const RENDER_DT: Duration = Duration::from_millis(100);
 
 type SimulationUnit = u32;
 
@@ -38,8 +44,16 @@ pub fn main() {
 
     debug!("tiles texture loaded");
 
-    let (entities, entity_type_map, mut location_map, mut orbital_entities) =
-        entity_setup::initialize_entities();
+    // let (entities, entity_type_map, mut location_map, mut orbital_entities) =
+    // entity_setup::initialize_entities();
+
+    let mut world = World::new();
+    // sol at center
+    let sol_id = world.spawn_star("sol", Point { x: 0, y: 0 });
+    // earth: complete one orbit (2π) in 10 seconds → angular_velocity = TAU / 10
+    let earth_id = world.spawn_planet("earth", sol_id, 16.0, 0.0, TAU / 60.0);
+    // moon: faster orbit around earth, e.g. complete in 5 seconds
+    let _moon_id = world.spawn_planet("moon", earth_id, 4.0, 0.0, TAU / 5.0);
 
     let mut location_viewport = Viewport::default();
 
@@ -51,6 +65,11 @@ pub fn main() {
     let mut last_second_start = Instant::now();
     let mut simulation_units_counter: SimulationUnit = 0;
     let mut simulation_units_per_second: SimulationUnit = 0;
+    let mut fps_counter: u32 = 0;
+    let mut fps_per_second: u32 = 0;
+    // timers for decoupled simulation/render
+    let mut last_simulation = Instant::now();
+    let mut last_render = Instant::now();
 
     let one_second_duration = Duration::from_secs(1);
 
@@ -58,78 +77,74 @@ pub fn main() {
     let mut debug_enabled = false;
 
     'running: loop {
-        loop_start = Instant::now();
+        let now = Instant::now();
+        loop_start = now;
+        // run simulation updates at fixed 100Hz
+        while now.duration_since(last_simulation) >= SIMULATION_DT {
+            world.update(SIMULATION_DT.as_secs_f64());
+            last_simulation += SIMULATION_DT;
+            simulation_units_counter += 1;
+        }
 
-        simulation::update_orbital_entities(&mut orbital_entities, &mut location_map);
+        // update per-second counters
+        if now.duration_since(last_second_start) >= one_second_duration {
+            simulation_units_per_second = simulation_units_counter;
+            simulation_units_counter = 0;
+            fps_per_second = fps_counter;
+            fps_counter = 0;
+            last_second_start = now;
+        }
 
-        if !event_handling::handle_events(
+        let signal = event_handling::handle_events(
             &mut event_pump,
             &mut location_viewport,
-            &entities,
-            &location_map,
+            &mut world,
             &mut entity_focus_index,
             &mut debug_enabled,
-        ) {
-            break 'running;
-        }
-
-        canvas.set_draw_color(colors::BASE);
-        canvas.clear();
-
-        render::render_viewport(
-            &mut canvas,
-            &mut tiles_texture,
-            &entity_type_map,
-            &location_map,
-            &location_viewport,
         );
-
-        let loop_elapsed = loop_start.elapsed();
-
-        if debug_enabled {
-            simulation_load_history.pop_front();
-            let load_indicator = load::get_load_indicator_from_duration(loop_elapsed);
-            simulation_load_history.push_back(load_indicator);
-            let simulation_load_history_text: String = simulation_load_history.iter().collect();
-
-            render::render_status_text(
-                &mut canvas,
-                &mut tiles_texture,
-                &format!(
-                    "LOAD {} SUPS {}",
-                    simulation_load_history_text, simulation_units_per_second
-                ),
-                colors::BASE,
-                colors::WHITE,
-                0,
-            );
-
-            render::render_status_text(
-                &mut canvas,
-                &mut tiles_texture,
-                &format!("zoom: {:.2}", location_viewport.zoom),
-                colors::BASE,
-                colors::WHITE,
-                1,
-            );
-        }
-
-        simulation_units_counter += 1;
-
-        match last_second_start.elapsed().cmp(&one_second_duration) {
-            Ordering::Less => (),
-            Ordering::Equal | Ordering::Greater => {
-                simulation_units_per_second = simulation_units_counter;
-                simulation_units_counter = 0;
-                last_second_start = Instant::now();
+        match signal {
+            event_handling::Signal::Quit => {
+                break 'running;
             }
+            event_handling::Signal::Continue => {}
         }
 
-        canvas.present();
+        // render at 10 FPS
+        if now.duration_since(last_render) >= RENDER_DT {
+            fps_counter += 1;
+            canvas.set_draw_color(colors::BASE);
+            canvas.clear();
+            render::render_viewport(
+                &mut canvas,
+                &mut tiles_texture,
+                &world,
+                &location_viewport,
+                debug_enabled,
+            );
+            // debug overlay
+            if debug_enabled {
+                // update load-history
+                let loop_elapsed = loop_start.elapsed();
+                simulation_load_history.pop_front();
+                let load_indicator = load::get_load_indicator_from_duration(loop_elapsed);
+                simulation_load_history.push_back(load_indicator);
+                let load_text: String = simulation_load_history.iter().collect();
+                // show FPS and SUPS
+                render_debug_overlay(
+                    &mut canvas,
+                    &mut tiles_texture,
+                    &load_text,
+                    simulation_units_per_second,
+                    fps_per_second,
+                    location_viewport.zoom,
+                );
+            }
+            // present this frame
+            canvas.present();
+            last_render = now;
+        }
 
-        let simulation_unit_budget_left =
-            SIMULATION_UNIT_BUDGET.as_millis() as i64 - loop_elapsed.as_millis() as i64;
-        let duration_to_sleep = Duration::from_millis(simulation_unit_budget_left.max(0) as u64);
-        std::thread::sleep(duration_to_sleep);
+        // tiny sleep to reduce busy-wait CPU usage
+        std::thread::sleep(Duration::from_millis(1));
     }
 }

@@ -1,8 +1,6 @@
 use lazy_static::lazy_static;
 use sdl2::rect::Rect;
 
-use crate::entity::EntityType;
-
 use super::TILE_PIXEL_WIDTH;
 
 lazy_static! {
@@ -11,18 +9,6 @@ lazy_static! {
     static ref LOWER_M_TILE: Rect = make_tile_rect(13, 6);
     static ref LOWER_P_TILE: Rect = make_tile_rect(0, 7);
     static ref LOWER_S_TILE: Rect = make_tile_rect(3, 7);
-}
-
-impl From<&EntityType> for Rect {
-    fn from(entity: &EntityType) -> Self {
-        use EntityType::*;
-        match entity {
-            Moon => *LOWER_M_TILE,
-            Planet => *LOWER_P_TILE,
-            Space => *EMPTY_TILE,
-            Star => *LOWER_S_TILE,
-        }
-    }
 }
 
 pub fn make_tile_rect(x: u8, y: u8) -> Rect {

@@ -1,15 +1,14 @@
 mod tileset;
 
-use std::collections::HashMap;
-
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, Texture};
 use sdl2::video::Window;
+use tracing::error;
 
 use crate::colors;
-use crate::entity::{EntityId, EntityType};
-use crate::location::{LocationMap, Point};
+use crate::location::Point;
+use crate::world::World;
 
 pub const TILE_PIXEL_WIDTH: u8 = 9;
 
@@ -26,12 +25,13 @@ pub fn render_status_text(
     text: &str,
     background_color: Color,
     foreground_color: Color,
+    y_offset: u8,
 ) {
     canvas.set_draw_color(background_color);
     canvas
         .draw_rect(tileset::make_multi_tile_rect(
             (64 - text.len()) as u8,
-            0,
+            y_offset,
             text.len() as u8,
             1,
         ))
@@ -42,23 +42,79 @@ pub fn render_status_text(
     let chars = text.chars();
 
     for (i, char) in chars.enumerate() {
-        canvas
-            .copy(
-                tiles_texture,
-                Some(tileset::rect_from_char(char)),
-                Some(tileset::make_tile_rect(
-                    (64 - text.len() + i).try_into().unwrap(),
-                    0,
-                )),
-            )
-            .unwrap();
+        let res = canvas.copy(
+            tiles_texture,
+            Some(tileset::rect_from_char(char)),
+            Some(tileset::make_tile_rect(
+                (64 - text.len() + i).try_into().unwrap(),
+                y_offset,
+            )),
+        );
+
+        if res.is_err() {
+            error!("failed to copy tile: {:?}", res.err());
+        }
     }
 }
 
-fn render_tile(
+pub fn render_viewport(
+    canvas: &mut Canvas<Window>,
+    tiles_texture: &mut Texture<'_>,
+    world: &World,
+    viewport: &Viewport,
+    debug_enabled: bool,
+) {
+    let tile_pixel_width = (TILE_PIXEL_WIDTH as f64 * viewport.zoom) as u32;
+    let half_w = viewport.width as i32 / 2;
+    let half_h = viewport.height as i32 / 2;
+    for entity_id in world.iter_entities() {
+        if let Some(pos) = world.get_location(entity_id) {
+            if pos.x >= viewport.anchor.x - half_w
+                && pos.x < viewport.anchor.x + half_w
+                && pos.y >= viewport.anchor.y - half_h
+                && pos.y < viewport.anchor.y + half_h
+            {
+                let screen_x = (pos.x - (viewport.anchor.x - half_w)) as u8;
+                let screen_y = (pos.y - (viewport.anchor.y - half_h)) as u8;
+                if let Some(glyph) = world.get_render_glyph(entity_id) {
+                    let renderable = Renderable {
+                        x: screen_x,
+                        y: screen_y,
+                        tileset_rect: tileset::rect_from_char(glyph),
+                        color: colors::BLUE,
+                    };
+                    render_tile_with_zoom(canvas, tiles_texture, &renderable, tile_pixel_width);
+                }
+            }
+        }
+    }
+
+    if debug_enabled {
+        draw_viewport_border(canvas, viewport);
+    }
+}
+
+fn draw_viewport_border(canvas: &mut Canvas<Window>, viewport: &Viewport) {
+    canvas.set_draw_color(colors::RED);
+    let tile_w = (TILE_PIXEL_WIDTH as f64 * viewport.zoom) as u32;
+    let half_w = viewport.width as i32 / 2;
+    let half_h = viewport.height as i32 / 2;
+    let x0 = viewport.anchor.x - half_w;
+    let y0 = viewport.anchor.y - half_h;
+    let border_rect = Rect::new(
+        x0 as i32,
+        y0 as i32,
+        viewport.width * tile_w,
+        viewport.height * tile_w,
+    );
+    canvas.draw_rect(border_rect).unwrap();
+}
+
+fn render_tile_with_zoom(
     canvas: &mut Canvas<Window>,
     tiles_texture: &mut Texture<'_>,
     renderable: &Renderable,
+    tile_pixel_width: u32,
 ) {
     tiles_texture.set_color_mod(renderable.color.r, renderable.color.g, renderable.color.b);
 
@@ -67,49 +123,17 @@ fn render_tile(
             tiles_texture,
             Some(renderable.tileset_rect),
             Some(Rect::new(
-                renderable.x as i32 * TILE_PIXEL_WIDTH as i32,
-                renderable.y as i32 * TILE_PIXEL_WIDTH as i32,
-                TILE_PIXEL_WIDTH as u32,
-                TILE_PIXEL_WIDTH as u32,
+                renderable.x as i32 * tile_pixel_width as i32,
+                renderable.y as i32 * tile_pixel_width as i32,
+                tile_pixel_width,
+                tile_pixel_width,
             )),
         )
         .unwrap();
 }
 
-pub fn render_viewport(
-    canvas: &mut Canvas<Window>,
-    tiles_texture: &mut Texture<'_>,
-    entity_type_map: &HashMap<EntityId, EntityType>,
-    location_map: &LocationMap,
-    viewport: &Viewport,
-) {
-    let visible_entities = location_map.iter().filter(|(_, location)| {
-        location.x >= viewport.min_x()
-            && location.x <= viewport.max_x()
-            && location.y >= viewport.min_y()
-            && location.y <= viewport.max_y()
-    });
-
-    for (entity_id, point) in visible_entities {
-        let translated_location = LocationMap::translate_location(point, viewport);
-
-        let entity_type = entity_type_map
-            .get(entity_id)
-            .expect("expect entity type to be stored for entity id");
-
-        let renderable = Renderable {
-            x: translated_location.x as u8,
-            y: translated_location.y as u8,
-            tileset_rect: entity_type.into(),
-            color: colors::BLUE,
-        };
-
-        render_tile(canvas, tiles_texture, &renderable);
-    }
-}
-
 pub struct Viewport {
-    /// Specifies which universe coordinate the top left corner of the viewport is centered on.
+    /// Specifies which universe coordinate the center of the viewport is looking at.
     pub anchor: Point,
     /// Specifies how far we're zoomed in on the universe, and therefore how many tiles are visible.
     pub zoom: f64,
@@ -120,7 +144,7 @@ pub struct Viewport {
 impl Default for Viewport {
     fn default() -> Self {
         Self {
-            anchor: Point { x: -32, y: -32 },
+            anchor: Point { x: 0, y: 0 },
             zoom: 1.0,
             width: 64,
             height: 64,
@@ -129,24 +153,16 @@ impl Default for Viewport {
 }
 
 impl Viewport {
-    pub fn min_x(&self) -> i32 {
-        self.anchor.x
-    }
-
-    pub fn max_x(&self) -> i32 {
-        self.anchor.x + self.width as i32
-    }
-
-    pub fn min_y(&self) -> i32 {
-        self.anchor.y
-    }
-
-    pub fn max_y(&self) -> i32 {
-        self.anchor.y + self.height as i32
-    }
-
     pub fn center_on_entity(&mut self, x: i32, y: i32) {
-        self.anchor.x = x - (self.width as i32 / 2);
-        self.anchor.y = y - (self.height as i32 / 2);
+        self.anchor.x = x;
+        self.anchor.y = y;
+    }
+
+    pub fn zoom_in(&mut self) {
+        self.zoom *= 1.1;
+    }
+
+    pub fn zoom_out(&mut self) {
+        self.zoom /= 1.1;
     }
 }
