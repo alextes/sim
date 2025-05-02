@@ -52,7 +52,7 @@ pub fn main() {
     // earth: complete one orbit (2π) in 10 seconds → angular_velocity = TAU / 10
     let earth_id = world.spawn_planet("earth", sol_id, 16.0, 0.0, TAU / 60.0);
     // moon: faster orbit around earth, e.g. complete in 5 seconds
-    let _moon_id = world.spawn_planet("moon", earth_id, 4.0, 0.0, TAU / 5.0);
+    let _moon_id = world.spawn_moon("moon", earth_id, 4.0, 0.0, TAU / 5.0);
 
     let mut location_viewport = Viewport::default();
 

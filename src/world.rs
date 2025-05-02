@@ -58,6 +58,25 @@ impl World {
         id
     }
 
+    /// Create an orbiting moon, using the 'm' glyph.
+    pub fn spawn_moon(
+        &mut self,
+        name: &'static str,
+        anchor: EntityId,
+        radius: f64,
+        initial_angle: f64,
+        angular_velocity: f64,
+    ) -> EntityId {
+        let id = self.next_entity_id;
+        self.next_entity_id += 1;
+        self.entities.push(id);
+        self.entity_names.insert(id, name);
+        self.render_glyphs.insert(id, 'm');
+        self.locations
+            .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
+        id
+    }
+
     /// Advance all orbiters by dt_seconds, updating their stored positions.
     pub fn update(&mut self, dt_seconds: f64) {
         self.locations.update(dt_seconds);
