@@ -97,16 +97,7 @@ pub fn render_viewport(
 fn draw_viewport_border(canvas: &mut Canvas<Window>, viewport: &Viewport) {
     canvas.set_draw_color(colors::RED);
     let tile_w = (TILE_PIXEL_WIDTH as f64 * viewport.zoom) as u32;
-    let half_w = viewport.width as i32 / 2;
-    let half_h = viewport.height as i32 / 2;
-    let x0 = viewport.anchor.x - half_w;
-    let y0 = viewport.anchor.y - half_h;
-    let border_rect = Rect::new(
-        x0 as i32,
-        y0 as i32,
-        viewport.width * tile_w,
-        viewport.height * tile_w,
-    );
+    let border_rect = Rect::new(0, 0, viewport.width * tile_w, viewport.height * tile_w);
     canvas.draw_rect(border_rect).unwrap();
 }
 
