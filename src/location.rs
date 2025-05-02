@@ -91,16 +91,14 @@ impl LocationSystem {
                 x: anchor_pos.x + (radius * new_angle.cos()) as i32,
                 y: anchor_pos.y + (radius * new_angle.sin()) as i32,
             };
-            if let Some(loc_ent) = self.entries.get_mut(&id) {
-                if let LocatedEntity::Orbital {
-                    ref mut angle,
-                    ref mut position,
-                    ..
-                } = loc_ent
-                {
-                    *angle = new_angle;
-                    *position = new_pos;
-                }
+            if let Some(LocatedEntity::Orbital {
+                ref mut angle,
+                ref mut position,
+                ..
+            }) = self.entries.get_mut(&id)
+            {
+                *angle = new_angle;
+                *position = new_pos;
             }
         }
     }
