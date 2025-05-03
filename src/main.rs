@@ -2,28 +2,29 @@ mod colors;
 mod debug;
 mod entity;
 mod event_handling;
+mod game_loop;
 mod initialization;
-mod load;
 mod location;
 mod render;
 mod world;
 
 use debug::render_debug_overlay;
+use game_loop::GameLoop;
 use location::Point;
 use render::Viewport;
 use sdl2::image::LoadTexture;
-use std::collections::VecDeque;
 use std::f64::consts::TAU;
 use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
+use tracing::trace;
 use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
 use world::World;
 
 /// Fixed simulation timestep (100Hz)
 const SIMULATION_DT: Duration = Duration::from_millis(10);
-/// Render interval (10FPS)
+/// Render interval (10Hz)
 const RENDER_DT: Duration = Duration::from_millis(100);
 
 type SimulationUnit = u32;
@@ -43,9 +44,6 @@ pub fn main() {
 
     debug!("tiles texture loaded");
 
-    // let (entities, entity_type_map, mut location_map, mut orbital_entities) =
-    // entity_setup::initialize_entities();
-
     let mut world = World::new();
     // sol at center
     let sol_id = world.spawn_star("sol", Point { x: 0, y: 0 });
@@ -55,20 +53,14 @@ pub fn main() {
     let _moon_id = world.spawn_moon("moon", earth_id, 4.0, 0.0, TAU / 5.0);
 
     let mut location_viewport = Viewport::default();
-
     let mut event_pump = sdl_context.event_pump().unwrap();
+    let mut game_loop = GameLoop::new(SIMULATION_DT, RENDER_DT);
 
-    let mut loop_start;
-    let mut simulation_load_history = VecDeque::from(vec!['?', '?', '?', '?', '?']);
-
-    let mut last_second_start = Instant::now();
+    let mut last_loop_start = Instant::now();
     let mut simulation_units_counter: SimulationUnit = 0;
     let mut simulation_units_per_second: SimulationUnit = 0;
     let mut fps_counter: u32 = 0;
     let mut fps_per_second: u32 = 0;
-    // timers for decoupled simulation/render
-    let mut last_simulation = Instant::now();
-    let mut last_render = Instant::now();
 
     let one_second_duration = Duration::from_secs(1);
 
@@ -77,23 +69,7 @@ pub fn main() {
 
     'running: loop {
         let now = Instant::now();
-        loop_start = now;
-        // run simulation updates at fixed 100Hz
-        while now.duration_since(last_simulation) >= SIMULATION_DT {
-            world.update(SIMULATION_DT.as_secs_f64());
-            last_simulation += SIMULATION_DT;
-            simulation_units_counter += 1;
-        }
-
-        // update per-second counters
-        if now.duration_since(last_second_start) >= one_second_duration {
-            simulation_units_per_second = simulation_units_counter;
-            simulation_units_counter = 0;
-            fps_per_second = fps_counter;
-            fps_counter = 0;
-            last_second_start = now;
-        }
-
+        // handle input events first
         let signal = event_handling::handle_events(
             &mut event_pump,
             &mut location_viewport,
@@ -102,14 +78,29 @@ pub fn main() {
             &mut debug_enabled,
         );
         match signal {
-            event_handling::Signal::Quit => {
-                break 'running;
-            }
+            event_handling::Signal::Quit => break 'running,
             event_handling::Signal::Continue => {}
         }
+        // advance simulation step if it's time
+        let (steps, should_render) = game_loop.step();
+        for _ in 0..steps {
+            trace!("simulating {} steps", steps);
+            world.update(SIMULATION_DT.as_secs_f64());
+            simulation_units_counter += 1;
+        }
 
-        // render at 10 FPS
-        if now.duration_since(last_render) >= RENDER_DT {
+        // update per-second counters
+        if now.duration_since(last_loop_start) >= one_second_duration {
+            simulation_units_per_second = simulation_units_counter;
+            simulation_units_counter = 0;
+            fps_per_second = fps_counter;
+            fps_counter = 0;
+            last_loop_start = now;
+        }
+
+        // render if it's time
+        if should_render {
+            trace!("rendering 1 frame");
             fps_counter += 1;
             canvas.set_draw_color(colors::BASE);
             canvas.clear();
@@ -120,30 +111,24 @@ pub fn main() {
                 &location_viewport,
                 debug_enabled,
             );
-            // debug overlay
             if debug_enabled {
-                // update load-history
-                let loop_elapsed = loop_start.elapsed();
-                simulation_load_history.pop_front();
-                let load_indicator = load::get_load_indicator_from_duration(loop_elapsed);
-                simulation_load_history.push_back(load_indicator);
-                let load_text: String = simulation_load_history.iter().collect();
-                // show FPS and SUPS
                 render_debug_overlay(
                     &mut canvas,
                     &mut tiles_texture,
-                    &load_text,
                     simulation_units_per_second,
                     fps_per_second,
                     location_viewport.zoom,
                 );
             }
-            // present this frame
             canvas.present();
-            last_render = now;
         }
-
         // tiny sleep to reduce busy-wait CPU usage
-        std::thread::sleep(Duration::from_millis(1));
+        let next_sim = game_loop.last_update + SIMULATION_DT;
+        let next_rdr = game_loop.last_render + RENDER_DT;
+        let wake_at = next_sim.min(next_rdr);
+        if let Some(dur) = wake_at.checked_duration_since(now) {
+            trace!("sleeping for {:?}", dur);
+            std::thread::sleep(dur);
+        }
     }
 }
