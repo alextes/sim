@@ -57,6 +57,8 @@ pub fn main() {
     let mut location_viewport = Viewport::default();
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut game_loop = GameLoop::new(SIMULATION_DT, RENDER_DT);
+    // Clear any simulation backlog from setup time
+    let _ = game_loop.step();
 
     let mut last_loop_start = Instant::now();
     let mut simulation_units_counter: SimulationUnit = 0;
@@ -67,6 +69,7 @@ pub fn main() {
     let mut entity_focus_index = 0;
     let mut debug_enabled = false;
 
+    info!("starting main loop");
     'running: loop {
         let now = Instant::now();
         // handle input events first
