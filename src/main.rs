@@ -26,6 +26,8 @@ use world::World;
 const SIMULATION_DT: Duration = Duration::from_millis(10);
 /// Render interval (10Hz)
 const RENDER_DT: Duration = Duration::from_millis(100);
+/// One second duration constant
+const ONE_SECOND_DURATION: Duration = Duration::from_secs(1);
 
 type SimulationUnit = u32;
 
@@ -62,8 +64,6 @@ pub fn main() {
     let mut fps_counter: u32 = 0;
     let mut fps_per_second: u32 = 0;
 
-    let one_second_duration = Duration::from_secs(1);
-
     let mut entity_focus_index = 0;
     let mut debug_enabled = false;
 
@@ -90,7 +90,7 @@ pub fn main() {
         }
 
         // update per-second counters
-        if now.duration_since(last_loop_start) >= one_second_duration {
+        if now.duration_since(last_loop_start) >= ONE_SECOND_DURATION {
             simulation_units_per_second = simulation_units_counter;
             simulation_units_counter = 0;
             fps_per_second = fps_counter;
