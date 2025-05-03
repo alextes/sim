@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
-use tracing::debug;
+/// Maximum number of simulation steps to catch up in one tick
+const MAX_SIM_STEPS_PER_TICK: usize = 10;
 
 /// A helper for driving a fixed-time-step simulation and a separate
 /// render interval within a single loop.
@@ -26,11 +27,16 @@ impl GameLoop {
     /// Returns (number of simulation steps to run, and whether to render).
     pub fn step(&mut self) -> (usize, bool) {
         let now = Instant::now();
-        // accumulate all missed simulation ticks
+        // accumulate all missed simulation ticks, but cap at MAX_SIM_STEPS_PER_TICK
         let mut steps = 0;
-        while now.duration_since(self.last_update) >= self.sim_dt {
+        while now.duration_since(self.last_update) >= self.sim_dt && steps < MAX_SIM_STEPS_PER_TICK
+        {
             self.last_update += self.sim_dt;
             steps += 1;
+        }
+        // If we were more than MAX_SIM_STEPS_PER_TICK behind, drop the extra backlog
+        if now.duration_since(self.last_update) >= self.sim_dt {
+            self.last_update = now;
         }
         // check if it's time to render
         let mut should_render = false;
