@@ -47,3 +47,34 @@ impl GameLoop {
         (steps, should_render)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_simulation_steps_and_render() {
+        let sim_dt = Duration::from_millis(10);
+        let render_dt = Duration::from_millis(100);
+        let mut gl = GameLoop::new(sim_dt, render_dt);
+        // simulate being behind by 3 simulation steps and ready to render
+        gl.last_update = gl.last_update - sim_dt * 3;
+        gl.last_render = gl.last_render - render_dt;
+        let (steps, should_render) = gl.step();
+        assert_eq!(steps, 3);
+        assert!(should_render);
+    }
+
+    #[test]
+    fn test_simulation_step_cap() {
+        let sim_dt = Duration::from_millis(10);
+        let render_dt = Duration::from_millis(100);
+        let mut gl = GameLoop::new(sim_dt, render_dt);
+        // simulate being behind beyond max cap
+        gl.last_update = gl.last_update - sim_dt * ((MAX_SIM_STEPS_PER_TICK + 5) as u32);
+        let (steps, should_render) = gl.step();
+        assert_eq!(steps, MAX_SIM_STEPS_PER_TICK);
+        assert!(!should_render);
+    }
+}

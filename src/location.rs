@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::entity::EntityId;
 use tracing::error;
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
@@ -109,5 +109,44 @@ impl LocationSystem {
             LocatedEntity::Static(p) => *p,
             LocatedEntity::Orbital { position, .. } => *position,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_static() {
+        let mut ls = LocationSystem::new();
+        ls.add_static(1, Point { x: 5, y: -3 });
+        let p = ls.get_location(1).unwrap();
+        assert_eq!(p, Point { x: 5, y: -3 });
+    }
+
+    #[test]
+    fn test_add_orbital_initial_position() {
+        let mut ls = LocationSystem::new();
+        // anchor at (10, 20)
+        ls.add_static(0, Point { x: 10, y: 20 });
+        // radius 5, angle 0 => x offset 5, y offset 0
+        ls.add_orbital(1, 0, 5.0, 0.0, 1.0);
+        let p = ls.get_location(1).unwrap();
+        assert_eq!(p, Point { x: 15, y: 20 });
+    }
+
+    #[test]
+    fn test_orbital_update() {
+        let mut ls = LocationSystem::new();
+        // anchor at origin
+        ls.add_static(0, Point { x: 0, y: 0 });
+        // one revolution per second
+        let w = std::f64::consts::TAU;
+        ls.add_orbital(1, 0, 10.0, 0.0, w);
+        // advance by 0.25s => angle = π/2
+        ls.update(0.25);
+        let p = ls.get_location(1).unwrap();
+        // cos(π/2)=0, sin(π/2)=1 => position should be (0, 10)
+        assert_eq!(p, Point { x: 0, y: 10 });
     }
 }

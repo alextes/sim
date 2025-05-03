@@ -27,7 +27,7 @@ const SIMULATION_DT: Duration = Duration::from_millis(10);
 /// Render interval (10Hz)
 const RENDER_DT: Duration = Duration::from_millis(100);
 /// One second duration constant
-const ONE_SECOND_DURATION: Duration = Duration::from_secs(1);
+const ONE_SECOND: Duration = Duration::from_secs(1);
 
 type SimulationUnit = u32;
 
@@ -93,7 +93,7 @@ pub fn main() {
         }
 
         // update per-second counters
-        if now.duration_since(last_loop_start) >= ONE_SECOND_DURATION {
+        if now.duration_since(last_loop_start) >= ONE_SECOND {
             simulation_units_per_second = simulation_units_counter;
             simulation_units_counter = 0;
             fps_per_second = fps_counter;

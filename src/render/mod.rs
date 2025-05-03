@@ -157,3 +157,37 @@ impl Viewport {
         self.zoom /= 1.1;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::location::Point;
+
+    #[test]
+    fn default_viewport() {
+        let vp = Viewport::default();
+        assert_eq!(vp.anchor, Point { x: 0, y: 0 });
+        assert_eq!(vp.zoom, 1.0);
+        assert_eq!(vp.width, 64);
+        assert_eq!(vp.height, 64);
+    }
+
+    #[test]
+    fn test_center_on_entity() {
+        let mut vp = Viewport::default();
+        vp.center_on_entity(10, 20);
+        assert_eq!(vp.anchor, Point { x: 10, y: 20 });
+    }
+
+    #[test]
+    fn test_zoom_in_out() {
+        let mut vp = Viewport::default();
+        let original_zoom = vp.zoom;
+        vp.zoom_in();
+        assert!(vp.zoom > original_zoom);
+        vp.zoom_out();
+        // zoom_out should bring it back close to original
+        let diff = (vp.zoom - original_zoom).abs();
+        assert!(diff < f64::EPSILON);
+    }
+}
