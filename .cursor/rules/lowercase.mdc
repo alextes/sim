@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+when writing debug, info, error messages, write them all lowercase.
