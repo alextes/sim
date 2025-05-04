@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::entity::EntityId;
+use crate::world::EntityId;
 use tracing::error;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -10,10 +10,12 @@ pub struct Point {
 }
 
 /// Manages static and orbital positions for entities, with nested anchoring support.
+#[derive(Debug, Default)]
 pub struct LocationSystem {
     entries: HashMap<EntityId, LocatedEntity>,
 }
 
+#[derive(Debug)]
 enum LocatedEntity {
     Static(Point),
     Orbital {
@@ -26,13 +28,6 @@ enum LocatedEntity {
 }
 
 impl LocationSystem {
-    /// Create an empty LocationSystem.
-    pub fn new() -> Self {
-        LocationSystem {
-            entries: HashMap::new(),
-        }
-    }
-
     /// Add a static (fixed) position for an entity.
     pub fn add_static(&mut self, entity: EntityId, position: Point) {
         self.entries.insert(entity, LocatedEntity::Static(position));
@@ -118,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_add_static() {
-        let mut ls = LocationSystem::new();
+        let mut ls = LocationSystem::default();
         ls.add_static(1, Point { x: 5, y: -3 });
         let p = ls.get_location(1).unwrap();
         assert_eq!(p, Point { x: 5, y: -3 });
@@ -126,7 +121,7 @@ mod tests {
 
     #[test]
     fn test_add_orbital_initial_position() {
-        let mut ls = LocationSystem::new();
+        let mut ls = LocationSystem::default();
         // anchor at (10, 20)
         ls.add_static(0, Point { x: 10, y: 20 });
         // radius 5, angle 0 => x offset 5, y offset 0
@@ -137,7 +132,7 @@ mod tests {
 
     #[test]
     fn test_orbital_update() {
-        let mut ls = LocationSystem::new();
+        let mut ls = LocationSystem::default();
         // anchor at origin
         ls.add_static(0, Point { x: 0, y: 0 });
         // one revolution per second

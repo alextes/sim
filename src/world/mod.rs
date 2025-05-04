@@ -1,10 +1,15 @@
 use std::collections::HashMap;
 
-use crate::{
-    entity::EntityId,
-    location::{LocationSystem, Point},
-};
+use crate::location::{LocationSystem, Point};
 
+mod resources;
+
+pub use resources::Resources;
+
+// Entity identifiers for all game objects.
+pub type EntityId = u32;
+
+#[derive(Debug, Default)]
 pub struct World {
     next_entity_id: EntityId,
     /// ordered list of all entity IDs
@@ -15,19 +20,11 @@ pub struct World {
     entity_names: HashMap<EntityId, &'static str>,
     /// location system managing static and orbital positions
     locations: LocationSystem,
+    /// Global resource counters for the player
+    pub resources: Resources,
 }
 
 impl World {
-    pub fn new() -> Self {
-        World {
-            next_entity_id: 0,
-            entities: Vec::new(),
-            render_glyphs: HashMap::new(),
-            entity_names: HashMap::new(),
-            locations: LocationSystem::new(),
-        }
-    }
-
     /// Create a static entity at a fixed point (e.g. a star).
     pub fn spawn_star(&mut self, name: &'static str, position: Point) -> EntityId {
         let id = self.next_entity_id;
@@ -90,6 +87,11 @@ impl World {
     /// Iterate over all entity IDs in creation order.
     pub fn iter_entities(&self) -> impl Iterator<Item = EntityId> + '_ {
         self.entities.iter().cloned()
+    }
+
+    /// Get the human-readable name of an entity, if any.
+    pub fn get_entity_name(&self, entity: EntityId) -> Option<&'static str> {
+        self.entity_names.get(&entity).copied()
     }
 
     /// Get the glyph used for rendering this entity.

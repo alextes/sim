@@ -1,6 +1,5 @@
 mod colors;
 mod debug;
-mod entity;
 mod event_handling;
 mod game_loop;
 mod initialization;
@@ -46,7 +45,7 @@ pub fn main() {
 
     debug!("tiles texture loaded");
 
-    let mut world = World::new();
+    let mut world = World::default();
     // sol at center
     let sol_id = world.spawn_star("sol", Point { x: 0, y: 0 });
     // earth: complete one orbit (2π) in 10 seconds → angular_velocity = TAU / 10
