@@ -7,41 +7,42 @@ use sdl2::video::Window; // Use super to access function in parent module
 /// Renders the menu prompting the user to select a slot type (Ground/Orbital).
 pub fn render_build_slot_type_menu(canvas: &mut Canvas<Window>, tiles_texture: &mut Texture<'_>) {
     // Simple menu for now, could be made fancier
-    let y_start = 25;
+    let x_start = 1;
+    let y_start = 10;
     render_text_at(
         canvas,
         tiles_texture,
-        "Build Where?",
+        "build where?",
         colors::BASE,
         colors::WHITE,
-        25,
+        x_start,
         y_start,
     );
     render_text_at(
         canvas,
         tiles_texture,
-        "(G) Ground",
+        "(g) ground",
         colors::BASE,
         colors::WHITE,
-        25,
+        x_start,
         y_start + 1,
     );
     render_text_at(
         canvas,
         tiles_texture,
-        "(O) Orbital",
+        "(o) orbital",
         colors::BASE,
         colors::WHITE,
-        25,
+        x_start,
         y_start + 2,
     );
     render_text_at(
         canvas,
         tiles_texture,
-        "(Esc) Cancel",
+        "(esc) cancel",
         colors::BASE,
         colors::WHITE,
-        25,
+        x_start,
         y_start + 4,
     );
 }
@@ -52,15 +53,16 @@ pub fn render_build_building_menu(
     tiles_texture: &mut Texture<'_>,
     slot_type: SlotType,
 ) {
-    let y_start = 25;
-    let title = format!("Build What? ({:?})", slot_type);
+    let x_start = 1;
+    let y_start = 10;
+    let title = format!("build what? ({:?})", slot_type);
     render_text_at(
         canvas,
         tiles_texture,
         &title,
         colors::BASE,
         colors::WHITE,
-        25,
+        x_start,
         y_start,
     );
 
@@ -70,10 +72,10 @@ pub fn render_build_building_menu(
         render_text_at(
             canvas,
             tiles_texture,
-            "(1) Solar Panel",
+            "(1) solar panel",
             colors::BASE,
             colors::WHITE,
-            25,
+            x_start,
             y_current,
         );
         y_current += 1;
@@ -82,10 +84,10 @@ pub fn render_build_building_menu(
         render_text_at(
             canvas,
             tiles_texture,
-            "(2) Mine",
+            "(2) mine",
             colors::BASE,
             colors::WHITE,
-            25,
+            x_start,
             y_current,
         );
         y_current += 1;
@@ -94,10 +96,10 @@ pub fn render_build_building_menu(
     render_text_at(
         canvas,
         tiles_texture,
-        "(Esc) Back",
+        "(esc) back",
         colors::BASE,
         colors::WHITE,
-        25,
+        x_start,
         y_current + 1,
     );
 }
@@ -108,14 +110,15 @@ pub fn render_build_error_menu(
     tiles_texture: &mut Texture<'_>,
     message: &str,
 ) {
-    let y_start = 25;
+    let x_start = 1;
+    let y_start = 10;
     render_text_at(
         canvas,
         tiles_texture,
-        "Build Error:",
+        "build error:",
         colors::BASE,
         colors::RED,
-        25,
+        x_start,
         y_start,
     );
     render_text_at(
@@ -124,16 +127,16 @@ pub fn render_build_error_menu(
         message,
         colors::BASE,
         colors::RED,
-        25,
+        x_start,
         y_start + 1,
     );
     render_text_at(
         canvas,
         tiles_texture,
-        "(Any key) Continue",
+        "(any key) continue",
         colors::BASE,
         colors::WHITE,
-        25,
+        x_start,
         y_start + 3,
     );
 }

@@ -76,8 +76,8 @@ pub fn render_interface(
         &energy_text,
         colors::BASE,
         colors::YELLOW, // energy color
-        0,
-        0,
+        1,              // x_tile = 1
+        1,              // y_tile = 1
     );
 
     render_text_at(
@@ -86,18 +86,18 @@ pub fn render_interface(
         &metal_text,
         colors::BASE,
         colors::LGRAY, // metal color
-        0,
-        1,
+        1,             // x_tile = 1
+        2,             // y_tile = 2
     );
 
     // Current line offset for rendering subsequent UI elements
-    let mut y_offset = 2; // Start below resources
+    let mut y_offset = 3; // Start below resources + margin
 
     // --- Bottom-left: selected entity name (if any) ---
     if let Some(id) = selected {
         if let Some(name) = world.get_entity_name(id) {
             // --- Selection & Tracking --- Start from bottom and go up
-            let bottom_y = viewport_height_tiles.saturating_sub(1) as u8;
+            let bottom_y = viewport_height_tiles.saturating_sub(2) as u8;
 
             let selected_text = format!("selected: {}", name);
             render_text_at(
@@ -106,7 +106,7 @@ pub fn render_interface(
                 &selected_text,
                 colors::BASE,
                 colors::WHITE,
-                0,
+                1, // x_tile = 1
                 bottom_y,
             );
 
@@ -119,7 +119,7 @@ pub fn render_interface(
                     tracking_text,
                     colors::BASE,
                     colors::WHITE,
-                    0,
+                    1, // x_tile = 1
                     bottom_y - 1,
                 );
             }
@@ -135,7 +135,7 @@ pub fn render_interface(
                         &slot_text,
                         colors::BASE,
                         colors::WHITE,
-                        0,
+                        1, // x_tile = 1
                         y_offset,
                     );
                     y_offset += 1;
@@ -151,7 +151,7 @@ pub fn render_interface(
                             &slot_text,
                             colors::BASE,
                             colors::WHITE,
-                            0,
+                            1, // x_tile = 1
                             y_offset,
                         );
                         y_offset += 1;
