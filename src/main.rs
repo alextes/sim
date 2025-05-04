@@ -3,12 +3,14 @@ mod debug;
 mod event_handling;
 mod game_loop;
 mod initialization;
+mod interface;
 mod location;
 mod render;
 mod world;
 
 use debug::render_debug_overlay;
 use game_loop::GameLoop;
+use interface::render_interface;
 use location::Point;
 use render::Viewport;
 use sdl2::image::LoadTexture;
@@ -122,6 +124,21 @@ pub fn main() {
                     location_viewport.zoom,
                 );
             }
+
+            // Render interface overlay (resources and selection name)
+            render_interface(
+                &mut canvas,
+                &mut tiles_texture,
+                &world,
+                if entity_focus_index < world.entities.len() {
+                    Some(world.entities[entity_focus_index])
+                } else {
+                    None
+                },
+                track_mode,
+                location_viewport.height,
+            );
+
             canvas.present();
         }
         // tiny sleep to reduce busy-wait CPU usage

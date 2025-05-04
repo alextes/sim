@@ -1,4 +1,4 @@
-mod tileset;
+pub mod tileset;
 
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
