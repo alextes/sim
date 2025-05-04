@@ -2,9 +2,11 @@ use std::collections::HashMap;
 
 use crate::location::{LocationSystem, Point};
 
+use crate::buildings::EntityBuildings;
+
 mod resources;
 
-pub use resources::Resources;
+pub use resources::ResourceSystem;
 
 // Entity identifiers for all game objects.
 pub type EntityId = u32;
@@ -21,7 +23,9 @@ pub struct World {
     /// location system managing static and orbital positions
     locations: LocationSystem,
     /// Global resource counters for the player
-    pub resources: Resources,
+    pub resources: ResourceSystem,
+    /// Building slots for entities that support them
+    pub buildings: HashMap<EntityId, EntityBuildings>,
 }
 
 impl World {
@@ -33,6 +37,7 @@ impl World {
         self.entity_names.insert(id, name);
         self.render_glyphs.insert(id, '*');
         self.locations.add_static(id, position);
+        self.buildings.insert(id, EntityBuildings::new(false));
         id
     }
 
@@ -52,6 +57,7 @@ impl World {
         self.render_glyphs.insert(id, 'p');
         self.locations
             .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
+        self.buildings.insert(id, EntityBuildings::new(true));
         id
     }
 
@@ -71,12 +77,17 @@ impl World {
         self.render_glyphs.insert(id, 'm');
         self.locations
             .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
+        self.buildings.insert(id, EntityBuildings::new(true));
         id
     }
 
     /// Advance all orbiters by dt_seconds, updating their stored positions.
-    pub fn update(&mut self, dt_seconds: f64) {
+    /// Also handles periodic resource generation based on simulation ticks.
+    pub fn update(&mut self, dt_seconds: f64, current_tick: u64) {
         self.locations.update(dt_seconds);
+
+        // Delegate resource updates to the ResourceSystem
+        self.resources.update(current_tick, &self.buildings);
     }
 
     /// Return the current universal position of an entity.
