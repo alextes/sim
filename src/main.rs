@@ -69,6 +69,7 @@ pub fn main() {
 
     let mut entity_focus_index = 0;
     let mut debug_enabled = false;
+    let mut track_mode = false;
 
     info!("starting main loop");
     'running: loop {
@@ -80,6 +81,7 @@ pub fn main() {
             &mut world,
             &mut entity_focus_index,
             &mut debug_enabled,
+            &mut track_mode,
         );
         match signal {
             event_handling::Signal::Quit => break 'running,
@@ -123,6 +125,16 @@ pub fn main() {
                     fps_per_second,
                     location_viewport.zoom,
                 );
+            }
+
+            // if track_mode, update viewport center to selected object each frame
+            if track_mode {
+                if entity_focus_index < world.entities.len() {
+                    let entity_id = world.entities[entity_focus_index];
+                    if let Some(loc) = world.get_location(entity_id) {
+                        location_viewport.center_on_entity(loc.x, loc.y);
+                    }
+                }
             }
 
             // Render interface overlay (resources and selection name)

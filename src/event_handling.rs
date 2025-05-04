@@ -1,4 +1,4 @@
-use crate::render::Viewport;
+use crate::render::{Viewport, TILE_PIXEL_WIDTH};
 use crate::world::World;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -15,6 +15,7 @@ pub fn handle_events(
     world: &mut World,
     entity_focus_index: &mut usize,
     debug_enabled: &mut bool,
+    track_mode: &mut bool,
 ) -> Signal {
     for event in event_pump.poll_iter() {
         match event {
@@ -28,6 +29,12 @@ pub fn handle_events(
                 ..
             } => {
                 *debug_enabled = !*debug_enabled;
+            }
+            Event::KeyDown {
+                keycode: Some(Keycode::F),
+                ..
+            } => {
+                *track_mode = !*track_mode;
             }
             Event::KeyDown {
                 keycode: Some(Keycode::Up),
@@ -82,6 +89,27 @@ pub fn handle_events(
                 ..
             } => {
                 location_viewport.zoom_out();
+            }
+            Event::MouseButtonDown { x, y, .. } => {
+                let tile_pixel = (TILE_PIXEL_WIDTH as f64 * location_viewport.zoom) as i32;
+                if tile_pixel > 0 {
+                    let tile_x = x / tile_pixel;
+                    let tile_y = y / tile_pixel;
+                    let half_w = location_viewport.width as i32 / 2;
+                    let half_h = location_viewport.height as i32 / 2;
+                    let world_x = location_viewport.anchor.x - half_w + tile_x;
+                    let world_y = location_viewport.anchor.y - half_h + tile_y;
+
+                    if let Some((idx, _)) = world.iter_entities().enumerate().find(|(_, id)| {
+                        if let Some(loc) = world.get_location(*id) {
+                            loc.x == world_x && loc.y == world_y
+                        } else {
+                            false
+                        }
+                    }) {
+                        *entity_focus_index = idx;
+                    }
+                }
             }
             _ => {}
         }
