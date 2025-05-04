@@ -1,5 +1,9 @@
+//! Colors for coloring tiles.
+//!
+//! Colors are defined as RGB tuples, and are used in the `render` module.
+//!
+//! Colors were originally taken from the lee v2 dwarf fortress color set.
 #![allow(dead_code)]
-
 use sdl2::pixels::Color;
 
 pub const BASE: Color = Color::RGB(36, 39, 58);
