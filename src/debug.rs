@@ -7,7 +7,7 @@ use sdl2::video::Window;
 pub fn render_debug_overlay(
     canvas: &mut Canvas<Window>,
     tiles_texture: &mut Texture<'_>,
-    sups: u32,
+    sups: u64,
     fps: u32,
     zoom: f64,
 ) {
