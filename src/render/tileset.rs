@@ -1,15 +1,6 @@
-use lazy_static::lazy_static;
 use sdl2::rect::Rect;
 
 use super::TILE_PIXEL_WIDTH;
-
-lazy_static! {
-    static ref EMPTY_TILE: Rect = make_tile_rect(0, 0);
-    static ref EXCLAMATION_POINT_TILE: Rect = make_tile_rect(1, 2);
-    static ref LOWER_M_TILE: Rect = make_tile_rect(13, 6);
-    static ref LOWER_P_TILE: Rect = make_tile_rect(0, 7);
-    static ref LOWER_S_TILE: Rect = make_tile_rect(3, 7);
-}
 
 pub fn make_tile_rect(x: u8, y: u8) -> Rect {
     Rect::new(
@@ -31,8 +22,8 @@ pub fn make_multi_tile_rect(x: u8, y: u8, width: u8, height: u8) -> Rect {
 
 pub fn rect_from_char(character: char) -> Rect {
     match character {
-        ' ' => *EMPTY_TILE,
-        '!' => *EXCLAMATION_POINT_TILE,
+        ' ' => make_tile_rect(0, 0),
+        '!' => make_tile_rect(1, 2),
         '"' => make_tile_rect(2, 2),
         '#' => make_tile_rect(3, 2),
         '$' => make_tile_rect(4, 2),
@@ -104,7 +95,7 @@ pub fn rect_from_char(character: char) -> Rect {
         'm' => make_tile_rect(13, 6),
         'n' => make_tile_rect(14, 6),
         'o' => make_tile_rect(15, 6),
-        'p' => *LOWER_P_TILE,
+        'p' => make_tile_rect(0, 7),
         'q' => make_tile_rect(1, 7),
         'r' => make_tile_rect(2, 7),
         's' => make_tile_rect(3, 7),
