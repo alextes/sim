@@ -3,10 +3,11 @@
 use crate::buildings::{BuildingType, EntityBuildings};
 use crate::world::EntityId;
 use crate::SIMULATION_DT;
-use std::collections::HashMap; // Import the constant from main.rs
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
-// Calculate simulation frequency based on imported DT
-const SIMULATION_HZ: f64 = 1.0 / SIMULATION_DT.as_secs_f64();
+// calculate simulation frequency based on simulation DT
+static SIMULATION_HZ: LazyLock<f64> = LazyLock::new(|| 1.0 / SIMULATION_DT.as_secs_f64());
 
 // --- Resource Generation Config ---
 pub const RESOURCE_TICK_INTERVAL: u64 = 100; // Generate resources every 100 simulation ticks
@@ -74,8 +75,7 @@ impl ResourceSystem {
             }
         }
 
-        // Calculate rate per second
-        let ticks_per_second = SIMULATION_HZ;
+        let ticks_per_second = *SIMULATION_HZ;
         let generation_intervals_per_second = ticks_per_second / RESOURCE_TICK_INTERVAL as f64;
 
         let energy_rate = total_solar_panels as f32
