@@ -210,24 +210,8 @@ pub fn main() {
                 &mut sprite_renderer,
                 &world,
                 selected_entity,
-                controls.track_mode,
                 location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
-            );
-
-            // --- simulation state overlay (upper-right) ---
-            let sim_state_text = if controls.paused {
-                "PAUSED".to_string()
-            } else {
-                format!("{}x", controls.sim_speed)
-            };
-
-            render::render_status_text(
-                &mut canvas,
-                &mut sprite_renderer,
-                &sim_state_text,
-                colors::BASE,
-                colors::WHITE,
-                0, // very top row
+                &controls,
             );
 
             // overlay build menus if not in playing state
