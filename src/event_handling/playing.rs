@@ -5,6 +5,9 @@ use crate::world::World;
 use crate::GameState;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use sdl2::mouse::MouseButton;
+
+use crate::render::TILE_PIXEL_WIDTH;
 
 pub fn handle_playing_input(
     event: &Event,
@@ -107,17 +110,56 @@ pub fn handle_playing_input(
             keycode: Some(Keycode::Minus),
             ..
         } => location_viewport.zoom_out(),
-        Event::MouseButtonDown { x, y, .. } => {
-            match input::get_entity_index_at_screen_coords(*x, *y, location_viewport, world) {
-                Some(idx) => {
-                    controls.entity_focus_index = idx;
-                    // Note: Current behavior preserves track_mode on new selection.
-                    // If track_mode should be reset or explicitly set, that logic would go here.
+        Event::MouseButtonDown {
+            mouse_btn, x, y, ..
+        } => {
+            match mouse_btn {
+                MouseButton::Left => {
+                    match input::get_entity_index_at_screen_coords(*x, *y, location_viewport, world)
+                    {
+                        Some(idx) => {
+                            controls.entity_focus_index = idx;
+                            // Note: Current behavior preserves track_mode on new selection.
+                            // If track_mode should be reset or explicitly set, that logic would go here.
+                        }
+                        None => {
+                            // Clicked on empty space, so deselect.
+                            controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
+                            controls.track_mode = false; // Turn off tracking mode
+                        }
+                    }
                 }
-                None => {
-                    // Clicked on empty space, so deselect.
-                    controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
-                    controls.track_mode = false; // Turn off tracking mode
+                MouseButton::Middle => {
+                    controls.middle_mouse_dragging = true;
+                    controls.last_mouse_pos = Some((*x, *y));
+                }
+                _ => {} // Other buttons ignored for now
+            }
+        }
+        Event::MouseButtonUp { mouse_btn, .. } => {
+            if mouse_btn == &MouseButton::Middle {
+                controls.middle_mouse_dragging = false;
+                controls.last_mouse_pos = None;
+            }
+        }
+        Event::MouseMotion { x, y, .. } => {
+            if controls.middle_mouse_dragging {
+                if let Some((last_x, last_y)) = controls.last_mouse_pos {
+                    let delta_x = *x - last_x;
+                    let delta_y = *y - last_y;
+
+                    // Scale mouse delta to world coordinates
+                    // This logic is similar to what's in src/render/viewport.rs and src/input/mod.rs
+                    let world_tile_actual_pixel_size_on_screen =
+                        (TILE_PIXEL_WIDTH as f64 * location_viewport.zoom).max(0.001);
+
+                    let delta_x_world = delta_x as f64 / world_tile_actual_pixel_size_on_screen;
+                    let delta_y_world = delta_y as f64 / world_tile_actual_pixel_size_on_screen;
+
+                    location_viewport.anchor.x -= delta_x_world;
+                    location_viewport.anchor.y -= delta_y_world;
+
+                    controls.last_mouse_pos = Some((*x, *y));
                 }
             }
         }

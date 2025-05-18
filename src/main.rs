@@ -105,6 +105,8 @@ pub fn main() {
         track_mode: false,
         sim_speed: 1,
         paused: false,
+        middle_mouse_dragging: false,
+        last_mouse_pos: None,
     };
 
     let game_state = Arc::new(Mutex::new(GameState::Playing));
