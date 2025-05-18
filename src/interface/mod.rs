@@ -1,8 +1,8 @@
 use crate::buildings::{BuildingType, EntityBuildings, GROUND_SLOTS, ORBITAL_SLOTS};
 use crate::colors;
-use crate::render::tileset;
+use crate::render::{tileset, SpriteSheetRenderer};
 use crate::world::{EntityId, World};
-use sdl2::render::{Canvas, Texture};
+use sdl2::render::Canvas;
 use sdl2::video::Window;
 
 pub mod build;
@@ -11,9 +11,8 @@ pub mod build;
 /// This mirrors the implementation found in `render_status_text` but
 /// allows specifying the x position instead of always right-aligning.
 pub fn render_text_at(
-    // Make this public
     canvas: &mut Canvas<Window>,
-    tiles_texture: &mut Texture<'_>,
+    renderer: &mut SpriteSheetRenderer,
     text: &str,
     background_color: sdl2::pixels::Color,
     foreground_color: sdl2::pixels::Color,
@@ -31,12 +30,14 @@ pub fn render_text_at(
         ))
         .unwrap();
 
-    tiles_texture.set_color_mod(foreground_color.r, foreground_color.g, foreground_color.b);
+    renderer
+        .texture
+        .set_color_mod(foreground_color.r, foreground_color.g, foreground_color.b);
 
     for (i, ch) in text.chars().enumerate() {
-        let src = tileset::rect_from_char(ch);
+        let src = renderer.tileset.get_rect(ch);
         let dst = tileset::make_tile_rect(x_tile + i as u8, y_tile);
-        canvas.copy(tiles_texture, Some(src), Some(dst)).ok();
+        canvas.copy(renderer.texture, Some(src), Some(dst)).ok();
     }
 }
 
@@ -55,7 +56,7 @@ fn format_slot(prefix: &str, index: usize, slot: Option<BuildingType>) -> String
 /// been updated and the main viewport rendered.
 pub fn render_interface(
     canvas: &mut Canvas<Window>,
-    tiles_texture: &mut Texture<'_>,
+    renderer: &mut SpriteSheetRenderer,
     world: &World,
     selected: Option<EntityId>,
     track_mode: bool,
@@ -72,7 +73,7 @@ pub fn render_interface(
 
     render_text_at(
         canvas,
-        tiles_texture,
+        renderer,
         &energy_text,
         colors::BASE,
         colors::YELLOW, // energy color
@@ -82,7 +83,7 @@ pub fn render_interface(
 
     render_text_at(
         canvas,
-        tiles_texture,
+        renderer,
         &metal_text,
         colors::BASE,
         colors::LGRAY, // metal color
@@ -102,7 +103,7 @@ pub fn render_interface(
             let selected_text = format!("selected: {}", name);
             render_text_at(
                 canvas,
-                tiles_texture,
+                renderer,
                 &selected_text,
                 colors::BASE,
                 colors::WHITE,
@@ -115,7 +116,7 @@ pub fn render_interface(
                 let tracking_text = "tracking";
                 render_text_at(
                     canvas,
-                    tiles_texture,
+                    renderer,
                     tracking_text,
                     colors::BASE,
                     colors::WHITE,
@@ -131,7 +132,7 @@ pub fn render_interface(
                     let slot_text = format_slot("O", i, buildings.orbital[i]);
                     render_text_at(
                         canvas,
-                        tiles_texture,
+                        renderer,
                         &slot_text,
                         colors::BASE,
                         colors::WHITE,
@@ -147,7 +148,7 @@ pub fn render_interface(
                         let slot_text = format_slot("G", i, buildings.ground[i]);
                         render_text_at(
                             canvas,
-                            tiles_texture,
+                            renderer,
                             &slot_text,
                             colors::BASE,
                             colors::WHITE,

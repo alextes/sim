@@ -1,12 +1,13 @@
 use crate::colors;
 use crate::render::render_status_text;
-use sdl2::render::{Canvas, Texture};
+use crate::render::SpriteSheetRenderer;
+use sdl2::render::Canvas;
 use sdl2::video::Window;
 
 /// Renders debug overlay: simulation updates/sec, frames/sec, and zoom.
 pub fn render_debug_overlay(
     canvas: &mut Canvas<Window>,
-    tiles_texture: &mut Texture<'_>,
+    renderer: &mut SpriteSheetRenderer,
     sups: u64,
     fps: u32,
     zoom: f64,
@@ -14,7 +15,7 @@ pub fn render_debug_overlay(
     // First line: SUPS and FPS
     render_status_text(
         canvas,
-        tiles_texture,
+        renderer,
         &format!("SUPS {} FPS {}", sups, fps),
         colors::BASE,
         colors::WHITE,
@@ -23,7 +24,7 @@ pub fn render_debug_overlay(
     // Second line: zoom
     render_status_text(
         canvas,
-        tiles_texture,
+        renderer,
         &format!("zoom: {:.2}", zoom),
         colors::BASE,
         colors::WHITE,

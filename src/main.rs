@@ -14,7 +14,7 @@ use debug::render_debug_overlay;
 use game_loop::GameLoop;
 use interface::render_interface;
 use location::Point;
-use render::Viewport;
+use render::{tileset::Tileset, SpriteSheetRenderer, Viewport};
 use sdl2::image::LoadTexture;
 use std::f64::consts::TAU;
 use std::path::Path;
@@ -58,6 +58,8 @@ pub fn main() {
         .unwrap();
 
     debug!("tiles texture loaded");
+
+    let tileset = Tileset::new();
 
     let mut world = World::default();
     // sol at center
@@ -105,6 +107,11 @@ pub fn main() {
         let now = Instant::now();
         let time_since_last_second_check = now.duration_since(last_loop_start);
 
+        let mut sprite_renderer = SpriteSheetRenderer {
+            tileset: &tileset,
+            texture: &mut tiles_texture,
+        };
+
         // handle input events first
         let signal = event_handling::handle_events(
             &mut event_pump,
@@ -119,59 +126,51 @@ pub fn main() {
             event_handling::Signal::Quit => break 'running,
             event_handling::Signal::Continue => {}
         }
-        // advance simulation step if it's time
+        // advance simulation by appropriate number of steps based on time passed since last loop.
         let (steps, should_render) = game_loop.step();
         for _ in 0..steps {
-            simulation_units_counter += 1; // Increment tick counter *before* update
+            simulation_units_counter += 1;
             trace!(tick = simulation_units_counter, "simulating 1 step");
             world.update(SIMULATION_DT.as_secs_f64(), simulation_units_counter);
         }
 
-        // update per-second counters AND generate resources
-        // update per-second counters for display
         if time_since_last_second_check >= ONE_SECOND {
             simulation_units_per_second = simulation_units_counter;
             simulation_units_counter = 0;
             fps_per_second = fps_counter;
             fps_counter = 0;
 
-            // Reset the timer after processing everything for this second
             last_loop_start = now;
         }
 
-        // render if it's time
         if should_render {
             trace!("rendering 1 frame");
             fps_counter += 1;
 
-            // Clear the canvas *before* deciding what to render
+            // clear the canvas *before* deciding what to render
             canvas.set_draw_color(colors::BASE);
             canvas.clear();
 
-            // Match on game state to determine what to render
             match &*game_state.lock().unwrap() {
                 GameState::Playing => {
-                    // Render the main game view
                     render::render_viewport(
                         &mut canvas,
-                        &mut tiles_texture,
+                        &mut sprite_renderer,
                         &world,
                         &location_viewport,
                         debug_enabled,
                     );
 
-                    // Render debug overlay if enabled
                     if debug_enabled {
                         render_debug_overlay(
                             &mut canvas,
-                            &mut tiles_texture,
+                            &mut sprite_renderer,
                             simulation_units_per_second,
                             fps_per_second,
                             location_viewport.zoom,
                         );
                     }
 
-                    // If track_mode, update viewport center
                     if track_mode && !world.entities.is_empty() {
                         let entity_id = world.entities[entity_focus_index];
                         if let Some(loc) = world.get_location(entity_id) {
@@ -179,7 +178,6 @@ pub fn main() {
                         }
                     }
 
-                    // Render interface overlay (resources, selection, slots)
                     let selected_entity = if !world.entities.is_empty() {
                         Some(world.entities[entity_focus_index])
                     } else {
@@ -187,7 +185,7 @@ pub fn main() {
                     };
                     render_interface(
                         &mut canvas,
-                        &mut tiles_texture,
+                        &mut sprite_renderer,
                         &world,
                         selected_entity,
                         track_mode,
@@ -195,22 +193,22 @@ pub fn main() {
                     );
                 }
                 GameState::BuildMenuSelectingSlotType => {
-                    // Render the slot type selection menu
-                    interface::build::render_build_slot_type_menu(&mut canvas, &mut tiles_texture);
+                    interface::build::render_build_slot_type_menu(
+                        &mut canvas,
+                        &mut sprite_renderer,
+                    );
                 }
                 GameState::BuildMenuSelectingBuilding { slot_type } => {
-                    // Render the building selection menu for the chosen slot type
                     interface::build::render_build_building_menu(
                         &mut canvas,
-                        &mut tiles_texture,
+                        &mut sprite_renderer,
                         *slot_type,
                     );
                 }
                 GameState::BuildMenuError { message } => {
-                    // Render the error message
                     interface::build::render_build_error_menu(
                         &mut canvas,
-                        &mut tiles_texture,
+                        &mut sprite_renderer,
                         message,
                     );
                 }
@@ -218,7 +216,6 @@ pub fn main() {
 
             canvas.present();
         }
-        // tiny sleep to reduce busy-wait CPU usage
         let next_sim = game_loop.last_update + SIMULATION_DT;
         let next_rdr = game_loop.last_render + RENDER_DT;
         let wake_at = next_sim.min(next_rdr);
