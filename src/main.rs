@@ -12,6 +12,7 @@ mod world;
 
 use crate::buildings::{BuildingType, SlotType};
 use debug::render_debug_overlay;
+use event_handling::ControlState;
 use game_loop::GameLoop;
 use interface::render_interface;
 use location::Point;
@@ -98,14 +99,15 @@ pub fn main() {
     let mut fps_counter: u32 = 0;
     let mut fps_per_second: u32 = 0;
 
-    let mut entity_focus_index = 0;
-    let mut debug_enabled = false;
-    let mut track_mode = false;
-    let game_state = Arc::new(Mutex::new(GameState::Playing));
+    let mut controls = ControlState {
+        entity_focus_index: 0,
+        debug_enabled: false,
+        track_mode: false,
+        sim_speed: 1,
+        paused: false,
+    };
 
-    // Simulation control: speed multiplier (1x/2x/3x) and pause toggle
-    let mut sim_speed: u32 = 1; // starts at normal speed
-    let mut paused: bool = false;
+    let game_state = Arc::new(Mutex::new(GameState::Playing));
 
     info!("starting main loop");
     'running: loop {
@@ -117,8 +119,8 @@ pub fn main() {
             texture: &mut tiles_texture,
         };
 
-        // When paused, prevent simulation backlog from accumulating
-        if paused {
+        // when paused, prevent simulation backlog from accumulating
+        if controls.paused {
             game_loop.last_update = now;
         }
 
@@ -127,11 +129,7 @@ pub fn main() {
             &mut event_pump,
             &mut location_viewport,
             &mut world,
-            &mut entity_focus_index,
-            &mut debug_enabled,
-            &mut track_mode,
-            &mut sim_speed,
-            &mut paused,
+            &mut controls,
             game_state.clone(),
         );
         match signal {
@@ -141,12 +139,12 @@ pub fn main() {
         // advance simulation by appropriate number of steps based on time passed since last loop.
         let (steps, should_render) = game_loop.step();
         for _ in 0..steps {
-            if !paused {
+            if !controls.paused {
                 simulation_units_counter += 1;
                 trace!(tick = simulation_units_counter, "simulating 1 step");
-                // Advance the simulation by (dt * speed_multiplier)
+                // advance the simulation by (dt * speed_multiplier)
                 world.update(
-                    SIMULATION_DT.as_secs_f64() * sim_speed as f64,
+                    SIMULATION_DT.as_secs_f64() * controls.sim_speed as f64,
                     simulation_units_counter,
                 );
             }
@@ -175,10 +173,10 @@ pub fn main() {
                 &mut sprite_renderer,
                 &world,
                 &location_viewport,
-                debug_enabled,
+                controls.debug_enabled,
             );
 
-            if debug_enabled {
+            if controls.debug_enabled {
                 render_debug_overlay(
                     &mut canvas,
                     &mut sprite_renderer,
@@ -189,8 +187,8 @@ pub fn main() {
             }
 
             // tracking camera update (only affects viewport positioning, so we compute before interface)
-            if track_mode && !world.entities.is_empty() {
-                let entity_id = world.entities[entity_focus_index];
+            if controls.track_mode && !world.entities.is_empty() {
+                let entity_id = world.entities[controls.entity_focus_index];
                 if let Some(loc) = world.get_location(entity_id) {
                     location_viewport.center_on_entity(loc.x, loc.y);
                 }
@@ -198,7 +196,7 @@ pub fn main() {
 
             // selection panel bottom-left
             let selected_entity = if !world.entities.is_empty() {
-                Some(world.entities[entity_focus_index])
+                Some(world.entities[controls.entity_focus_index])
             } else {
                 None
             };
@@ -207,15 +205,15 @@ pub fn main() {
                 &mut sprite_renderer,
                 &world,
                 selected_entity,
-                track_mode,
+                controls.track_mode,
                 location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
             );
 
             // --- simulation state overlay (upper-right) ---
-            let sim_state_text = if paused {
+            let sim_state_text = if controls.paused {
                 "PAUSED".to_string()
             } else {
-                format!("{}x", sim_speed)
+                format!("{}x", controls.sim_speed)
             };
 
             render::render_status_text(

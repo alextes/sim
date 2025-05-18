@@ -1,3 +1,4 @@
+use super::ControlState;
 use crate::input; // Import the new input module
 use crate::render::Viewport;
 use crate::world::World;
@@ -9,11 +10,7 @@ pub fn handle_playing_input(
     event: &Event,
     location_viewport: &mut Viewport,
     world: &mut World,
-    entity_focus_index: &mut usize,
-    debug_enabled: &mut bool,
-    track_mode: &mut bool,
-    sim_speed: &mut u32,
-    paused: &mut bool,
+    controls: &mut ControlState,
     game_state_guard: &mut std::sync::MutexGuard<'_, GameState>,
 ) -> Option<super::Signal> {
     // return Signal only if quitting
@@ -22,11 +19,11 @@ pub fn handle_playing_input(
         Event::KeyDown {
             keycode: Some(Keycode::F4),
             ..
-        } => *debug_enabled = !*debug_enabled,
+        } => controls.debug_enabled = !controls.debug_enabled,
         Event::KeyDown {
             keycode: Some(Keycode::F),
             ..
-        } => *track_mode = !*track_mode,
+        } => controls.track_mode = !controls.track_mode,
         Event::KeyDown {
             keycode: Some(Keycode::Up),
             ..
@@ -48,7 +45,8 @@ pub fn handle_playing_input(
             ..
         } => {
             if !world.entities.is_empty() {
-                *entity_focus_index = (*entity_focus_index + 1) % world.entities.len();
+                controls.entity_focus_index =
+                    (controls.entity_focus_index + 1) % world.entities.len();
             }
         }
         Event::KeyDown {
@@ -57,7 +55,7 @@ pub fn handle_playing_input(
         } => {
             // check if currently selected entity can have buildings
             if !world.entities.is_empty() {
-                let selected_id = world.entities[*entity_focus_index];
+                let selected_id = world.entities[controls.entity_focus_index];
                 if world.buildings.contains_key(&selected_id) {
                     **game_state_guard = GameState::BuildMenuSelectingSlotType;
                 } else {
@@ -66,23 +64,23 @@ pub fn handle_playing_input(
                 }
             }
         }
-        // Cycle simulation speed 1x -> 2x -> 3x -> 1x on backtick (`) key
+        // cycle simulation speed 1x -> 2x -> 3x -> 1x on backtick (`) key
         Event::KeyDown {
             keycode: Some(Keycode::Backquote),
             ..
         } => {
-            *sim_speed = match *sim_speed {
+            controls.sim_speed = match controls.sim_speed {
                 1 => 2,
                 2 => 3,
                 _ => 1,
             };
         }
-        // Toggle pause on Space key
+        // toggle pause on Space key
         Event::KeyDown {
             keycode: Some(Keycode::Space),
             ..
         } => {
-            *paused = !*paused;
+            controls.paused = !controls.paused;
         }
         // to use keypad plus
         Event::KeyDown {
@@ -107,7 +105,7 @@ pub fn handle_playing_input(
             if let Some(idx) =
                 input::get_entity_index_at_screen_coords(*x, *y, location_viewport, world)
             {
-                *entity_focus_index = idx;
+                controls.entity_focus_index = idx;
             }
         }
         _ => {} // ignore other events in Playing state
