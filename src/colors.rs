@@ -23,3 +23,6 @@ pub const LCYAN: Color = Color::RGB(60, 205, 190);
 pub const LRED: Color = Color::RGB(220, 50, 20);
 pub const LMAGENTA: Color = Color::RGB(190, 110, 185);
 pub const YELLOW: Color = Color::RGB(230, 170, 30);
+
+pub const GRAY: Color = Color::RGB(128, 128, 128);
+pub const ORANGE: Color = Color::RGB(255, 165, 0);
