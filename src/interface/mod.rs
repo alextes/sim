@@ -4,7 +4,7 @@ use crate::render::{tileset, SpriteSheetRenderer};
 use crate::world::{EntityId, World};
 use sdl2::render::Canvas;
 use sdl2::video::Window;
-use crate::{ControlState, GameState};
+use crate::{ControlState, GameState, SlotType};
 use std::sync::{Arc, Mutex};
 
 pub mod build;
@@ -153,6 +153,31 @@ pub fn render_interface(
         sim_speed_window_x + 1, // x_tile, with padding
         sim_speed_window_y + 1, // y_tile, with padding
     );
+
+    // --- Build Menus (if active) ---
+    match &*game_state.lock().unwrap() {
+        GameState::BuildMenuSelectingSlotType => {
+            build::render_build_slot_type_menu(
+                canvas,
+                renderer,
+            );
+        }
+        GameState::BuildMenuSelectingBuilding { slot_type } => {
+            build::render_build_building_menu(
+                canvas,
+                renderer,
+                *slot_type,
+            );
+        }
+        GameState::BuildMenuError { message } => {
+            build::render_build_error_menu(
+                canvas,
+                renderer,
+                message,
+            );
+        }
+        _ => {} // GameState::Playing or other states handled elsewhere or not needing specific menu UI here
+    }
 
     // --- selection panel ---
 
