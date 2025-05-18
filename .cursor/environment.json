@@ -1,0 +1,6 @@
+{
+  "snapshot": "snapshot-20250518-9729811d-bf5f-40d5-8efe-cd09316f9d5c",
+  "install": "sudo apt-get install -y libsdl2-dev libsdl2-image-dev",
+  "start": "cargo build",
+  "terminals": []
+}
