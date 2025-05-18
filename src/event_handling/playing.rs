@@ -45,8 +45,14 @@ pub fn handle_playing_input(
             ..
         } => {
             if !world.entities.is_empty() {
-                controls.entity_focus_index =
-                    (controls.entity_focus_index + 1) % world.entities.len();
+                if controls.entity_focus_index >= world.entities.len() {
+                    // If no valid entity is selected (e.g., usize::MAX or out of bounds after entity removal)
+                    controls.entity_focus_index = 0; // Select the first entity
+                } else {
+                    // Cycle to the next entity
+                    controls.entity_focus_index =
+                        (controls.entity_focus_index + 1) % world.entities.len();
+                }
             }
         }
         Event::KeyDown {

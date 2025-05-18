@@ -187,7 +187,10 @@ pub fn main() {
             }
 
             // tracking camera update (only affects viewport positioning, so we compute before interface)
-            if controls.track_mode && !world.entities.is_empty() {
+            if controls.track_mode
+                && !world.entities.is_empty()
+                && controls.entity_focus_index < world.entities.len()
+            {
                 let entity_id = world.entities[controls.entity_focus_index];
                 if let Some(loc) = world.get_location(entity_id) {
                     location_viewport.center_on_entity(loc.x, loc.y);
@@ -195,7 +198,9 @@ pub fn main() {
             }
 
             // selection panel bottom-left
-            let selected_entity = if !world.entities.is_empty() {
+            let selected_entity = if !world.entities.is_empty()
+                && controls.entity_focus_index < world.entities.len()
+            {
                 Some(world.entities[controls.entity_focus_index])
             } else {
                 None
