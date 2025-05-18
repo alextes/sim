@@ -16,20 +16,25 @@ pub enum Signal {
     Continue,
 }
 
+#[derive(Debug)]
+pub struct ControlState {
+    pub entity_focus_index: usize,
+    pub debug_enabled: bool,
+    pub track_mode: bool,
+    pub sim_speed: u32,
+    pub paused: bool,
+}
+
 pub fn handle_events(
     event_pump: &mut EventPump,
     location_viewport: &mut Viewport,
     world: &mut World,
-    entity_focus_index: &mut usize,
-    debug_enabled: &mut bool,
-    track_mode: &mut bool,
-    sim_speed: &mut u32,
-    paused: &mut bool,
+    controls: &mut ControlState,
     game_state: Arc<Mutex<GameState>>,
 ) -> Signal {
     for event in event_pump.poll_iter() {
-        // --- Global Escape Handling ---
-        // Lock state briefly to check if Esc should quit or go back
+        // --- global escape handling ---
+        // lock state briefly to check if Esc should quit or go back
         if let Event::KeyDown {
             keycode: Some(Keycode::Escape),
             ..
@@ -51,47 +56,41 @@ pub fn handle_events(
                     false
                 }
             };
-            drop(state_guard); // Drop lock before potential return
             if should_quit {
                 return Signal::Quit;
             }
-            continue; // Skip further processing for this Escape event
+            continue; // skip further processing for this Escape event
         }
 
-        // --- State-Specific Handling ---
+        // --- state-specific handling ---
         let mut state_guard = game_state.lock().unwrap();
-        // Clone the state *inside the lock* to pass to helpers
+        // clone the state *inside the lock* to pass to helpers
         // (needed because helpers might change the state via the guard)
         let current_state_clone = state_guard.clone();
 
         match current_state_clone {
             GameState::Playing => {
-                // Pass the guard itself to modify state directly if needed
+                // pass the guard itself to modify state directly if needed
                 if let Some(signal) = playing::handle_playing_input(
                     &event,
                     location_viewport,
                     world,
-                    entity_focus_index,
-                    debug_enabled,
-                    track_mode,
-                    sim_speed,
-                    paused,
-                    &mut state_guard, // Pass mutable guard
+                    controls,
+                    &mut state_guard,
                 ) {
-                    drop(state_guard); // Drop lock before return
                     return signal;
                 }
             }
-            // Delegate all build menu states to the build_menu handler
+            // delegate all build menu states to the build_menu handler
             GameState::BuildMenuSelectingSlotType
             | GameState::BuildMenuSelectingBuilding { .. }
             | GameState::BuildMenuError { .. } => {
                 build_menu::handle_build_menu_input(
                     &event,
-                    &current_state_clone, // Pass immutable clone for logic read
+                    &current_state_clone, // pass immutable clone for logic read
                     world,
-                    *entity_focus_index, // Pass usize value (Copy)
-                    &mut state_guard,    // Pass mutable guard to allow state changes
+                    controls.entity_focus_index, // pass usize value (Copy)
+                    &mut state_guard,            // pass mutable guard to allow state changes
                 );
             }
         }
