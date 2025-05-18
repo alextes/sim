@@ -44,10 +44,10 @@ pub fn handle_events(
             let mut state_guard = game_state.lock().unwrap();
             match *state_guard {
                 GameState::Playing => {
-                    *state_guard = GameState::PauseMenu;
+                    *state_guard = GameState::GameMenu;
                     controls.paused = true;
                 }
-                GameState::PauseMenu => {
+                GameState::GameMenu => {
                     *state_guard = GameState::Playing;
                     controls.paused = false;
                 }
@@ -70,20 +70,19 @@ pub fn handle_events(
 
         match current_state_clone {
             GameState::Playing => {
-                if controls.paused {
-                    // if q is pressed while paused (and in pause menu), it's handled by PauseMenu arm
-                    // if quit event occurs, it's handled by the top-most match event
-                } else if let Some(signal) = playing::handle_playing_input(
+                // always call playing::handle_playing_input when in GameState::Playing.
+                // that function will decide what to do based on controls.paused.
+                if let Some(signal) = playing::handle_playing_input(
                     &event,
                     location_viewport,
                     world,
                     controls,
-                    &mut state_guard, // pass guard to allow state changes (e.g. to BuildMenu)
+                    &mut state_guard, // allows playing_input to change game_state (e.g. to BuildMenu)
                 ) {
-                    return signal;
+                    return signal; // e.g. if playing_input wants to quit
                 }
             }
-            GameState::PauseMenu => {
+            GameState::GameMenu => {
                 if let Event::KeyDown {
                     keycode: Some(Keycode::Q),
                     ..

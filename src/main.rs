@@ -41,7 +41,7 @@ type SimulationUnit = u64;
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameState {
     Playing,
-    PauseMenu,
+    GameMenu,
     BuildMenuSelectingSlotType,
     BuildMenuSelectingBuilding { slot_type: SlotType },
     BuildMenuError { message: String },
@@ -222,8 +222,8 @@ pub fn main() {
 
             // overlay build menus if not in playing state
             match &*game_state.lock().unwrap() {
-                GameState::PauseMenu => {
-                    interface::pause_menu::render_pause_menu(&mut canvas, &mut sprite_renderer);
+                GameState::GameMenu => {
+                    interface::game_menu::render_game_menu(&mut canvas, &mut sprite_renderer);
                 }
                 GameState::BuildMenuSelectingSlotType => {
                     interface::build::render_build_slot_type_menu(

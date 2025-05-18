@@ -6,7 +6,7 @@ use sdl2::video::Window;
 
 pub mod build;
 pub mod debug_overlay;
-pub mod pause_menu;
+pub mod game_menu;
 pub mod resources_panel;
 pub mod selected_object_panel;
 pub mod sim_speed_panel;
