@@ -23,6 +23,8 @@ pub fn handle_events(
     entity_focus_index: &mut usize,
     debug_enabled: &mut bool,
     track_mode: &mut bool,
+    sim_speed: &mut u32,
+    paused: &mut bool,
     game_state: Arc<Mutex<GameState>>,
 ) -> Signal {
     for event in event_pump.poll_iter() {
@@ -72,6 +74,8 @@ pub fn handle_events(
                     entity_focus_index,
                     debug_enabled,
                     track_mode,
+                    sim_speed,
+                    paused,
                     &mut state_guard, // Pass mutable guard
                 ) {
                     drop(state_guard); // Drop lock before return
