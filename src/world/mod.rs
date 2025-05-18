@@ -83,11 +83,11 @@ impl World {
 
     /// Advance all orbiters by dt_seconds, updating their stored positions.
     /// Also handles periodic resource generation based on simulation ticks.
-    pub fn update(&mut self, dt_seconds: f64, current_tick: u64) {
+    pub fn update(&mut self, dt_seconds: f64, _current_tick: u64) {
         self.locations.update(dt_seconds);
 
         // Delegate resource updates to the ResourceSystem
-        self.resources.update(current_tick, &self.buildings);
+        self.resources.update(dt_seconds, &self.buildings);
     }
 
     /// Return the current universal position of an entity.

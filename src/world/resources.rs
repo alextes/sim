@@ -10,24 +10,33 @@ use std::sync::LazyLock;
 static SIMULATION_HZ: LazyLock<f64> = LazyLock::new(|| 1.0 / SIMULATION_DT.as_secs_f64());
 
 // --- Resource Generation Config ---
-pub const RESOURCE_TICK_INTERVAL: u64 = 100; // Generate resources every 100 simulation ticks
-pub const ENERGY_PER_SOLAR_PANEL_PER_INTERVAL: f32 = 1.0; // Corresponds to 1.0/sec at 100Hz
-pub const METAL_PER_MINE_PER_INTERVAL: f32 = 0.5; // Corresponds to 0.5/sec at 100Hz
+// Generate resources every N seconds of simulated time.
+// Previously: RESOURCE_TICK_INTERVAL: u64 = 100 (ticks)
+// SIMULATION_DT is 10ms (0.01s), so 100 ticks = 1.0 second.
+pub const RESOURCE_INTERVAL_SECONDS: f64 = 1.0;
+pub const ENERGY_PER_SOLAR_PANEL_PER_INTERVAL: f32 = 1.0; // Energy per interval
+pub const METAL_PER_MINE_PER_INTERVAL: f32 = 0.5;     // Metal per interval
 
 #[derive(Debug, Default)]
 pub struct ResourceSystem {
     pub energy: f32,
     pub metal: f32,
+    time_accumulator: f64, // Accumulates dt_seconds
 }
 
 impl ResourceSystem {
-    /// Updates resource counts based on buildings and the current simulation tick.
+    /// Updates resource counts based on buildings and elapsed simulated time.
     pub fn update(
         &mut self,
-        current_tick: u64,
+        dt_seconds: f64, // Delta time for the current simulation step
         buildings_map: &HashMap<EntityId, EntityBuildings>,
     ) {
-        if current_tick > 0 && current_tick % RESOURCE_TICK_INTERVAL == 0 {
+        self.time_accumulator += dt_seconds;
+
+        // Process all full intervals that have passed
+        while self.time_accumulator >= RESOURCE_INTERVAL_SECONDS {
+            self.time_accumulator -= RESOURCE_INTERVAL_SECONDS;
+
             let mut total_solar_panels = 0;
             let mut total_mines = 0;
 
@@ -75,8 +84,9 @@ impl ResourceSystem {
             }
         }
 
-        let ticks_per_second = *SIMULATION_HZ;
-        let generation_intervals_per_second = ticks_per_second / RESOURCE_TICK_INTERVAL as f64;
+        // The number of generation intervals per real second is 1.0 / RESOURCE_INTERVAL_SECONDS.
+        // For example, if RESOURCE_INTERVAL_SECONDS is 0.5, then this is 2 intervals per second.
+        let generation_intervals_per_second = 1.0 / RESOURCE_INTERVAL_SECONDS;
 
         let energy_rate = total_solar_panels as f32
             * ENERGY_PER_SOLAR_PANEL_PER_INTERVAL
