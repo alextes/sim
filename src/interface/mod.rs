@@ -62,14 +62,14 @@ pub fn render_interface(
     track_mode: bool,
     viewport_height_tiles: u32,
 ) {
-    // --- Top-left: resources (two lines) ---
+    // --- top-left: resources (two lines) ---
     let (energy_rate, metal_rate) = world.resources.calculate_rates(&world.buildings);
 
     let energy = world.resources.energy;
     let metal = world.resources.metal;
 
-    let energy_text = format!("NRG: {:.1} (+{:.1}/s)", energy, energy_rate);
-    let metal_text = format!("MTL: {:.1} (+{:.1}/s)", metal, metal_rate);
+    let energy_text = format!("nrg: {:.1} (+{:.1}/s)", energy, energy_rate);
+    let metal_text = format!("mtl: {:.1} (+{:.1}/s)", metal, metal_rate);
 
     render_text_at(
         canvas,
@@ -91,13 +91,13 @@ pub fn render_interface(
         2,             // y_tile = 2
     );
 
-    // Current line offset for rendering subsequent UI elements
-    let mut y_offset = 3; // Start below resources + margin
+    // current line offset for rendering subsequent UI elements
+    let mut y_offset = 3; // start below resources + margin
 
-    // --- Bottom-left: selected entity name (if any) ---
+    // --- bottom-left: selected entity name (if any) ---
     if let Some(id) = selected {
         if let Some(name) = world.get_entity_name(id) {
-            // --- Selection & Tracking --- Start from bottom and go up
+            // --- selection & tracking --- start from bottom and go up
             let bottom_y = viewport_height_tiles.saturating_sub(2) as u8;
 
             let selected_text = format!("selected: {}", name);
@@ -111,7 +111,7 @@ pub fn render_interface(
                 bottom_y,
             );
 
-            // Render tracking status above selection
+            // render tracking status above selection
             if track_mode && bottom_y > 0 {
                 let tracking_text = "tracking";
                 render_text_at(
@@ -125,9 +125,9 @@ pub fn render_interface(
                 );
             }
 
-            // --- Building Slots --- Render below resources
+            // --- building slots --- render below resources
             if let Some(buildings) = world.buildings.get(&id) {
-                // Orbital Slots
+                // orbital slots
                 for i in 0..ORBITAL_SLOTS {
                     let slot_text = format_slot("O", i, buildings.orbital[i]);
                     render_text_at(
@@ -142,7 +142,7 @@ pub fn render_interface(
                     y_offset += 1;
                 }
 
-                // Ground Slots (if they exist)
+                // ground slots (if they exist)
                 if buildings.has_ground_slots {
                     for i in 0..GROUND_SLOTS {
                         let slot_text = format_slot("G", i, buildings.ground[i]);
