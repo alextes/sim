@@ -1,6 +1,5 @@
 mod buildings;
 mod colors;
-mod debug;
 mod event_handling;
 mod game_loop;
 mod initialization;
@@ -11,10 +10,10 @@ mod render;
 mod world;
 
 use crate::buildings::{BuildingType, SlotType};
-use debug::render_debug_overlay;
 use event_handling::ControlState;
 use game_loop::GameLoop;
 use interface::render_interface;
+use interface::DebugRenderInfo;
 use location::Point;
 use render::{tileset::Tileset, SpriteSheetRenderer, Viewport};
 use sdl2::image::LoadTexture;
@@ -24,6 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::trace;
 use tracing::{debug, info};
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use world::World;
 
@@ -41,14 +41,19 @@ type SimulationUnit = u64;
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameState {
     Playing,
+    PauseMenu,
     BuildMenuSelectingSlotType,
     BuildMenuSelectingBuilding { slot_type: SlotType },
     BuildMenuError { message: String },
 }
 
 pub fn main() {
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::DEBUG.into())
+        .from_env_lossy();
+
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(env_filter) // Use the custom filter
         .init();
 
     info!("starting sim");
@@ -178,16 +183,6 @@ pub fn main() {
                 controls.debug_enabled,
             );
 
-            if controls.debug_enabled {
-                render_debug_overlay(
-                    &mut canvas,
-                    &mut sprite_renderer,
-                    simulation_units_per_second,
-                    fps_per_second,
-                    location_viewport.zoom,
-                );
-            }
-
             // tracking camera update (only affects viewport positioning, so we compute before interface)
             if controls.track_mode
                 && !world.entities.is_empty()
@@ -214,10 +209,22 @@ pub fn main() {
                 selected_entity,
                 location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
                 &controls,
+                if controls.debug_enabled {
+                    Some(DebugRenderInfo {
+                        sups: simulation_units_per_second,
+                        fps: fps_per_second,
+                        zoom: location_viewport.zoom,
+                    })
+                } else {
+                    None
+                },
             );
 
             // overlay build menus if not in playing state
             match &*game_state.lock().unwrap() {
+                GameState::PauseMenu => {
+                    interface::pause_menu::render_pause_menu(&mut canvas, &mut sprite_renderer);
+                }
                 GameState::BuildMenuSelectingSlotType => {
                     interface::build::render_build_slot_type_menu(
                         &mut canvas,
@@ -238,7 +245,7 @@ pub fn main() {
                         message,
                     );
                 }
-                _ => {} // GameState::Playing already handled
+                GameState::Playing => {} // GameState::Playing already handled or no overlay needed
             }
 
             canvas.present();

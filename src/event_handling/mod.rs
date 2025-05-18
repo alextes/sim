@@ -36,67 +36,74 @@ pub fn handle_events(
 ) -> Signal {
     for event in event_pump.poll_iter() {
         // --- global escape handling ---
-        // lock state briefly to check if Esc should quit or go back
         if let Event::KeyDown {
             keycode: Some(Keycode::Escape),
             ..
         } = event
         {
             let mut state_guard = game_state.lock().unwrap();
-            let should_quit = match *state_guard {
-                GameState::Playing => true,
+            match *state_guard {
+                GameState::Playing => {
+                    *state_guard = GameState::PauseMenu;
+                    controls.paused = true;
+                }
+                GameState::PauseMenu => {
+                    *state_guard = GameState::Playing;
+                    controls.paused = false;
+                }
                 GameState::BuildMenuSelectingSlotType => {
                     *state_guard = GameState::Playing;
-                    false
                 }
                 GameState::BuildMenuSelectingBuilding { .. } => {
                     *state_guard = GameState::BuildMenuSelectingSlotType;
-                    false
                 }
                 GameState::BuildMenuError { .. } => {
                     *state_guard = GameState::Playing;
-                    false
                 }
-            };
-            if should_quit {
-                return Signal::Quit;
             }
             continue; // skip further processing for this Escape event
         }
 
         // --- state-specific handling ---
         let mut state_guard = game_state.lock().unwrap();
-        // clone the state *inside the lock* to pass to helpers
-        // (needed because helpers might change the state via the guard)
         let current_state_clone = state_guard.clone();
 
         match current_state_clone {
             GameState::Playing => {
-                // pass the guard itself to modify state directly if needed
-                if let Some(signal) = playing::handle_playing_input(
+                if controls.paused {
+                    // if q is pressed while paused (and in pause menu), it's handled by PauseMenu arm
+                    // if quit event occurs, it's handled by the top-most match event
+                } else if let Some(signal) = playing::handle_playing_input(
                     &event,
                     location_viewport,
                     world,
                     controls,
-                    &mut state_guard,
+                    &mut state_guard, // pass guard to allow state changes (e.g. to BuildMenu)
                 ) {
                     return signal;
                 }
             }
-            // delegate all build menu states to the build_menu handler
+            GameState::PauseMenu => {
+                if let Event::KeyDown {
+                    keycode: Some(Keycode::Q),
+                    ..
+                } = event
+                {
+                    return Signal::Quit;
+                }
+            }
             GameState::BuildMenuSelectingSlotType
             | GameState::BuildMenuSelectingBuilding { .. }
             | GameState::BuildMenuError { .. } => {
                 build_menu::handle_build_menu_input(
                     &event,
-                    &current_state_clone, // pass immutable clone for logic read
+                    &current_state_clone,
                     world,
-                    controls.entity_focus_index, // pass usize value (Copy)
-                    &mut state_guard,            // pass mutable guard to allow state changes
+                    controls.entity_focus_index,
+                    &mut state_guard,
                 );
             }
         }
-        // state_guard is dropped here automatically when going out of scope
     }
     Signal::Continue
 }
