@@ -3,4 +3,10 @@ description:
 globs: 
 alwaysApply: true
 ---
-when writing debug, info, error messages, write them all lowercase.
+when writing:
+1. trace, debug, info, warn, error log messages.
+2. errors.
+3. comments.
+4. function docs.
+5. module docs.
+write them all lowercase.
