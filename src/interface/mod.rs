@@ -97,31 +97,54 @@ pub fn render_interface(
     // --- Bottom-left: selected entity name (if any) ---
     if let Some(id) = selected {
         if let Some(name) = world.get_entity_name(id) {
-            // --- Selection & Tracking --- Start from bottom and go up
-            let bottom_y = viewport_height_tiles.saturating_sub(2) as u8;
+            // --- Build the information lines for the info window ---
+            let mut info_lines: Vec<String> = Vec::new();
 
-            let selected_text = format!("selected: {}", name);
-            render_text_at(
-                canvas,
-                renderer,
-                &selected_text,
-                colors::BASE,
-                colors::WHITE,
-                1, // x_tile = 1
-                bottom_y,
-            );
+            // First line: selected entity name
+            info_lines.push(format!("selected: {}", name));
 
-            // Render tracking status above selection
-            if track_mode && bottom_y > 0 {
-                let tracking_text = "tracking";
+            // Second line (optional): tracking status
+            if track_mode {
+                info_lines.push("tracking".to_string());
+            }
+
+            // Determine the size of the window (in tiles)
+            let max_line_len = info_lines
+                .iter()
+                .map(|s| s.len())
+                .max()
+                .unwrap_or(0);
+
+            // Add 2 tiles of horizontal padding (1 left, 1 right) and vertical padding (1 top, 1 bottom)
+            let window_width_tiles: u8 = (max_line_len as u8).saturating_add(2);
+            let window_height_tiles: u8 = (info_lines.len() as u8).saturating_add(2);
+
+            // Position: bottom-left, but fully on-screen
+            let x_tile: u8 = 1;
+            let window_top_y: u8 = viewport_height_tiles
+                .saturating_sub(window_height_tiles as u32 + 1) as u8;
+
+            // Draw the window background (filled rectangle)
+            canvas.set_draw_color(colors::BLACK);
+            canvas
+                .fill_rect(tileset::make_multi_tile_rect(
+                    x_tile,
+                    window_top_y,
+                    window_width_tiles,
+                    window_height_tiles,
+                ))
+                .unwrap();
+
+            // Render each line of text inside the window
+            for (i, line) in info_lines.iter().enumerate() {
                 render_text_at(
                     canvas,
                     renderer,
-                    tracking_text,
-                    colors::BASE,
+                    line,
+                    colors::BLACK,
                     colors::WHITE,
-                    1, // x_tile = 1
-                    bottom_y - 1,
+                    x_tile + 1,                      // inside left padding
+                    window_top_y + 1 + i as u8,      // inside top padding + line offset
                 );
             }
 
