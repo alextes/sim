@@ -23,6 +23,8 @@ pub struct ControlState {
     pub track_mode: bool,
     pub sim_speed: u32,
     pub paused: bool,
+    pub middle_mouse_dragging: bool,
+    pub last_mouse_pos: Option<(i32, i32)>,
 }
 
 pub fn handle_events(
