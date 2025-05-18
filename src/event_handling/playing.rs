@@ -12,6 +12,8 @@ pub fn handle_playing_input(
     entity_focus_index: &mut usize,
     debug_enabled: &mut bool,
     track_mode: &mut bool,
+    sim_speed: &mut u32,
+    paused: &mut bool,
     game_state_guard: &mut std::sync::MutexGuard<'_, GameState>,
 ) -> Option<super::Signal> {
     // return Signal only if quitting
@@ -63,6 +65,24 @@ pub fn handle_playing_input(
                     // **game_state_guard = GameState::BuildMenuError { message: "Cannot build on this entity".to_string() };
                 }
             }
+        }
+        // Cycle simulation speed 1x -> 2x -> 3x -> 1x on backtick (`) key
+        Event::KeyDown {
+            keycode: Some(Keycode::Backquote),
+            ..
+        } => {
+            *sim_speed = match *sim_speed {
+                1 => 2,
+                2 => 3,
+                _ => 1,
+            };
+        }
+        // Toggle pause on Space key
+        Event::KeyDown {
+            keycode: Some(Keycode::Space),
+            ..
+        } => {
+            *paused = !*paused;
         }
         // to use keypad plus
         Event::KeyDown {

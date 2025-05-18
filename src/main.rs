@@ -103,6 +103,10 @@ pub fn main() {
     let mut track_mode = false;
     let game_state = Arc::new(Mutex::new(GameState::Playing));
 
+    // Simulation control: speed multiplier (1x/2x/3x) and pause toggle
+    let mut sim_speed: u32 = 1; // starts at normal speed
+    let mut paused: bool = false;
+
     info!("starting main loop");
     'running: loop {
         let now = Instant::now();
@@ -113,6 +117,11 @@ pub fn main() {
             texture: &mut tiles_texture,
         };
 
+        // When paused, prevent simulation backlog from accumulating
+        if paused {
+            game_loop.last_update = now;
+        }
+
         // handle input events first
         let signal = event_handling::handle_events(
             &mut event_pump,
@@ -121,6 +130,8 @@ pub fn main() {
             &mut entity_focus_index,
             &mut debug_enabled,
             &mut track_mode,
+            &mut sim_speed,
+            &mut paused,
             game_state.clone(),
         );
         match signal {
@@ -130,9 +141,15 @@ pub fn main() {
         // advance simulation by appropriate number of steps based on time passed since last loop.
         let (steps, should_render) = game_loop.step();
         for _ in 0..steps {
-            simulation_units_counter += 1;
-            trace!(tick = simulation_units_counter, "simulating 1 step");
-            world.update(SIMULATION_DT.as_secs_f64(), simulation_units_counter);
+            if !paused {
+                simulation_units_counter += 1;
+                trace!(tick = simulation_units_counter, "simulating 1 step");
+                // Advance the simulation by (dt * speed_multiplier)
+                world.update(
+                    SIMULATION_DT.as_secs_f64() * sim_speed as f64,
+                    simulation_units_counter,
+                );
+            }
         }
 
         if time_since_last_second_check >= ONE_SECOND {
@@ -192,6 +209,22 @@ pub fn main() {
                 selected_entity,
                 track_mode,
                 location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
+            );
+
+            // --- simulation state overlay (upper-right) ---
+            let sim_state_text = if paused {
+                "PAUSED".to_string()
+            } else {
+                format!("{}x", sim_speed)
+            };
+
+            render::render_status_text(
+                &mut canvas,
+                &mut sprite_renderer,
+                &sim_state_text,
+                colors::BASE,
+                colors::WHITE,
+                0, // very top row
             );
 
             // overlay build menus if not in playing state

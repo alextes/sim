@@ -12,22 +12,22 @@ pub fn render_debug_overlay(
     fps: u32,
     zoom: f64,
 ) {
-    // First line: SUPS and FPS
+    // Offset by 1 row to leave the top-most line for sim state
     render_status_text(
         canvas,
         renderer,
         &format!("SUPS {} FPS {}", sups, fps),
         colors::BASE,
         colors::WHITE,
-        0,
+        1,
     );
-    // Second line: zoom
+    // Second line (offset further)
     render_status_text(
         canvas,
         renderer,
         &format!("zoom: {:.2}", zoom),
         colors::BASE,
         colors::WHITE,
-        1,
+        2,
     );
 }
