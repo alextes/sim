@@ -1,4 +1,5 @@
-use crate::render::{Viewport, TILE_PIXEL_WIDTH};
+use crate::input; // Import the new input module
+use crate::render::Viewport;
 use crate::world::World;
 use crate::GameState;
 use sdl2::event::Event;
@@ -13,7 +14,7 @@ pub fn handle_playing_input(
     track_mode: &mut bool,
     game_state_guard: &mut std::sync::MutexGuard<'_, GameState>,
 ) -> Option<super::Signal> {
-    // Return Signal only if quitting
+    // return Signal only if quitting
     match event {
         Event::Quit { .. } => return Some(super::Signal::Quit),
         Event::KeyDown {
@@ -46,34 +47,29 @@ pub fn handle_playing_input(
         } => {
             if !world.entities.is_empty() {
                 *entity_focus_index = (*entity_focus_index + 1) % world.entities.len();
-                // Don't center viewport here if tracking, main loop handles it
-                if !*track_mode {
-                    let entity_id = world.entities[*entity_focus_index];
-                    if let Some(loc) = world.get_location(entity_id) {
-                        location_viewport.center_on_entity(loc.x, loc.y);
-                    }
-                }
             }
         }
         Event::KeyDown {
             keycode: Some(Keycode::B),
             ..
         } => {
-            // Check if currently selected entity can have buildings
+            // check if currently selected entity can have buildings
             if !world.entities.is_empty() {
                 let selected_id = world.entities[*entity_focus_index];
                 if world.buildings.contains_key(&selected_id) {
                     **game_state_guard = GameState::BuildMenuSelectingSlotType;
                 } else {
-                    // Optionally provide feedback
+                    // optionally provide feedback
                     // **game_state_guard = GameState::BuildMenuError { message: "Cannot build on this entity".to_string() };
                 }
             }
         }
+        // to use keypad plus
         Event::KeyDown {
             keycode: Some(Keycode::Plus),
             ..
         } => location_viewport.zoom_in(),
+        // to use laptop plus
         Event::KeyDown {
             keycode: Some(Keycode::Equals),
             keymod,
@@ -88,48 +84,13 @@ pub fn handle_playing_input(
             ..
         } => location_viewport.zoom_out(),
         Event::MouseButtonDown { x, y, .. } => {
-            // Target pixel dimensions of the viewport on screen.
-            let target_screen_pixel_width = location_viewport.screen_pixel_width;
-            let target_screen_pixel_height = location_viewport.screen_pixel_height;
-
-            // Actual pixel size one full world tile would take on screen, as a float.
-            let world_tile_actual_pixel_size_on_screen =
-                (TILE_PIXEL_WIDTH as f64 * location_viewport.zoom).max(0.001);
-
-            // World coordinates (floating point) of the top-left pixel (0,0) of our viewport rendering area.
-            let view_world_origin_x = location_viewport.anchor.x
-                - (target_screen_pixel_width as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
-            let view_world_origin_y = location_viewport.anchor.y
-                - (target_screen_pixel_height as f64 / 2.0)
-                    / world_tile_actual_pixel_size_on_screen;
-
-            // Clicked world coordinate (float)
-            // x and y are screen pixel coordinates from the event.
-            let clicked_world_x_float =
-                view_world_origin_x + (*x as f64 / world_tile_actual_pixel_size_on_screen);
-            let clicked_world_y_float =
-                view_world_origin_y + (*y as f64 / world_tile_actual_pixel_size_on_screen);
-
-            // Integer world tile coordinate containing the clicked point.
-            let clicked_world_tile_x_i32 = clicked_world_x_float.floor() as i32;
-            let clicked_world_tile_y_i32 = clicked_world_y_float.floor() as i32;
-
-            if let Some((idx, _)) = world.iter_entities().enumerate().find(|(_, id)| {
-                world.get_location(*id).is_some_and(|loc| {
-                    loc.x == clicked_world_tile_x_i32 && loc.y == clicked_world_tile_y_i32
-                })
-            }) {
+            if let Some(idx) =
+                input::get_entity_index_at_screen_coords(*x, *y, location_viewport, world)
+            {
                 *entity_focus_index = idx;
-                // Don't center viewport here if tracking
-                if !*track_mode {
-                    let entity_id = world.entities[idx];
-                    if let Some(loc) = world.get_location(entity_id) {
-                        location_viewport.center_on_entity(loc.x, loc.y);
-                    }
-                }
             }
         }
-        _ => {} // Ignore other events in Playing state
+        _ => {} // ignore other events in Playing state
     }
-    None // No quit signal
+    None // no quit signal
 }

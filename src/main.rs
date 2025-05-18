@@ -4,6 +4,7 @@ mod debug;
 mod event_handling;
 mod game_loop;
 mod initialization;
+mod input;
 mod interface;
 mod location;
 mod render;
