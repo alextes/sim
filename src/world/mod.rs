@@ -106,7 +106,7 @@ impl World {
     }
 
     /// Get the glyph used for rendering this entity.
-    pub fn get_render_glyph(&self, entity: EntityId) -> Option<char> {
-        self.render_glyphs.get(&entity).copied()
+    pub fn get_render_glyph(&self, entity: EntityId) -> char {
+        self.render_glyphs.get(&entity).copied().unwrap_or('?')
     }
 }

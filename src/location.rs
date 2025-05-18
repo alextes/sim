@@ -9,6 +9,12 @@ pub struct Point {
     pub y: i32,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct PointF64 {
+    pub x: f64,
+    pub y: f64,
+}
+
 /// Manages static and orbital positions for entities, with nested anchoring support.
 #[derive(Debug, Default)]
 pub struct LocationSystem {

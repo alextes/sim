@@ -191,7 +191,7 @@ pub fn main() {
                         &world,
                         selected_entity,
                         track_mode,
-                        location_viewport.height,
+                        location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
                     );
                 }
                 GameState::BuildMenuSelectingSlotType => {
