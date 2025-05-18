@@ -212,48 +212,9 @@ pub fn main() {
                 selected_entity,
                 controls.track_mode,
                 location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
+                &controls,
+                game_state.clone(),
             );
-
-            // --- simulation state overlay (upper-right) ---
-            let sim_state_text = if controls.paused {
-                "PAUSED".to_string()
-            } else {
-                format!("{}x", controls.sim_speed)
-            };
-
-            render::render_status_text(
-                &mut canvas,
-                &mut sprite_renderer,
-                &sim_state_text,
-                colors::BASE,
-                colors::WHITE,
-                0, // very top row
-            );
-
-            // overlay build menus if not in playing state
-            match &*game_state.lock().unwrap() {
-                GameState::BuildMenuSelectingSlotType => {
-                    interface::build::render_build_slot_type_menu(
-                        &mut canvas,
-                        &mut sprite_renderer,
-                    );
-                }
-                GameState::BuildMenuSelectingBuilding { slot_type } => {
-                    interface::build::render_build_building_menu(
-                        &mut canvas,
-                        &mut sprite_renderer,
-                        *slot_type,
-                    );
-                }
-                GameState::BuildMenuError { message } => {
-                    interface::build::render_build_error_menu(
-                        &mut canvas,
-                        &mut sprite_renderer,
-                        message,
-                    );
-                }
-                _ => {} // GameState::Playing already handled
-            }
 
             canvas.present();
         }

@@ -4,6 +4,8 @@ use crate::render::{tileset, SpriteSheetRenderer};
 use crate::world::{EntityId, World};
 use sdl2::render::Canvas;
 use sdl2::video::Window;
+use crate::{ControlState, GameState};
+use std::sync::{Arc, Mutex};
 
 pub mod build;
 
@@ -61,6 +63,8 @@ pub fn render_interface(
     selected: Option<EntityId>,
     track_mode: bool,
     viewport_height_tiles: u32,
+    controls: &ControlState,
+    game_state: Arc<Mutex<GameState>>,
 ) {
     // --- top-left: resources (two lines) ---
     let (energy_rate, metal_rate) = world.resources.calculate_rates(&world.buildings);
@@ -70,6 +74,22 @@ pub fn render_interface(
 
     let energy_text = format!("nrg: {:.1} (+{:.1}/s)", energy, energy_rate);
     let metal_text = format!("mtl: {:.1} (+{:.1}/s)", metal, metal_rate);
+
+    // Determine window dimensions for resources
+    let resource_text_max_len = energy_text.len().max(metal_text.len()) as u8;
+    let resource_window_width_tiles = resource_text_max_len + 2; // 1 tile padding on each side
+    let resource_window_height_tiles = 4; // 2 lines of text + 1 tile padding top/bottom
+
+    // Draw background for resources
+    canvas.set_draw_color(colors::BLACK);
+    canvas
+        .fill_rect(tileset::make_multi_tile_rect(
+            0, // x_tile = 0
+            0, // y_tile = 0
+            resource_window_width_tiles,
+            resource_window_height_tiles,
+        ))
+        .unwrap();
 
     render_text_at(
         canvas,
@@ -89,6 +109,49 @@ pub fn render_interface(
         colors::LGRAY, // metal color
         1,             // x_tile = 1
         2,             // y_tile = 2
+    );
+
+    // --- simulation state overlay (upper-right) ---
+    let sim_state_text = if controls.paused {
+        "PAUSED".to_string()
+    } else {
+        format!("{}x", controls.sim_speed)
+    };
+
+    // Determine window dimensions for sim speed
+    let sim_speed_text_len = sim_state_text.len() as u8;
+    let sim_speed_window_width_tiles = sim_speed_text_len + 2; // 1 tile padding on each side
+    let sim_speed_window_height_tiles = 3; // 1 line of text + 1 tile padding top/bottom
+
+    // Position: upper-right
+    // Assuming viewport_width_tiles can be derived or is fixed for now
+    // Let's use a placeholder for viewport_width_tiles and adjust if needed.
+    // A common approach is to get it from canvas.output_size()
+    let (screen_width_pixels, _) = canvas.output_size().unwrap_or((800,600)); // Default if fails
+    let viewport_width_tiles = screen_width_pixels / crate::render::TILE_PIXEL_WIDTH as u32;
+
+    let sim_speed_window_x = viewport_width_tiles.saturating_sub(sim_speed_window_width_tiles as u32) as u8;
+    let sim_speed_window_y = 0; // y_tile = 0
+
+    // Draw background for sim speed
+    canvas.set_draw_color(colors::BLACK);
+    canvas
+        .fill_rect(tileset::make_multi_tile_rect(
+            sim_speed_window_x,
+            sim_speed_window_y,
+            sim_speed_window_width_tiles,
+            sim_speed_window_height_tiles,
+        ))
+        .unwrap();
+
+    render_text_at(
+        canvas,
+        renderer,
+        &sim_state_text,
+        colors::BLACK, // Background for text itself (transparent due to fill_rect above)
+        colors::WHITE,
+        sim_speed_window_x + 1, // x_tile, with padding
+        sim_speed_window_y + 1, // y_tile, with padding
     );
 
     // --- selection panel ---
