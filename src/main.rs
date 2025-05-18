@@ -152,47 +152,50 @@ pub fn main() {
             canvas.set_draw_color(colors::BASE);
             canvas.clear();
 
-            match &*game_state.lock().unwrap() {
-                GameState::Playing => {
-                    render::render_viewport(
-                        &mut canvas,
-                        &mut sprite_renderer,
-                        &world,
-                        &location_viewport,
-                        debug_enabled,
-                    );
+            // always render the world viewport first
+            render::render_viewport(
+                &mut canvas,
+                &mut sprite_renderer,
+                &world,
+                &location_viewport,
+                debug_enabled,
+            );
 
-                    if debug_enabled {
-                        render_debug_overlay(
-                            &mut canvas,
-                            &mut sprite_renderer,
-                            simulation_units_per_second,
-                            fps_per_second,
-                            location_viewport.zoom,
-                        );
-                    }
+            if debug_enabled {
+                render_debug_overlay(
+                    &mut canvas,
+                    &mut sprite_renderer,
+                    simulation_units_per_second,
+                    fps_per_second,
+                    location_viewport.zoom,
+                );
+            }
 
-                    if track_mode && !world.entities.is_empty() {
-                        let entity_id = world.entities[entity_focus_index];
-                        if let Some(loc) = world.get_location(entity_id) {
-                            location_viewport.center_on_entity(loc.x, loc.y);
-                        }
-                    }
-
-                    let selected_entity = if !world.entities.is_empty() {
-                        Some(world.entities[entity_focus_index])
-                    } else {
-                        None
-                    };
-                    render_interface(
-                        &mut canvas,
-                        &mut sprite_renderer,
-                        &world,
-                        selected_entity,
-                        track_mode,
-                        location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
-                    );
+            // tracking camera update (only affects viewport positioning, so we compute before interface)
+            if track_mode && !world.entities.is_empty() {
+                let entity_id = world.entities[entity_focus_index];
+                if let Some(loc) = world.get_location(entity_id) {
+                    location_viewport.center_on_entity(loc.x, loc.y);
                 }
+            }
+
+            // selection panel bottom-left
+            let selected_entity = if !world.entities.is_empty() {
+                Some(world.entities[entity_focus_index])
+            } else {
+                None
+            };
+            render_interface(
+                &mut canvas,
+                &mut sprite_renderer,
+                &world,
+                selected_entity,
+                track_mode,
+                location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
+            );
+
+            // overlay build menus if not in playing state
+            match &*game_state.lock().unwrap() {
                 GameState::BuildMenuSelectingSlotType => {
                     interface::build::render_build_slot_type_menu(
                         &mut canvas,
@@ -213,6 +216,7 @@ pub fn main() {
                         message,
                     );
                 }
+                _ => {} // GameState::Playing already handled
             }
 
             canvas.present();

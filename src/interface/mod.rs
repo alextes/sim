@@ -91,73 +91,64 @@ pub fn render_interface(
         2,             // y_tile = 2
     );
 
-    // current line offset for rendering subsequent UI elements
-    let mut y_offset = 3; // start below resources + margin
+    // --- selection panel ---
 
     // --- bottom-left: selected entity name (if any) ---
     if let Some(id) = selected {
         if let Some(name) = world.get_entity_name(id) {
-            // --- selection & tracking --- start from bottom and go up
-            let bottom_y = viewport_height_tiles.saturating_sub(2) as u8;
+            // collect all lines we want to show inside the window
+            let mut lines: Vec<String> = Vec::new();
+            if track_mode {
+                lines.push("tracking".to_string());
+            }
+            lines.push(format!("selected: {}", name));
 
-            let selected_text = format!("selected: {}", name);
-            render_text_at(
-                canvas,
-                renderer,
-                &selected_text,
-                colors::BASE,
-                colors::WHITE,
-                1, // x_tile = 1
-                bottom_y,
-            );
+            // gather building slot information
+            if let Some(buildings) = world.buildings.get(&id) {
+                for i in 0..ORBITAL_SLOTS {
+                    lines.push(format_slot("O", i, buildings.orbital[i]));
+                }
+                if buildings.has_ground_slots {
+                    for i in 0..GROUND_SLOTS {
+                        lines.push(format_slot("G", i, buildings.ground[i]));
+                    }
+                }
+            }
 
-            // render tracking status above selection
-            if track_mode && bottom_y > 0 {
-                let tracking_text = "tracking";
+            // determine window dimensions in tiles
+            let max_line_len = lines.iter().map(|l| l.len()).max().unwrap_or(0) as u8;
+            let window_width_tiles = max_line_len + 2; // 1 tile padding on each side
+            let window_height_tiles = lines.len() as u8 + 2; // 1 tile padding top + bottom
+
+            // position: lower-left, 1 tile above bottom of screen
+            let window_x: u8 = 1;
+            let bottom_margin_tiles: u32 = 1;
+            let window_y: u8 = viewport_height_tiles
+                .saturating_sub(window_height_tiles as u32 + bottom_margin_tiles)
+                as u8;
+
+            // draw the window background once
+            canvas.set_draw_color(colors::BLACK);
+            canvas
+                .fill_rect(tileset::make_multi_tile_rect(
+                    window_x,
+                    window_y,
+                    window_width_tiles,
+                    window_height_tiles,
+                ))
+                .unwrap();
+
+            // render each line inside, starting at (window_x + 1, window_y + 1)
+            for (i, line) in lines.iter().enumerate() {
                 render_text_at(
                     canvas,
                     renderer,
-                    tracking_text,
-                    colors::BASE,
+                    line,
+                    colors::BLACK,
                     colors::WHITE,
-                    1, // x_tile = 1
-                    bottom_y - 1,
+                    window_x + 1,
+                    window_y + 1 + i as u8,
                 );
-            }
-
-            // --- building slots --- render below resources
-            if let Some(buildings) = world.buildings.get(&id) {
-                // orbital slots
-                for i in 0..ORBITAL_SLOTS {
-                    let slot_text = format_slot("O", i, buildings.orbital[i]);
-                    render_text_at(
-                        canvas,
-                        renderer,
-                        &slot_text,
-                        colors::BASE,
-                        colors::WHITE,
-                        1, // x_tile = 1
-                        y_offset,
-                    );
-                    y_offset += 1;
-                }
-
-                // ground slots (if they exist)
-                if buildings.has_ground_slots {
-                    for i in 0..GROUND_SLOTS {
-                        let slot_text = format_slot("G", i, buildings.ground[i]);
-                        render_text_at(
-                            canvas,
-                            renderer,
-                            &slot_text,
-                            colors::BASE,
-                            colors::WHITE,
-                            1, // x_tile = 1
-                            y_offset,
-                        );
-                        y_offset += 1;
-                    }
-                }
             }
         }
     }
