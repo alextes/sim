@@ -19,7 +19,7 @@ pub struct World {
     /// glyphs to use when rendering each entity
     render_glyphs: HashMap<EntityId, char>,
     /// human-readable names for entities
-    entity_names: HashMap<EntityId, &'static str>,
+    entity_names: HashMap<EntityId, String>,
     /// location system managing static and orbital positions
     locations: LocationSystem,
     /// Global resource counters for the player
@@ -30,7 +30,7 @@ pub struct World {
 
 impl World {
     /// Create a static entity at a fixed point (e.g. a star).
-    pub fn spawn_star(&mut self, name: &'static str, position: Point) -> EntityId {
+    pub fn spawn_star(&mut self, name: String, position: Point) -> EntityId {
         let id = self.next_entity_id;
         self.next_entity_id += 1;
         self.entities.push(id);
@@ -44,7 +44,7 @@ impl World {
     /// Create an orbiting entity (e.g. planet or moon) around an existing entity.
     pub fn spawn_planet(
         &mut self,
-        name: &'static str,
+        name: String,
         anchor: EntityId,
         radius: f64,
         initial_angle: f64,
@@ -64,7 +64,7 @@ impl World {
     /// Create an orbiting moon, using the 'm' glyph.
     pub fn spawn_moon(
         &mut self,
-        name: &'static str,
+        name: String,
         anchor: EntityId,
         radius: f64,
         initial_angle: f64,
@@ -101,8 +101,8 @@ impl World {
     }
 
     /// Get the human-readable name of an entity, if any.
-    pub fn get_entity_name(&self, entity: EntityId) -> Option<&'static str> {
-        self.entity_names.get(&entity).copied()
+    pub fn get_entity_name(&self, entity: EntityId) -> Option<String> {
+        self.entity_names.get(&entity).cloned()
     }
 
     /// Get the glyph used for rendering this entity.

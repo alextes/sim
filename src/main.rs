@@ -6,25 +6,23 @@ mod initialization;
 mod input;
 mod interface;
 mod location;
+mod map_generation;
 mod render;
 mod world;
 
-use crate::buildings::{BuildingType, SlotType};
-use event_handling::ControlState;
-use game_loop::GameLoop;
-use interface::render_interface;
-use interface::DebugRenderInfo;
-use location::Point;
-use render::{tileset::Tileset, SpriteSheetRenderer, Viewport};
 use sdl2::image::LoadTexture;
-use std::f64::consts::TAU;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tracing::trace;
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
+
+use crate::buildings::SlotType;
+use event_handling::ControlState;
+use game_loop::GameLoop;
+use interface::DebugRenderInfo;
+use render::{tileset::Tileset, SpriteSheetRenderer, Viewport};
 use world::World;
 
 /// Fixed simulation timestep (100Hz)
@@ -69,33 +67,14 @@ pub fn main() {
     let tileset = Tileset::new();
 
     let mut world = World::default();
-    // sol at center
-    let sol_id = world.spawn_star("sol", Point { x: 0, y: 0 });
-    // earth: complete one orbit (2π) in 10 seconds → angular_velocity = TAU / 10
-    let earth_id = world.spawn_planet("earth", sol_id, 16.0, 0.0, TAU / 60.0);
-    // moon: faster orbit around earth, e.g. complete in 5 seconds
-    let _moon_id = world.spawn_moon("moon", earth_id, 4.0, 0.0, TAU / 5.0);
+    let mut rng = rand::rng();
 
-    // Pre-build on Earth
-    if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
-        // Add a mine to the first available ground slot
-        if let Some(ground_slot) = earth_buildings.find_first_empty_slot(SlotType::Ground) {
-            earth_buildings
-                .build(SlotType::Ground, ground_slot, BuildingType::Mine)
-                .expect("Failed to build initial mine");
-        }
-        // Add a solar panel to the first available orbital slot
-        if let Some(orbital_slot) = earth_buildings.find_first_empty_slot(SlotType::Orbital) {
-            earth_buildings
-                .build(SlotType::Orbital, orbital_slot, BuildingType::SolarPanel)
-                .expect("Failed to build initial solar panel");
-        }
-    }
+    map_generation::populate_initial_galaxy(&mut world, &mut rng);
 
     let mut location_viewport = Viewport::default();
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut game_loop = GameLoop::new(SIMULATION_DT, RENDER_DT);
-    // Clear any simulation backlog from setup time
+    // clear any simulation backlog from setup time
     let _ = game_loop.step();
 
     let mut last_loop_start = Instant::now();
@@ -121,6 +100,7 @@ pub fn main() {
         let now = Instant::now();
         let time_since_last_second_check = now.duration_since(last_loop_start);
 
+        // Create SpriteSheetRenderer here again
         let mut sprite_renderer = SpriteSheetRenderer {
             tileset: &tileset,
             texture: &mut tiles_texture,
@@ -162,7 +142,6 @@ pub fn main() {
             simulation_units_counter = 0;
             fps_per_second = fps_counter;
             fps_counter = 0;
-
             last_loop_start = now;
         }
 
@@ -170,20 +149,7 @@ pub fn main() {
             trace!("rendering 1 frame");
             fps_counter += 1;
 
-            // clear the canvas *before* deciding what to render
-            canvas.set_draw_color(colors::BASE);
-            canvas.clear();
-
-            // always render the world viewport first
-            render::render_viewport(
-                &mut canvas,
-                &mut sprite_renderer,
-                &world,
-                &location_viewport,
-                controls.debug_enabled,
-            );
-
-            // tracking camera update (only affects viewport positioning, so we compute before interface)
+            // Tracking camera update
             if controls.track_mode
                 && !world.entities.is_empty()
                 && controls.entity_focus_index < world.entities.len()
@@ -194,61 +160,26 @@ pub fn main() {
                 }
             }
 
-            // selection panel bottom-left
-            let selected_entity = if !world.entities.is_empty()
-                && controls.entity_focus_index < world.entities.len()
-            {
-                Some(world.entities[controls.entity_focus_index])
+            let current_game_state = game_state.lock().unwrap().clone();
+            let debug_render_info = if controls.debug_enabled {
+                Some(DebugRenderInfo {
+                    sups: simulation_units_per_second,
+                    fps: fps_per_second,
+                    zoom: location_viewport.zoom,
+                })
             } else {
                 None
             };
-            render_interface(
+
+            render::render_game_frame(
                 &mut canvas,
-                &mut sprite_renderer,
+                &mut sprite_renderer, // Pass the created renderer
                 &world,
-                selected_entity,
-                location_viewport.screen_pixel_height / (render::TILE_PIXEL_WIDTH as u32),
+                &location_viewport,
                 &controls,
-                if controls.debug_enabled {
-                    Some(DebugRenderInfo {
-                        sups: simulation_units_per_second,
-                        fps: fps_per_second,
-                        zoom: location_viewport.zoom,
-                    })
-                } else {
-                    None
-                },
+                &current_game_state,
+                debug_render_info,
             );
-
-            // overlay build menus if not in playing state
-            match &*game_state.lock().unwrap() {
-                GameState::GameMenu => {
-                    interface::game_menu::render_game_menu(&mut canvas, &mut sprite_renderer);
-                }
-                GameState::BuildMenuSelectingSlotType => {
-                    interface::build::render_build_slot_type_menu(
-                        &mut canvas,
-                        &mut sprite_renderer,
-                    );
-                }
-                GameState::BuildMenuSelectingBuilding { slot_type } => {
-                    interface::build::render_build_building_menu(
-                        &mut canvas,
-                        &mut sprite_renderer,
-                        *slot_type,
-                    );
-                }
-                GameState::BuildMenuError { message } => {
-                    interface::build::render_build_error_menu(
-                        &mut canvas,
-                        &mut sprite_renderer,
-                        message,
-                    );
-                }
-                GameState::Playing => {} // GameState::Playing already handled or no overlay needed
-            }
-
-            canvas.present();
         }
         let next_sim = game_loop.last_update + SIMULATION_DT;
         let next_rdr = game_loop.last_render + RENDER_DT;
