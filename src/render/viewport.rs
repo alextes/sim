@@ -7,10 +7,9 @@ use crate::colors;
 use crate::location::PointF64;
 use crate::world::World;
 
-// Import from parent module (src/render/mod.rs)
 use super::{SpriteSheetRenderer, TILE_PIXEL_WIDTH};
 
-pub fn render_viewport(
+pub fn render_world_in_viewport(
     canvas: &mut Canvas<Window>,
     renderer: &mut SpriteSheetRenderer,
     world: &World,
@@ -49,6 +48,24 @@ pub fn render_viewport(
     // Pre-calculate the on-screen_render_width/height for each tile for this frame, ensuring it's at least 1 pixel.
     let tile_on_screen_render_w = world_tile_actual_pixel_size_on_screen.round().max(1.0) as u32;
     let tile_on_screen_render_h = world_tile_actual_pixel_size_on_screen.round().max(1.0) as u32;
+
+    // draw star lanes
+    canvas.set_draw_color(colors::LGRAY);
+    for &(a, b) in world.iter_lanes() {
+        if let (Some(pos_a), Some(pos_b)) = (world.get_location(a), world.get_location(b)) {
+            let ax = (pos_a.x as f64 + 0.5 - view_world_origin_x)
+                * world_tile_actual_pixel_size_on_screen;
+            let ay = (pos_a.y as f64 + 0.5 - view_world_origin_y)
+                * world_tile_actual_pixel_size_on_screen;
+            let bx = (pos_b.x as f64 + 0.5 - view_world_origin_x)
+                * world_tile_actual_pixel_size_on_screen;
+            let by = (pos_b.y as f64 + 0.5 - view_world_origin_y)
+                * world_tile_actual_pixel_size_on_screen;
+            let p1 = sdl2::rect::Point::new(ax.round() as i32, ay.round() as i32);
+            let p2 = sdl2::rect::Point::new(bx.round() as i32, by.round() as i32);
+            let _ = canvas.draw_line(p1, p2);
+        }
+    }
 
     // Iterate over entities once
     for entity_id in world.iter_entities() {

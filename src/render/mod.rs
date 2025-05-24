@@ -12,7 +12,7 @@ use crate::world::World;
 use crate::GameState;
 
 // Re-export key items from the viewport module
-pub use viewport::{render_viewport, Viewport};
+pub use viewport::{render_world_in_viewport, Viewport};
 
 pub const TILE_PIXEL_WIDTH: u8 = 9;
 
@@ -33,8 +33,8 @@ pub fn render_game_frame<'t>(
     canvas.set_draw_color(colors::BASE);
     canvas.clear();
 
-    // render the main game viewport
-    render_viewport(
+    // render the main game world
+    render_world_in_viewport(
         canvas,
         sprite_renderer,
         world,

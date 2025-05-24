@@ -50,4 +50,7 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
     }
 
     add_sol_system(world);
+
+    // generate visual star lanes between stars within threshold distance (e.g., 40)
+    world.generate_star_lanes(40);
 }
