@@ -59,7 +59,7 @@ pub fn main() {
     let (sdl_context, mut canvas, texture_creator) = initialization::setup_sdl();
 
     let mut tiles_texture = texture_creator
-        .load_texture(Path::new("res/taffer.png"))
+        .load_texture(Path::new("res/taffer_9.png"))
         .unwrap();
 
     debug!("tiles texture loaded");
