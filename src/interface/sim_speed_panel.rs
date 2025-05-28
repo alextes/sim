@@ -10,7 +10,7 @@ use super::{
 
 pub fn render_sim_speed_panel(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     sim_speed: u32,
     paused: bool,
     top_y_anchor: u8,

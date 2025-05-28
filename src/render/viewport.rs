@@ -11,7 +11,7 @@ use super::{SpriteSheetRenderer, TILE_PIXEL_WIDTH};
 
 pub fn render_world_in_viewport(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     world: &World,
     viewport: &Viewport,
     debug_enabled: bool,
@@ -102,13 +102,15 @@ pub fn render_world_in_viewport(
                     tile_on_screen_render_h,
                 );
 
-                renderer
-                    .texture
-                    .set_color_mod(colors::BLUE.r, colors::BLUE.g, colors::BLUE.b);
+                renderer.texture.borrow_mut().set_color_mod(
+                    colors::BLUE.r,
+                    colors::BLUE.g,
+                    colors::BLUE.b,
+                );
 
                 canvas
                     .copy(
-                        renderer.texture,
+                        &renderer.texture.borrow(),
                         Some(src_rect_in_tileset),
                         Some(dest_rect_on_screen),
                     )

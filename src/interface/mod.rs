@@ -23,7 +23,7 @@ pub struct DebugRenderInfo {
 /// allows specifying the x position instead of always right-aligning.
 pub fn render_text_at(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     text: &str,
     background_color: sdl2::pixels::Color,
     foreground_color: sdl2::pixels::Color,
@@ -41,14 +41,18 @@ pub fn render_text_at(
         ))
         .unwrap();
 
-    renderer
-        .texture
-        .set_color_mod(foreground_color.r, foreground_color.g, foreground_color.b);
+    renderer.texture.borrow_mut().set_color_mod(
+        foreground_color.r,
+        foreground_color.g,
+        foreground_color.b,
+    );
 
     for (i, ch) in text.chars().enumerate() {
         let src = renderer.tileset.get_rect(ch);
         let dst = tileset::make_tile_rect(x_tile + i as u8, y_tile);
-        canvas.copy(renderer.texture, Some(src), Some(dst)).ok();
+        canvas
+            .copy(&renderer.texture.borrow(), Some(src), Some(dst))
+            .ok();
     }
 }
 
@@ -62,7 +66,7 @@ pub const SCREEN_EDGE_MARGIN: u8 = 1; // general margin from the absolute screen
 /// Also renders debug overlay if enabled.
 pub fn render_interface(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     world: &World,
     selected: Option<EntityId>,
     viewport_height_tiles: u32,
@@ -120,7 +124,7 @@ pub fn render_interface(
 // Made pub(super) to be accessible by submodules like build and pause_menu.
 pub(super) fn draw_centered_window(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     lines: &[(String, sdl2::pixels::Color)],
 ) {
     const PADDING: u8 = 1; // 1 tile padding around text content, inside the panel

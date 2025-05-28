@@ -12,7 +12,7 @@ use super::{
 /// Renders debug overlay in a panel: simulation updates/sec, frames/sec, and zoom.
 pub fn render_debug_overlay(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     sups: u64,
     fps: u32,
     zoom: f64,

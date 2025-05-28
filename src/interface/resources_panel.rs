@@ -9,7 +9,7 @@ use super::{render_text_at, PANEL_BACKGROUND_COLOR, PANEL_BORDER_COLOR};
 
 pub fn render_resources_panel(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     world: &World,
 ) {
     // --- top-left: resources (two lines) ---

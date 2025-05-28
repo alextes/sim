@@ -23,7 +23,7 @@ fn format_slot(prefix: &str, index: usize, slot: Option<BuildingType>) -> String
 
 pub fn render_selected_object_panel(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     world: &World,
     selected: Option<EntityId>,
     track_mode: bool,

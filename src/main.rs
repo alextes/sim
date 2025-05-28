@@ -10,11 +10,9 @@ mod map_generation;
 mod render;
 mod world;
 
-use sdl2::image::LoadTexture;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tracing::{debug, info, trace};
+use tracing::{info, trace};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
@@ -22,7 +20,7 @@ use crate::buildings::SlotType;
 use event_handling::ControlState;
 use game_loop::GameLoop;
 use interface::DebugRenderInfo;
-use render::{tileset::Tileset, SpriteSheetRenderer, Viewport};
+use render::{SpriteSheetRenderer, Viewport};
 use world::World;
 
 /// Fixed simulation timestep (100Hz)
@@ -58,13 +56,7 @@ pub fn main() {
 
     let (sdl_context, mut canvas, texture_creator) = initialization::setup_sdl();
 
-    let mut tiles_texture = texture_creator
-        .load_texture(Path::new("res/taffer_9.png"))
-        .unwrap();
-
-    debug!("tiles texture loaded");
-
-    let tileset = Tileset::new();
+    let sprite_renderer = SpriteSheetRenderer::new(&texture_creator);
 
     let mut world = World::default();
     let mut rng = rand::rng();
@@ -99,12 +91,6 @@ pub fn main() {
     'running: loop {
         let now = Instant::now();
         let time_since_last_second_check = now.duration_since(last_loop_start);
-
-        // Create SpriteSheetRenderer here again
-        let mut sprite_renderer = SpriteSheetRenderer {
-            tileset: &tileset,
-            texture: &mut tiles_texture,
-        };
 
         // when paused, prevent simulation backlog from accumulating
         if controls.paused {
@@ -173,7 +159,7 @@ pub fn main() {
 
             render::render_game_frame(
                 &mut canvas,
-                &mut sprite_renderer, // Pass the created renderer
+                &sprite_renderer,
                 &world,
                 &location_viewport,
                 &controls,

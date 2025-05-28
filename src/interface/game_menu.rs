@@ -4,7 +4,7 @@ use sdl2::render::Canvas;
 use sdl2::video::Window;
 
 /// renders the game menu.
-pub fn render_game_menu(canvas: &mut Canvas<Window>, renderer: &mut SpriteSheetRenderer) {
+pub fn render_game_menu(canvas: &mut Canvas<Window>, renderer: &SpriteSheetRenderer) {
     let lines = vec![
         ("game menu".to_string(), colors::WHITE), // updated title
         ("".to_string(), colors::BLACK),

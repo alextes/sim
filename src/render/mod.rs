@@ -1,8 +1,11 @@
 pub mod tileset;
 pub mod viewport;
 
-use sdl2::render::{Canvas, Texture};
-use sdl2::video::Window;
+use sdl2::image::LoadTexture;
+use sdl2::render::{Canvas, Texture, TextureCreator};
+use sdl2::video::{Window, WindowContext};
+use std::cell::RefCell;
+use std::path::Path;
 
 use crate::colors;
 use crate::event_handling::ControlState;
@@ -14,16 +17,32 @@ use crate::GameState;
 // Re-export key items from the viewport module
 pub use viewport::{render_world_in_viewport, Viewport};
 
-pub const TILE_PIXEL_WIDTH: u8 = 9;
+pub const TILE_PIXEL_WIDTH: u8 = 18;
 
-pub struct SpriteSheetRenderer<'a, 't> {
-    pub tileset: &'a Tileset,
-    pub texture: &'a mut Texture<'t>,
+pub struct SpriteSheetRenderer<'tc> {
+    pub tileset: Tileset,
+    pub texture: RefCell<Texture<'tc>>,
 }
 
-pub fn render_game_frame<'t>(
+impl<'tc> SpriteSheetRenderer<'tc> {
+    pub fn new(texture_creator: &'tc TextureCreator<WindowContext>) -> Self {
+        let texture = texture_creator
+            .load_texture(Path::new("res/taffer_18.png"))
+            .unwrap_or_else(|e| {
+                panic!("failed to load sprite sheet texture: {}", e);
+            });
+        tracing::debug!("sprite sheet texture loaded by spritesheetrenderer");
+
+        Self {
+            tileset: Tileset::new(),
+            texture: RefCell::new(texture),
+        }
+    }
+}
+
+pub fn render_game_frame<'tc>(
     canvas: &mut Canvas<Window>,
-    sprite_renderer: &mut SpriteSheetRenderer<'_, 't>,
+    sprite_renderer: &SpriteSheetRenderer<'tc>,
     world: &World,
     location_viewport: &Viewport,
     controls: &ControlState,

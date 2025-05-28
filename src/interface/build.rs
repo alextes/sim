@@ -6,10 +6,7 @@ use sdl2::video::Window;
 use crate::render::SpriteSheetRenderer;
 
 /// render the menu prompting the user to select a slot type (Ground/Orbital).
-pub fn render_build_slot_type_menu(
-    canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
-) {
+pub fn render_build_slot_type_menu(canvas: &mut Canvas<Window>, renderer: &SpriteSheetRenderer) {
     let lines = vec![
         ("build where?".to_string(), colors::WHITE),
         ("".to_string(), colors::BLACK),
@@ -23,7 +20,7 @@ pub fn render_build_slot_type_menu(
 /// render the menu prompting the user to select a building for the given slot type.
 pub fn render_build_building_menu(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     slot_type: SlotType,
 ) {
     let mut lines: Vec<(String, sdl2::pixels::Color)> = Vec::new();
@@ -49,7 +46,7 @@ pub fn render_build_building_menu(
 /// render a build error message.
 pub fn render_build_error_menu(
     canvas: &mut Canvas<Window>,
-    renderer: &mut SpriteSheetRenderer,
+    renderer: &SpriteSheetRenderer,
     message: &str,
 ) {
     let lines = vec![
