@@ -35,6 +35,19 @@ pub fn handle_events(
     game_state: Arc<Mutex<GameState>>,
 ) -> Signal {
     for event in event_pump.poll_iter() {
+        // handle window resize events directly, as they affect the viewport
+        // and are not directly tied to game logic state.
+        if let Event::Window {
+            win_event: sdl2::event::WindowEvent::Resized(width, height),
+            ..
+        } = event
+        {
+            location_viewport.screen_pixel_width = width as u32;
+            location_viewport.screen_pixel_height = height as u32;
+            // continue to process other events that might be in the queue for this iteration
+            continue;
+        }
+
         // --- global escape handling ---
         if let Event::KeyDown {
             keycode: Some(Keycode::Escape),

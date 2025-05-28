@@ -17,6 +17,7 @@ pub fn setup_sdl() -> (
     let window = video_subsystem
         .window("sim", 576, 576)
         .position_centered()
+        .resizable()
         .build()
         .unwrap();
     debug!("window created");
