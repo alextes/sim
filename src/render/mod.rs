@@ -4,7 +4,7 @@ pub mod viewport;
 use sdl2::image::LoadTexture;
 use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::{Window, WindowContext};
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::path::Path;
 
 use crate::colors;
@@ -37,6 +37,16 @@ impl<'tc> SpriteSheetRenderer<'tc> {
             tileset: Tileset::new(),
             texture: RefCell::new(texture),
         }
+    }
+
+    /// sets the color modulation for the underlying texture.
+    pub fn set_texture_color_mod(&self, r: u8, g: u8, b: u8) {
+        self.texture.borrow_mut().set_color_mod(r, g, b);
+    }
+
+    /// provides an immutable reference to the underlying texture, wrapped in a Ref guard.
+    pub fn texture_ref(&self) -> Ref<Texture<'tc>> {
+        self.texture.borrow()
     }
 }
 

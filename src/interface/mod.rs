@@ -41,17 +41,13 @@ pub fn render_text_at(
         ))
         .unwrap();
 
-    renderer.texture.borrow_mut().set_color_mod(
-        foreground_color.r,
-        foreground_color.g,
-        foreground_color.b,
-    );
+    renderer.set_texture_color_mod(foreground_color.r, foreground_color.g, foreground_color.b);
 
     for (i, ch) in text.chars().enumerate() {
         let src = renderer.tileset.get_rect(ch);
         let dst = tileset::make_tile_rect(x_tile + i as u8, y_tile);
         canvas
-            .copy(&renderer.texture.borrow(), Some(src), Some(dst))
+            .copy(&renderer.texture_ref(), Some(src), Some(dst))
             .ok();
     }
 }

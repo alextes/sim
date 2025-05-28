@@ -102,15 +102,11 @@ pub fn render_world_in_viewport(
                     tile_on_screen_render_h,
                 );
 
-                renderer.texture.borrow_mut().set_color_mod(
-                    colors::BLUE.r,
-                    colors::BLUE.g,
-                    colors::BLUE.b,
-                );
+                renderer.set_texture_color_mod(colors::BLUE.r, colors::BLUE.g, colors::BLUE.b);
 
                 canvas
                     .copy(
-                        &renderer.texture.borrow(),
+                        &renderer.texture_ref(),
                         Some(src_rect_in_tileset),
                         Some(dest_rect_on_screen),
                     )
