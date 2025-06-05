@@ -34,6 +34,7 @@ pub fn handle_events(
     controls: &mut ControlState,
     game_state: Arc<Mutex<GameState>>,
 ) -> Signal {
+    let mouse_pos = (event_pump.mouse_state().x(), event_pump.mouse_state().y());
     for event in event_pump.poll_iter() {
         // handle window resize events directly, as they affect the viewport
         // and are not directly tied to game logic state.
@@ -87,6 +88,7 @@ pub fn handle_events(
                 // that function will decide what to do based on controls.paused.
                 if let Some(signal) = playing::handle_playing_input(
                     &event,
+                    mouse_pos,
                     location_viewport,
                     world,
                     controls,

@@ -174,6 +174,30 @@ impl Default for Viewport {
 }
 
 impl Viewport {
+    pub fn world_tile_pixel_size_on_screen(&self) -> f64 {
+        (TILE_PIXEL_WIDTH as f64 * self.zoom).max(0.001)
+    }
+
+    pub fn screen_to_world_coords(&self, screen_x: i32, screen_y: i32) -> PointF64 {
+        let world_tile_actual_pixel_size_on_screen =
+            (TILE_PIXEL_WIDTH as f64 * self.zoom).max(0.001);
+
+        let view_world_origin_x = self.anchor.x
+            - (self.screen_pixel_width as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
+        let view_world_origin_y = self.anchor.y
+            - (self.screen_pixel_height as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
+
+        let world_x =
+            view_world_origin_x + (screen_x as f64 / world_tile_actual_pixel_size_on_screen);
+        let world_y =
+            view_world_origin_y + (screen_y as f64 / world_tile_actual_pixel_size_on_screen);
+
+        PointF64 {
+            x: world_x,
+            y: world_y,
+        }
+    }
+
     pub fn center_on_entity(&mut self, x: i32, y: i32) {
         self.anchor.x = x as f64;
         self.anchor.y = y as f64;
@@ -181,10 +205,31 @@ impl Viewport {
 
     pub fn zoom_in(&mut self) {
         self.zoom *= 1.2;
+        self.zoom = self.zoom.clamp(0.1, 10.0);
     }
 
     pub fn zoom_out(&mut self) {
         self.zoom /= 1.2;
+        self.zoom = self.zoom.clamp(0.1, 10.0);
+    }
+
+    pub fn zoom_at(&mut self, zoom_factor: f64, mouse_screen_pos: (i32, i32)) {
+        let world_pos_before_zoom =
+            self.screen_to_world_coords(mouse_screen_pos.0, mouse_screen_pos.1);
+
+        self.zoom *= zoom_factor;
+        self.zoom = self.zoom.clamp(0.1, 10.0);
+
+        let new_world_tile_pixel_size = (TILE_PIXEL_WIDTH as f64 * self.zoom).max(0.001);
+        let mouse_offset_from_center_x =
+            mouse_screen_pos.0 as f64 - self.screen_pixel_width as f64 / 2.0;
+        let mouse_offset_from_center_y =
+            mouse_screen_pos.1 as f64 - self.screen_pixel_height as f64 / 2.0;
+
+        self.anchor.x =
+            world_pos_before_zoom.x - mouse_offset_from_center_x / new_world_tile_pixel_size;
+        self.anchor.y =
+            world_pos_before_zoom.y - mouse_offset_from_center_y / new_world_tile_pixel_size;
     }
 }
 

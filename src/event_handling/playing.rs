@@ -7,15 +7,17 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 
-use crate::render::TILE_PIXEL_WIDTH;
-
 pub fn handle_playing_input(
     event: &Event,
+    mouse_pos: (i32, i32),
     location_viewport: &mut Viewport,
     world: &mut World,
     controls: &mut ControlState,
     game_state_guard: &mut std::sync::MutexGuard<'_, GameState>,
 ) -> Option<super::Signal> {
+    const KEY_PAN_WORLD_DISTANCE_AT_ZOOM_1: f64 = 0.25; // The distance to pan in world units when zoom is 1.0
+    let current_pan_amount = KEY_PAN_WORLD_DISTANCE_AT_ZOOM_1 / location_viewport.zoom.max(0.01); // Avoid division by zero or extreme values if zoom is too small
+
     // return Signal only if quitting
     match event {
         Event::Quit { .. } => return Some(super::Signal::Quit),
@@ -30,19 +32,19 @@ pub fn handle_playing_input(
         Event::KeyDown {
             keycode: Some(Keycode::Up),
             ..
-        } => location_viewport.anchor.y -= 0.25,
+        } => location_viewport.anchor.y -= current_pan_amount,
         Event::KeyDown {
             keycode: Some(Keycode::Down),
             ..
-        } => location_viewport.anchor.y += 0.25,
+        } => location_viewport.anchor.y += current_pan_amount,
         Event::KeyDown {
             keycode: Some(Keycode::Left),
             ..
-        } => location_viewport.anchor.x -= 0.25,
+        } => location_viewport.anchor.x -= current_pan_amount,
         Event::KeyDown {
             keycode: Some(Keycode::Right),
             ..
-        } => location_viewport.anchor.x += 0.25,
+        } => location_viewport.anchor.x += current_pan_amount,
         Event::KeyDown {
             keycode: Some(Keycode::Tab),
             ..
@@ -151,7 +153,7 @@ pub fn handle_playing_input(
                     // Scale mouse delta to world coordinates
                     // This logic is similar to what's in src/render/viewport.rs and src/input/mod.rs
                     let world_tile_actual_pixel_size_on_screen =
-                        (TILE_PIXEL_WIDTH as f64 * location_viewport.zoom).max(0.001);
+                        location_viewport.world_tile_pixel_size_on_screen();
 
                     let delta_x_world = delta_x as f64 / world_tile_actual_pixel_size_on_screen;
                     let delta_y_world = delta_y as f64 / world_tile_actual_pixel_size_on_screen;
@@ -161,6 +163,13 @@ pub fn handle_playing_input(
 
                     controls.last_mouse_pos = Some((*x, *y));
                 }
+            }
+        }
+        Event::MouseWheel { y, .. } => {
+            if *y > 0 {
+                location_viewport.zoom_at(1.2, mouse_pos);
+            } else if *y < 0 {
+                location_viewport.zoom_at(1.0 / 1.2, mouse_pos);
             }
         }
         _ => {} // ignore other events in Playing state
