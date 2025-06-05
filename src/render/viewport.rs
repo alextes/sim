@@ -9,97 +9,76 @@ use crate::world::World;
 
 use super::{SpriteSheetRenderer, TILE_PIXEL_WIDTH};
 
-pub fn render_world_in_viewport(
-    canvas: &mut Canvas<Window>,
-    renderer: &SpriteSheetRenderer,
-    world: &World,
-    viewport: &Viewport,
-    debug_enabled: bool,
-) {
-    // Target pixel dimensions of the viewport on screen.
-    let target_screen_pixel_width = viewport.screen_pixel_width;
-    let target_screen_pixel_height = viewport.screen_pixel_height;
+struct ViewportRenderContext {
+    view_world_origin_x: f64,
+    view_world_origin_y: f64,
+    world_tile_actual_pixel_size_on_screen: f64,
+    view_bbox_world_x_min: f64,
+    view_bbox_world_x_max: f64,
+    view_bbox_world_y_min: f64,
+    view_bbox_world_y_max: f64,
+    tile_on_screen_render_w: u32,
+    tile_on_screen_render_h: u32,
+}
 
-    // Actual pixel size one full world tile would take on screen, as a float.
-    // Ensure it's at least a tiny positive value to avoid division by zero.
-    let world_tile_actual_pixel_size_on_screen =
-        (TILE_PIXEL_WIDTH as f64 * viewport.zoom).max(0.001);
-
-    // World coordinates (floating point, e.g., 10.5, 20.3) that align
-    // with the top-left pixel (0,0) of our viewport rendering area.
-    // viewport.anchor is the center of the view in world coordinates.
-    let view_world_origin_x = viewport.anchor.x
-        - (target_screen_pixel_width as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
-    let view_world_origin_y = viewport.anchor.y
-        - (target_screen_pixel_height as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
-
-    // Calculate the width/height of the viewport in terms of world tile units (float)
-    let visible_world_width_in_tiles_float =
-        target_screen_pixel_width as f64 / world_tile_actual_pixel_size_on_screen;
-    let visible_world_height_in_tiles_float =
-        target_screen_pixel_height as f64 / world_tile_actual_pixel_size_on_screen;
-
-    // Bounding box of the viewport in world coordinates (float)
-    let view_bbox_world_x_min = view_world_origin_x;
-    let view_bbox_world_x_max = view_world_origin_x + visible_world_width_in_tiles_float;
-    let view_bbox_world_y_min = view_world_origin_y;
-    let view_bbox_world_y_max = view_world_origin_y + visible_world_height_in_tiles_float;
-
-    // Pre-calculate the on-screen_render_width/height for each tile for this frame, ensuring it's at least 1 pixel.
-    let tile_on_screen_render_w = world_tile_actual_pixel_size_on_screen.round().max(1.0) as u32;
-    let tile_on_screen_render_h = world_tile_actual_pixel_size_on_screen.round().max(1.0) as u32;
-
-    // draw star lanes
-    canvas.set_draw_color(colors::LGRAY);
+fn draw_star_lanes(canvas: &mut Canvas<Window>, world: &World, ctx: &ViewportRenderContext) {
+    let old_blend_mode = canvas.blend_mode();
+    canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+    canvas.set_draw_color(sdl2::pixels::Color::RGBA(
+        colors::LGRAY.r,
+        colors::LGRAY.g,
+        colors::LGRAY.b,
+        30, // subtle alpha
+    ));
     for &(a, b) in world.iter_lanes() {
         if let (Some(pos_a), Some(pos_b)) = (world.get_location(a), world.get_location(b)) {
-            let ax = (pos_a.x as f64 + 0.5 - view_world_origin_x)
-                * world_tile_actual_pixel_size_on_screen;
-            let ay = (pos_a.y as f64 + 0.5 - view_world_origin_y)
-                * world_tile_actual_pixel_size_on_screen;
-            let bx = (pos_b.x as f64 + 0.5 - view_world_origin_x)
-                * world_tile_actual_pixel_size_on_screen;
-            let by = (pos_b.y as f64 + 0.5 - view_world_origin_y)
-                * world_tile_actual_pixel_size_on_screen;
+            let ax = (pos_a.x as f64 + 0.5 - ctx.view_world_origin_x)
+                * ctx.world_tile_actual_pixel_size_on_screen;
+            let ay = (pos_a.y as f64 + 0.5 - ctx.view_world_origin_y)
+                * ctx.world_tile_actual_pixel_size_on_screen;
+            let bx = (pos_b.x as f64 + 0.5 - ctx.view_world_origin_x)
+                * ctx.world_tile_actual_pixel_size_on_screen;
+            let by = (pos_b.y as f64 + 0.5 - ctx.view_world_origin_y)
+                * ctx.world_tile_actual_pixel_size_on_screen;
             let p1 = sdl2::rect::Point::new(ax.round() as i32, ay.round() as i32);
             let p2 = sdl2::rect::Point::new(bx.round() as i32, by.round() as i32);
             let _ = canvas.draw_line(p1, p2);
         }
     }
+    canvas.set_blend_mode(old_blend_mode);
+}
 
-    // Iterate over entities once
+fn draw_entities(
+    canvas: &mut Canvas<Window>,
+    renderer: &SpriteSheetRenderer,
+    world: &World,
+    ctx: &ViewportRenderContext,
+) {
     for entity_id in world.iter_entities() {
         if let Some(pos) = world.get_location(entity_id) {
-            // pos is Point {i32, i32}
             let entity_world_x_f64 = pos.x as f64;
             let entity_world_y_f64 = pos.y as f64;
 
-            // Check if the tile occupied by the entity intersects the viewport's world bounding box
-            // A tile at (pos.x, pos.y) covers the world area [pos.x, pos.x+1) and [pos.y, pos.y+1)
-            if entity_world_x_f64 + 1.0 > view_bbox_world_x_min
-                && entity_world_x_f64 < view_bbox_world_x_max
-                && entity_world_y_f64 + 1.0 > view_bbox_world_y_min
-                && entity_world_y_f64 < view_bbox_world_y_max
+            if entity_world_x_f64 + 1.0 > ctx.view_bbox_world_x_min
+                && entity_world_x_f64 < ctx.view_bbox_world_x_max
+                && entity_world_y_f64 + 1.0 > ctx.view_bbox_world_y_min
+                && entity_world_y_f64 < ctx.view_bbox_world_y_max
             {
                 let glyph = world.get_render_glyph(entity_id);
                 let src_rect_in_tileset = renderer.tileset.get_rect(glyph);
 
-                // Calculate the top-left screen pixel position (float) for this tile.
-                // This calculation remains the same: based on the entity's integer tile position (pos.x, pos.y)
-                // relative to the viewport's float world origin.
-                let screen_pixel_x_float = (entity_world_x_f64 - view_world_origin_x)
-                    * world_tile_actual_pixel_size_on_screen;
-                let screen_pixel_y_float = (entity_world_y_f64 - view_world_origin_y)
-                    * world_tile_actual_pixel_size_on_screen;
+                let screen_pixel_x_float = (entity_world_x_f64 - ctx.view_world_origin_x)
+                    * ctx.world_tile_actual_pixel_size_on_screen;
+                let screen_pixel_y_float = (entity_world_y_f64 - ctx.view_world_origin_y)
+                    * ctx.world_tile_actual_pixel_size_on_screen;
 
-                // Destination Rect on screen
                 let dest_x = screen_pixel_x_float.round() as i32;
                 let dest_y = screen_pixel_y_float.round() as i32;
                 let dest_rect_on_screen = Rect::new(
                     dest_x,
                     dest_y,
-                    tile_on_screen_render_w,
-                    tile_on_screen_render_h,
+                    ctx.tile_on_screen_render_w,
+                    ctx.tile_on_screen_render_h,
                 );
 
                 renderer.set_texture_color_mod(colors::BLUE.r, colors::BLUE.g, colors::BLUE.b);
@@ -116,6 +95,42 @@ pub fn render_world_in_viewport(
             }
         }
     }
+}
+
+pub fn render_world_in_viewport(
+    canvas: &mut Canvas<Window>,
+    renderer: &SpriteSheetRenderer,
+    world: &World,
+    viewport: &Viewport,
+    debug_enabled: bool,
+) {
+    let world_tile_actual_pixel_size_on_screen =
+        (TILE_PIXEL_WIDTH as f64 * viewport.zoom).max(0.001);
+
+    let view_world_origin_x = viewport.anchor.x
+        - (viewport.screen_pixel_width as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
+    let view_world_origin_y = viewport.anchor.y
+        - (viewport.screen_pixel_height as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
+
+    let visible_world_width_in_tiles_float =
+        viewport.screen_pixel_width as f64 / world_tile_actual_pixel_size_on_screen;
+    let visible_world_height_in_tiles_float =
+        viewport.screen_pixel_height as f64 / world_tile_actual_pixel_size_on_screen;
+
+    let ctx = ViewportRenderContext {
+        view_world_origin_x,
+        view_world_origin_y,
+        world_tile_actual_pixel_size_on_screen,
+        view_bbox_world_x_min: view_world_origin_x,
+        view_bbox_world_x_max: view_world_origin_x + visible_world_width_in_tiles_float,
+        view_bbox_world_y_min: view_world_origin_y,
+        view_bbox_world_y_max: view_world_origin_y + visible_world_height_in_tiles_float,
+        tile_on_screen_render_w: world_tile_actual_pixel_size_on_screen.round().max(1.0) as u32,
+        tile_on_screen_render_h: world_tile_actual_pixel_size_on_screen.round().max(1.0) as u32,
+    };
+
+    draw_star_lanes(canvas, world, &ctx);
+    draw_entities(canvas, renderer, world, &ctx);
 
     if debug_enabled {
         draw_viewport_border(canvas, viewport);
@@ -165,11 +180,11 @@ impl Viewport {
     }
 
     pub fn zoom_in(&mut self) {
-        self.zoom *= 1.1;
+        self.zoom *= 1.2;
     }
 
     pub fn zoom_out(&mut self) {
-        self.zoom /= 1.1;
+        self.zoom /= 1.2;
     }
 }
 

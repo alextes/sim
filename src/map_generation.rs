@@ -5,7 +5,7 @@ use crate::buildings::{BuildingType, SlotType};
 use crate::location::Point;
 use crate::world::World;
 
-const NUM_RANDOM_STARS: usize = 12;
+const NUM_STARS: usize = 64;
 const GALAXY_RADIUS: i32 = 100; // defines the spread of stars
 
 fn generate_star_name<R: Rng>(rng: &mut R) -> String {
@@ -42,15 +42,22 @@ fn add_sol_system(world: &mut World) {
 }
 
 pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
-    for _ in 0..NUM_RANDOM_STARS {
+    for _ in 0..NUM_STARS {
         let star_name = generate_star_name(rng);
-        let x_pos = rng.random_range(-GALAXY_RADIUS..=GALAXY_RADIUS);
-        let y_pos = rng.random_range(-GALAXY_RADIUS..=GALAXY_RADIUS);
+
+        let angle = rng.random_range(0.0..TAU);
+        // linear distribution of radius sample: r = R * U, (U in [0,1])
+        // this results in an areal density proportional to 1/r, i.e., denser towards the center.
+        let radius_sample = rng.random_range(0.0..1.0f64);
+        let radius = GALAXY_RADIUS as f64 * radius_sample;
+
+        let x_pos = (radius * angle.cos()).round() as i32;
+        let y_pos = (radius * angle.sin()).round() as i32;
         world.spawn_star(star_name, Point { x: x_pos, y: y_pos });
     }
 
     add_sol_system(world);
 
-    // generate visual star lanes between stars within threshold distance (e.g., 40)
-    world.generate_star_lanes(40);
+    // generate visual star lanes between stars
+    world.generate_star_lanes();
 }
