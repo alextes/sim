@@ -76,7 +76,7 @@ pub fn main() {
     let mut fps_per_second: u32 = 0;
 
     let mut controls = ControlState {
-        entity_focus_index: 0,
+        entity_focus_index: Some(0),
         debug_enabled: false,
         track_mode: false,
         sim_speed: 1,
@@ -138,13 +138,14 @@ pub fn main() {
             fps_counter += 1;
 
             // Tracking camera update
-            if controls.track_mode
-                && !world.entities.is_empty()
-                && controls.entity_focus_index < world.entities.len()
-            {
-                let entity_id = world.entities[controls.entity_focus_index];
-                if let Some(loc) = world.get_location(entity_id) {
-                    location_viewport.center_on_entity(loc.x, loc.y);
+            if controls.track_mode {
+                if let Some(index) = controls.entity_focus_index {
+                    if !world.entities.is_empty() && index < world.entities.len() {
+                        let entity_id = world.entities[index];
+                        if let Some(loc) = world.get_location(entity_id) {
+                            location_viewport.center_on_entity(loc.x, loc.y);
+                        }
+                    }
                 }
             }
 

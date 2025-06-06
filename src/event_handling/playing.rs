@@ -50,28 +50,20 @@ pub fn handle_playing_input(
             ..
         } => {
             if !world.entities.is_empty() {
-                if controls.entity_focus_index >= world.entities.len() {
-                    // If no valid entity is selected (e.g., usize::MAX or out of bounds after entity removal)
-                    controls.entity_focus_index = 0; // Select the first entity
-                } else {
-                    // Cycle to the next entity
-                    controls.entity_focus_index =
-                        (controls.entity_focus_index + 1) % world.entities.len();
-                }
+                let current_index = controls.entity_focus_index.unwrap_or(0);
+                controls.entity_focus_index = Some((current_index + 1) % world.entities.len());
             }
         }
         Event::KeyDown {
             keycode: Some(Keycode::B),
             ..
         } => {
-            // check if currently selected entity can have buildings
-            if !world.entities.is_empty() && controls.entity_focus_index < world.entities.len() {
-                let selected_id = world.entities[controls.entity_focus_index];
-                if world.buildings.contains_key(&selected_id) {
-                    **game_state_guard = GameState::BuildMenuSelectingSlotType;
-                } else {
-                    // optionally provide feedback
-                    // **game_state_guard = GameState::BuildMenuError { message: "Cannot build on this entity".to_string() };
+            if let Some(index) = controls.entity_focus_index {
+                if index < world.entities.len() {
+                    let selected_id = world.entities[index];
+                    if world.buildings.contains_key(&selected_id) {
+                        **game_state_guard = GameState::BuildMenuSelectingSlotType;
+                    }
                 }
             }
         }
@@ -128,13 +120,13 @@ pub fn handle_playing_input(
                             world,
                         ) {
                             Some(idx) => {
-                                controls.entity_focus_index = idx;
+                                controls.entity_focus_index = Some(idx);
                                 // Note: Current behavior preserves track_mode on new selection.
                                 // If track_mode should be reset or explicitly set, that logic would go here.
                             }
                             None => {
                                 // Clicked on empty space, so deselect.
-                                controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
+                                controls.entity_focus_index = None; // Sentinel for "no selection"
                                 controls.track_mode = false; // Turn off tracking mode
                             }
                         }

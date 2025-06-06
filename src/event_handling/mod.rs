@@ -18,7 +18,7 @@ pub enum Signal {
 
 #[derive(Debug)]
 pub struct ControlState {
-    pub entity_focus_index: usize,
+    pub entity_focus_index: Option<usize>,
     pub debug_enabled: bool,
     pub track_mode: bool,
     pub sim_speed: u32,

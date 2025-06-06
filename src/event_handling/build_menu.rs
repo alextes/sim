@@ -6,11 +6,19 @@ use sdl2::keyboard::Keycode;
 
 pub fn handle_build_menu_input(
     event: &Event,
-    current_state: &GameState, // Read current state for logic
-    world: &mut World,         // Mutable world to potentially build
-    entity_focus_index: usize, // Index is Copy, pass directly
+    current_state: &GameState,         // Read current state for logic
+    world: &mut World,                 // Mutable world to potentially build
+    entity_focus_index: Option<usize>, // Can be None if no entity is selected
     game_state_guard: &mut std::sync::MutexGuard<'_, GameState>, // Guard to modify state
 ) {
+    // If no entity is selected, we can't be in a build menu. Revert to Playing state.
+    let entity_focus_index = if let Some(index) = entity_focus_index {
+        index
+    } else {
+        **game_state_guard = GameState::Playing;
+        return;
+    };
+
     match current_state {
         GameState::BuildMenuSelectingSlotType => {
             if let Event::KeyDown {

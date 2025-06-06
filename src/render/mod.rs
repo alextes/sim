@@ -72,12 +72,15 @@ pub fn render_game_frame<'tc>(
     );
 
     // determine selected entity for the interface
-    let selected_entity =
-        if !world.entities.is_empty() && controls.entity_focus_index < world.entities.len() {
-            Some(world.entities[controls.entity_focus_index])
+    let selected_entity = if let Some(index) = controls.entity_focus_index {
+        if !world.entities.is_empty() && index < world.entities.len() {
+            Some(world.entities[index])
         } else {
             None
-        };
+        }
+    } else {
+        None
+    };
 
     // render UI elements (panels, etc.)
     interface::render_interface(
