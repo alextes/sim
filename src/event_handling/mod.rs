@@ -84,11 +84,8 @@ pub fn handle_events(
                     *state_guard = GameState::Playing;
                     controls.paused = false;
                 }
-                GameState::BuildMenuSelectingSlotType => {
+                GameState::BuildMenu => {
                     *state_guard = GameState::Playing;
-                }
-                GameState::BuildMenuSelectingBuilding { .. } => {
-                    *state_guard = GameState::BuildMenuSelectingSlotType;
                 }
                 GameState::BuildMenuError { .. } => {
                     *state_guard = GameState::Playing;
@@ -125,9 +122,7 @@ pub fn handle_events(
                     return Signal::Quit;
                 }
             }
-            GameState::BuildMenuSelectingSlotType
-            | GameState::BuildMenuSelectingBuilding { .. }
-            | GameState::BuildMenuError { .. } => {
+            GameState::BuildMenu | GameState::BuildMenuError { .. } => {
                 build_menu::handle_build_menu_input(
                     &event,
                     &current_state_clone,

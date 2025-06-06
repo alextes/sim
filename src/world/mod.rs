@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::location::{LocationSystem, Point};
 
-use crate::buildings::EntityBuildings;
+use crate::buildings::{EntityBuildings, MOON_SLOTS, PLANET_SLOTS};
 
 mod resources;
 
@@ -39,7 +39,7 @@ impl World {
         self.entity_names.insert(id, name);
         self.render_glyphs.insert(id, '*');
         self.locations.add_static(id, position);
-        self.buildings.insert(id, EntityBuildings::new(false));
+        self.buildings.insert(id, EntityBuildings::new(0));
         id
     }
 
@@ -59,7 +59,8 @@ impl World {
         self.render_glyphs.insert(id, 'p');
         self.locations
             .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
-        self.buildings.insert(id, EntityBuildings::new(true));
+        self.buildings
+            .insert(id, EntityBuildings::new(PLANET_SLOTS));
         id
     }
 
@@ -79,7 +80,7 @@ impl World {
         self.render_glyphs.insert(id, 'm');
         self.locations
             .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
-        self.buildings.insert(id, EntityBuildings::new(true));
+        self.buildings.insert(id, EntityBuildings::new(MOON_SLOTS));
         id
     }
 
