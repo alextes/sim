@@ -105,3 +105,110 @@ impl EntityBuildings {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_building_name() {
+        assert_eq!(
+            EntityBuildings::building_name(BuildingType::SolarPanel),
+            "solar panel"
+        );
+        assert_eq!(EntityBuildings::building_name(BuildingType::Mine), "mine");
+    }
+
+    #[test]
+    fn test_new_entity_buildings() {
+        let with_ground = EntityBuildings::new(true);
+        assert!(with_ground.has_ground_slots);
+        assert_eq!(with_ground.ground.len(), GROUND_SLOTS);
+        assert!(with_ground.ground.iter().all(|s| s.is_none()));
+        assert_eq!(with_ground.orbital.len(), ORBITAL_SLOTS);
+        assert!(with_ground.orbital.iter().all(|s| s.is_none()));
+
+        let without_ground = EntityBuildings::new(false);
+        assert!(!without_ground.has_ground_slots);
+    }
+
+    #[test]
+    fn test_find_first_empty_slot() {
+        let mut buildings = EntityBuildings::new(true);
+        assert_eq!(buildings.find_first_empty_slot(SlotType::Ground), Some(0));
+        assert_eq!(buildings.find_first_empty_slot(SlotType::Orbital), Some(0));
+
+        buildings.ground[0] = Some(BuildingType::Mine);
+        assert_eq!(buildings.find_first_empty_slot(SlotType::Ground), Some(1));
+
+        buildings.orbital[0] = Some(BuildingType::SolarPanel);
+        assert_eq!(buildings.find_first_empty_slot(SlotType::Orbital), Some(1));
+
+        // fill all ground slots
+        for i in 0..GROUND_SLOTS {
+            buildings.ground[i] = Some(BuildingType::Mine);
+        }
+        assert_eq!(buildings.find_first_empty_slot(SlotType::Ground), None);
+
+        // test no ground slots
+        let buildings_no_ground = EntityBuildings::new(false);
+        assert_eq!(
+            buildings_no_ground.find_first_empty_slot(SlotType::Ground),
+            None
+        );
+    }
+
+    #[test]
+    fn test_build() {
+        let mut buildings = EntityBuildings::new(true);
+
+        // valid: mine on ground
+        assert_eq!(
+            buildings.build(SlotType::Ground, 0, BuildingType::Mine),
+            Ok(())
+        );
+        assert_eq!(buildings.ground[0], Some(BuildingType::Mine));
+
+        // valid: solar on orbital
+        assert_eq!(
+            buildings.build(SlotType::Orbital, 0, BuildingType::SolarPanel),
+            Ok(())
+        );
+        assert_eq!(buildings.orbital[0], Some(BuildingType::SolarPanel));
+
+        // invalid: slot occupied
+        assert_eq!(
+            buildings.build(SlotType::Ground, 0, BuildingType::Mine),
+            Err("ground slot is already occupied.")
+        );
+
+        // invalid: mine on orbital
+        assert_eq!(
+            buildings.build(SlotType::Orbital, 1, BuildingType::Mine),
+            Err("mines can only be built in ground slots.")
+        );
+
+        // invalid: solar on ground
+        assert_eq!(
+            buildings.build(SlotType::Ground, 1, BuildingType::SolarPanel),
+            Err("solar panels can only be built in orbital slots.")
+        );
+
+        // invalid: index out of bounds
+        assert_eq!(
+            buildings.build(SlotType::Ground, GROUND_SLOTS, BuildingType::Mine),
+            Err("invalid ground slot index.")
+        );
+        assert_eq!(
+            buildings.build(SlotType::Orbital, ORBITAL_SLOTS, BuildingType::SolarPanel),
+            Err("invalid orbital slot index.")
+        );
+
+        // invalid: no ground slots
+        let mut buildings_no_ground = EntityBuildings::new(false);
+        assert_eq!(
+            buildings_no_ground.build(SlotType::Ground, 0, BuildingType::Mine),
+            Err("cannot build on ground: entity has no ground slots.")
+        );
+    }
+}

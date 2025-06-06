@@ -142,3 +142,41 @@ impl Default for Tileset {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_make_tile_rect() {
+        let rect = make_tile_rect(2, 3);
+        assert_eq!(rect.x(), 2 * TILE_PIXEL_WIDTH as i32);
+        assert_eq!(rect.y(), 3 * TILE_PIXEL_WIDTH as i32);
+        assert_eq!(rect.width(), TILE_PIXEL_WIDTH as u32);
+        assert_eq!(rect.height(), TILE_PIXEL_WIDTH as u32);
+    }
+
+    #[test]
+    fn test_make_multi_tile_rect() {
+        let rect = make_multi_tile_rect(1, 2, 3, 4);
+        assert_eq!(rect.x(), TILE_PIXEL_WIDTH as i32);
+        assert_eq!(rect.y(), 2 * TILE_PIXEL_WIDTH as i32);
+        assert_eq!(rect.width(), 3 * TILE_PIXEL_WIDTH as u32);
+        assert_eq!(rect.height(), 4 * TILE_PIXEL_WIDTH as u32);
+    }
+
+    #[test]
+    fn test_get_rect() {
+        let tileset = Tileset::new();
+        let rect_a = tileset.get_rect('a');
+        let rect_question = tileset.get_rect('?');
+
+        // 'a' is at (1, 6) in the sprite sheet `res/taffer_18.png`.
+        assert_eq!(rect_a, make_tile_rect(1, 6));
+
+        // test fallback to '?' for an unsupported character
+        // The specific character doesn't matter, as long as it's not in the tileset.
+        let rect_unsupported = tileset.get_rect('😀');
+        assert_eq!(rect_unsupported, rect_question);
+    }
+}

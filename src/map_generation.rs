@@ -61,3 +61,80 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
     // generate visual star lanes between stars
     world.generate_star_lanes();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    #[test]
+    fn test_generate_star_name() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let name1 = generate_star_name(&mut rng);
+        assert_eq!(name1.len(), 4);
+        assert!(name1.chars().next().unwrap().is_ascii_alphabetic());
+        assert!(name1.chars().nth(1).unwrap().is_ascii_alphabetic());
+        assert!(name1.chars().nth(2).unwrap().is_ascii_digit());
+        assert!(name1.chars().nth(3).unwrap().is_ascii_digit());
+
+        let name2 = generate_star_name(&mut rng);
+        assert_ne!(name1, name2);
+        assert_eq!(name2.len(), 4);
+    }
+
+    #[test]
+    fn test_add_sol_system() {
+        let mut world = World::default();
+        add_sol_system(&mut world);
+
+        // Check that sol, earth, moon were created
+        let sol_id = world
+            .iter_entities()
+            .find(|&id| world.get_entity_name(id) == Some("sol".to_string()))
+            .unwrap();
+        let earth_id = world
+            .iter_entities()
+            .find(|&id| world.get_entity_name(id) == Some("earth".to_string()))
+            .unwrap();
+        let moon_id = world
+            .iter_entities()
+            .find(|&id| world.get_entity_name(id) == Some("moon".to_string()))
+            .unwrap();
+
+        assert_eq!(world.get_render_glyph(sol_id), '*');
+        assert_eq!(world.get_render_glyph(earth_id), 'p');
+        assert_eq!(world.get_render_glyph(moon_id), 'm');
+
+        // Check earth has buildings
+        let buildings = world.buildings.get(&earth_id).unwrap();
+        assert!(buildings
+            .ground
+            .iter()
+            .any(|s| s == &Some(BuildingType::Mine)));
+        assert!(buildings
+            .orbital
+            .iter()
+            .any(|s| s == &Some(BuildingType::SolarPanel)));
+    }
+
+    #[test]
+    fn test_populate_initial_galaxy() {
+        let mut world = World::default();
+        let mut rng = StdRng::seed_from_u64(42);
+        populate_initial_galaxy(&mut world, &mut rng);
+
+        // NUM_STARS from this function + 1 star from add_sol_system
+        let star_count = world
+            .iter_entities()
+            .filter(|&id| world.get_render_glyph(id) == '*')
+            .count();
+        assert_eq!(star_count, NUM_STARS + 1);
+
+        // sol system entities (3) + NUM_STARS
+        assert_eq!(world.entities.len(), NUM_STARS + 3);
+
+        // star lanes should be generated
+        assert!(!world.lanes.is_empty());
+    }
+}

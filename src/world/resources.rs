@@ -97,3 +97,98 @@ impl ResourceSystem {
         (energy_rate, metal_rate)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::buildings::{BuildingType, SlotType, GROUND_SLOTS, ORBITAL_SLOTS};
+
+    fn create_buildings_with_counts(
+        solar_panels: usize,
+        mines: usize,
+    ) -> HashMap<EntityId, EntityBuildings> {
+        let mut buildings_map = HashMap::new();
+        let mut entity_id_counter = 0;
+
+        let mut solar_panels_to_add = solar_panels;
+        let mut mines_to_add = mines;
+
+        while solar_panels_to_add > 0 || mines_to_add > 0 {
+            let mut entity_buildings = EntityBuildings::new(true);
+            let entity_id = entity_id_counter;
+            entity_id_counter += 1;
+
+            let solar_to_build = solar_panels_to_add.min(ORBITAL_SLOTS);
+            for i in 0..solar_to_build {
+                entity_buildings
+                    .build(SlotType::Orbital, i, BuildingType::SolarPanel)
+                    .unwrap();
+            }
+            solar_panels_to_add -= solar_to_build;
+
+            let mines_to_build = mines_to_add.min(GROUND_SLOTS);
+            for i in 0..mines_to_build {
+                entity_buildings
+                    .build(SlotType::Ground, i, BuildingType::Mine)
+                    .unwrap();
+            }
+            mines_to_add -= mines_to_build;
+
+            buildings_map.insert(entity_id, entity_buildings);
+        }
+
+        buildings_map
+    }
+
+    #[test]
+    fn test_calculate_rates() {
+        let rs = ResourceSystem::default();
+
+        // no buildings
+        let buildings_map_empty = HashMap::new();
+        let (energy_rate, metal_rate) = rs.calculate_rates(&buildings_map_empty);
+        assert_eq!(energy_rate, 0.0);
+        assert_eq!(metal_rate, 0.0);
+
+        // with buildings
+        let buildings_map = create_buildings_with_counts(2, 3);
+        let (energy_rate, metal_rate) = rs.calculate_rates(&buildings_map);
+
+        let generation_intervals_per_second = 1.0 / RESOURCE_INTERVAL_SECONDS;
+        let expected_energy_rate =
+            2.0 * ENERGY_PER_SOLAR_PANEL_PER_INTERVAL * generation_intervals_per_second as f32;
+        let expected_metal_rate =
+            3.0 * METAL_PER_MINE_PER_INTERVAL * generation_intervals_per_second as f32;
+
+        assert!((energy_rate - expected_energy_rate).abs() < f32::EPSILON);
+        assert!((metal_rate - expected_metal_rate).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_resource_system_update() {
+        let mut rs = ResourceSystem::default();
+        let buildings_map = create_buildings_with_counts(1, 1);
+
+        // accumulate time, but not enough for an interval
+        rs.update(RESOURCE_INTERVAL_SECONDS / 2.0, &buildings_map);
+        assert_eq!(rs.energy, 0.0);
+        assert_eq!(rs.metal, 0.0);
+
+        // accumulate enough for one interval
+        rs.update(RESOURCE_INTERVAL_SECONDS / 2.0, &buildings_map);
+        assert_eq!(rs.energy, ENERGY_PER_SOLAR_PANEL_PER_INTERVAL);
+        assert_eq!(rs.metal, METAL_PER_MINE_PER_INTERVAL);
+
+        // check that accumulator is near zero
+        assert!(rs.time_accumulator < 1e-9);
+
+        // accumulate enough for multiple intervals at once
+        rs.energy = 0.0;
+        rs.metal = 0.0;
+        rs.time_accumulator = 0.0;
+        rs.update(RESOURCE_INTERVAL_SECONDS * 2.5, &buildings_map);
+        assert_eq!(rs.energy, ENERGY_PER_SOLAR_PANEL_PER_INTERVAL * 2.0);
+        assert_eq!(rs.metal, METAL_PER_MINE_PER_INTERVAL * 2.0);
+        assert!((rs.time_accumulator - RESOURCE_INTERVAL_SECONDS * 0.5).abs() < 1e-9);
+    }
+}
