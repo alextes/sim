@@ -15,7 +15,7 @@ pub fn setup_sdl() -> (
     let _image_context = sdl2::image::init(InitFlag::PNG).unwrap();
 
     let window = video_subsystem
-        .window("sim", 576, 576)
+        .window("sim", 800, 600)
         .position_centered()
         .resizable()
         .build()
