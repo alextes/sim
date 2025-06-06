@@ -117,17 +117,26 @@ pub fn handle_playing_input(
         } => {
             match mouse_btn {
                 MouseButton::Left => {
-                    match input::get_entity_index_at_screen_coords(*x, *y, location_viewport, world)
-                    {
-                        Some(idx) => {
-                            controls.entity_focus_index = idx;
-                            // Note: Current behavior preserves track_mode on new selection.
-                            // If track_mode should be reset or explicitly set, that logic would go here.
-                        }
-                        None => {
-                            // Clicked on empty space, so deselect.
-                            controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
-                            controls.track_mode = false; // Turn off tracking mode
+                    if controls.ctrl_down {
+                        controls.ctrl_left_mouse_dragging = true;
+                        controls.last_mouse_pos = Some((*x, *y));
+                    } else {
+                        match input::get_entity_index_at_screen_coords(
+                            *x,
+                            *y,
+                            location_viewport,
+                            world,
+                        ) {
+                            Some(idx) => {
+                                controls.entity_focus_index = idx;
+                                // Note: Current behavior preserves track_mode on new selection.
+                                // If track_mode should be reset or explicitly set, that logic would go here.
+                            }
+                            None => {
+                                // Clicked on empty space, so deselect.
+                                controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
+                                controls.track_mode = false; // Turn off tracking mode
+                            }
                         }
                     }
                 }
@@ -143,9 +152,17 @@ pub fn handle_playing_input(
                 controls.middle_mouse_dragging = false;
                 controls.last_mouse_pos = None;
             }
+            if mouse_btn == &MouseButton::Left {
+                controls.ctrl_left_mouse_dragging = false;
+                // For now, let's mirror middle mouse behavior and set to None.
+                // a ctrl+click without drag will now clear the last_mouse_pos
+                if controls.last_mouse_pos.is_some() {
+                    controls.last_mouse_pos = None;
+                }
+            }
         }
         Event::MouseMotion { x, y, .. } => {
-            if controls.middle_mouse_dragging {
+            if controls.middle_mouse_dragging || controls.ctrl_left_mouse_dragging {
                 if let Some((last_x, last_y)) = controls.last_mouse_pos {
                     let delta_x = *x - last_x;
                     let delta_y = *y - last_y;

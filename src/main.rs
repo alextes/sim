@@ -82,6 +82,8 @@ pub fn main() {
         sim_speed: 1,
         paused: false,
         middle_mouse_dragging: false,
+        ctrl_left_mouse_dragging: false,
+        ctrl_down: false,
         last_mouse_pos: None,
     };
 

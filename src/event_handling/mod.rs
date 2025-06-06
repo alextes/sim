@@ -24,6 +24,8 @@ pub struct ControlState {
     pub sim_speed: u32,
     pub paused: bool,
     pub middle_mouse_dragging: bool,
+    pub ctrl_left_mouse_dragging: bool,
+    pub ctrl_down: bool,
     pub last_mouse_pos: Option<(i32, i32)>,
 }
 
@@ -36,6 +38,23 @@ pub fn handle_events(
 ) -> Signal {
     let mouse_pos = (event_pump.mouse_state().x(), event_pump.mouse_state().y());
     for event in event_pump.poll_iter() {
+        // --- global key state tracking ---
+        match event {
+            Event::KeyDown {
+                keycode: Some(Keycode::LCtrl) | Some(Keycode::RCtrl),
+                ..
+            } => {
+                controls.ctrl_down = true;
+            }
+            Event::KeyUp {
+                keycode: Some(Keycode::LCtrl) | Some(Keycode::RCtrl),
+                ..
+            } => {
+                controls.ctrl_down = false;
+            }
+            _ => {}
+        }
+
         // handle window resize events directly, as they affect the viewport
         // and are not directly tied to game logic state.
         if let Event::Window {
