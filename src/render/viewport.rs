@@ -9,6 +9,9 @@ use crate::world::World;
 
 use super::{SpriteSheetRenderer, TILE_PIXEL_WIDTH};
 
+const PLANET_ORBIT_MIN_ZOOM: f64 = 0.8;
+const MOON_ORBIT_MIN_ZOOM: f64 = 2.0;
+
 struct ViewportRenderContext {
     view_world_origin_x: f64,
     view_world_origin_y: f64,
@@ -45,6 +48,55 @@ fn draw_star_lanes(canvas: &mut Canvas<Window>, world: &World, ctx: &ViewportRen
             let _ = canvas.draw_line(p1, p2);
         }
     }
+    canvas.set_blend_mode(old_blend_mode);
+}
+
+fn draw_orbit_lines(
+    canvas: &mut Canvas<Window>,
+    world: &World,
+    viewport: &Viewport,
+    ctx: &ViewportRenderContext,
+) {
+    let old_blend_mode = canvas.blend_mode();
+    canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+
+    for (entity_id, orbital_info) in world.iter_orbitals() {
+        let glyph = world.get_render_glyph(entity_id);
+        let anchor_pos = match world.get_location(orbital_info.anchor) {
+            Some(pos) => pos,
+            None => continue,
+        };
+
+        let (should_draw, color) = match glyph {
+            'p' if viewport.zoom >= PLANET_ORBIT_MIN_ZOOM => (
+                true,
+                sdl2::pixels::Color::RGBA(colors::LGRAY.r, colors::LGRAY.g, colors::LGRAY.b, 20),
+            ),
+            'm' if viewport.zoom >= MOON_ORBIT_MIN_ZOOM => (
+                true,
+                sdl2::pixels::Color::RGBA(colors::DGRAY.r, colors::DGRAY.g, colors::DGRAY.b, 15),
+            ),
+            _ => (false, sdl2::pixels::Color::BLACK), // don't draw
+        };
+
+        if should_draw {
+            let center_x = (anchor_pos.x as f64 + 0.5 - ctx.view_world_origin_x)
+                * ctx.world_tile_actual_pixel_size_on_screen;
+            let center_y = (anchor_pos.y as f64 + 0.5 - ctx.view_world_origin_y)
+                * ctx.world_tile_actual_pixel_size_on_screen;
+
+            let radius_pixels = orbital_info.radius * ctx.world_tile_actual_pixel_size_on_screen;
+
+            canvas.set_draw_color(color);
+            draw_circle(
+                canvas,
+                center_x.round() as i32,
+                center_y.round() as i32,
+                radius_pixels.round() as i32,
+            );
+        }
+    }
+
     canvas.set_blend_mode(old_blend_mode);
 }
 
@@ -130,6 +182,7 @@ pub fn render_world_in_viewport(
     };
 
     draw_star_lanes(canvas, world, &ctx);
+    draw_orbit_lines(canvas, world, viewport, &ctx);
     draw_entities(canvas, renderer, world, &ctx);
 
     if debug_enabled {
@@ -147,6 +200,44 @@ fn draw_viewport_border(canvas: &mut Canvas<Window>, viewport: &Viewport) {
         viewport.screen_pixel_height,
     );
     canvas.draw_rect(border_rect).unwrap();
+}
+
+fn draw_circle(canvas: &mut Canvas<Window>, center_x: i32, center_y: i32, radius: i32) {
+    if radius <= 0 {
+        return;
+    }
+    let diameter = radius * 2;
+
+    let mut x = radius - 1;
+    let mut y = 0;
+    let mut tx = 1;
+    let mut ty = 1;
+    let mut error = tx - diameter;
+
+    let mut points = vec![];
+    while x >= y {
+        points.push(sdl2::rect::Point::new(center_x + x, center_y - y));
+        points.push(sdl2::rect::Point::new(center_x + x, center_y + y));
+        points.push(sdl2::rect::Point::new(center_x - x, center_y - y));
+        points.push(sdl2::rect::Point::new(center_x - x, center_y + y));
+        points.push(sdl2::rect::Point::new(center_x + y, center_y - x));
+        points.push(sdl2::rect::Point::new(center_x + y, center_y + x));
+        points.push(sdl2::rect::Point::new(center_x - y, center_y - x));
+        points.push(sdl2::rect::Point::new(center_x - y, center_y + x));
+
+        if error <= 0 {
+            y += 1;
+            error += ty;
+            ty += 2;
+        }
+
+        if error > 0 {
+            x -= 1;
+            tx += 2;
+            error += tx - diameter;
+        }
+    }
+    let _ = canvas.draw_points(&points[..]);
 }
 
 pub struct Viewport {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::location::{LocationSystem, Point};
+use crate::location::{LocationSystem, Point, OrbitalInfo};
 
 use crate::buildings::EntityBuildings;
 
@@ -90,6 +90,10 @@ impl World {
 
         // delegate resource updates to the ResourceSystem
         self.resources.update(dt_seconds, &self.buildings);
+    }
+
+    pub fn iter_orbitals(&self) -> impl Iterator<Item = (EntityId, OrbitalInfo)> + '_ {
+        self.locations.iter_orbitals()
     }
 
     /// return the current universal position of an entity.

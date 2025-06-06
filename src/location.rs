@@ -15,6 +15,12 @@ pub struct PointF64 {
     pub y: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct OrbitalInfo {
+    pub anchor: EntityId,
+    pub radius: f64,
+}
+
 /// Manages static and orbital positions for entities, with nested anchoring support.
 #[derive(Debug, Default)]
 pub struct LocationSystem {
@@ -109,6 +115,22 @@ impl LocationSystem {
         self.entries.get(&entity).map(|loc| match loc {
             LocatedEntity::Static(p) => *p,
             LocatedEntity::Orbital { position, .. } => *position,
+        })
+    }
+
+    pub fn iter_orbitals(&self) -> impl Iterator<Item = (EntityId, OrbitalInfo)> + '_ {
+        self.entries.iter().filter_map(|(&id, loc)| {
+            if let LocatedEntity::Orbital { anchor, radius, .. } = loc {
+                Some((
+                    id,
+                    OrbitalInfo {
+                        anchor: *anchor,
+                        radius: *radius,
+                    },
+                ))
+            } else {
+                None
+            }
         })
     }
 }
