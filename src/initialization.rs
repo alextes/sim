@@ -22,7 +22,12 @@ pub fn setup_sdl() -> (
         .unwrap();
     debug!("window created");
 
-    let canvas = window.into_canvas().accelerated().build().unwrap();
+    let canvas = window
+        .into_canvas()
+        .accelerated()
+        .present_vsync()
+        .build()
+        .unwrap();
     let texture_creator = canvas.texture_creator();
 
     (sdl_context, canvas, texture_creator)
