@@ -12,26 +12,37 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: checkout code
         uses: actions/checkout@v4
 
-      - name: Install SDL2 dependencies
+      - name: cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: install sdl2 dependencies
         run: sudo apt-get install -y libsdl2-dev libsdl2-image-dev
 
-      - name: Install Rust toolchain
+      - name: install rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: clippy, rustfmt
 
-      - name: Format check
+      - name: format check
         run: cargo fmt -- --check
 
-      - name: Lint
+      - name: lint
         run: cargo clippy -- -D warnings
 
-      - name: Build
+      - name: build
         run: cargo build --verbose --all-targets
 
-      - name: Test
+      - name: test
         run: cargo test --verbose
