@@ -19,6 +19,15 @@ pub fn handle_playing_input(
     // return Signal only if quitting
     match event {
         Event::Quit { .. } => return Some(super::Signal::Quit),
+        // Track Ctrl key state
+        Event::KeyDown {
+            keycode: Some(Keycode::LCtrl) | Some(Keycode::RCtrl),
+            ..
+        } => controls.ctrl_pressed = true,
+        Event::KeyUp {
+            keycode: Some(Keycode::LCtrl) | Some(Keycode::RCtrl),
+            ..
+        } => controls.ctrl_pressed = false,
         Event::KeyDown {
             keycode: Some(Keycode::F4),
             ..
@@ -115,17 +124,24 @@ pub fn handle_playing_input(
         } => {
             match mouse_btn {
                 MouseButton::Left => {
-                    match input::get_entity_index_at_screen_coords(*x, *y, location_viewport, world)
-                    {
-                        Some(idx) => {
-                            controls.entity_focus_index = idx;
-                            // Note: Current behavior preserves track_mode on new selection.
-                            // If track_mode should be reset or explicitly set, that logic would go here.
-                        }
-                        None => {
-                            // Clicked on empty space, so deselect.
-                            controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
-                            controls.track_mode = false; // Turn off tracking mode
+                    if controls.ctrl_pressed {
+                        // Start Ctrl+drag for map panning
+                        controls.ctrl_dragging = true;
+                        controls.last_mouse_pos = Some((*x, *y));
+                    } else {
+                        // Normal left click behavior - entity selection
+                        match input::get_entity_index_at_screen_coords(*x, *y, location_viewport, world)
+                        {
+                            Some(idx) => {
+                                controls.entity_focus_index = idx;
+                                // Note: Current behavior preserves track_mode on new selection.
+                                // If track_mode should be reset or explicitly set, that logic would go here.
+                            }
+                            None => {
+                                // Clicked on empty space, so deselect.
+                                controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
+                                controls.track_mode = false; // Turn off tracking mode
+                            }
                         }
                     }
                 }
@@ -137,13 +153,22 @@ pub fn handle_playing_input(
             }
         }
         Event::MouseButtonUp { mouse_btn, .. } => {
-            if mouse_btn == &MouseButton::Middle {
-                controls.middle_mouse_dragging = false;
-                controls.last_mouse_pos = None;
+            match mouse_btn {
+                MouseButton::Left => {
+                    if controls.ctrl_dragging {
+                        controls.ctrl_dragging = false;
+                        controls.last_mouse_pos = None;
+                    }
+                }
+                MouseButton::Middle => {
+                    controls.middle_mouse_dragging = false;
+                    controls.last_mouse_pos = None;
+                }
+                _ => {}
             }
         }
         Event::MouseMotion { x, y, .. } => {
-            if controls.middle_mouse_dragging {
+            if controls.middle_mouse_dragging || controls.ctrl_dragging {
                 if let Some((last_x, last_y)) = controls.last_mouse_pos {
                     let delta_x = *x - last_x;
                     let delta_y = *y - last_y;

@@ -24,6 +24,8 @@ pub struct ControlState {
     pub sim_speed: u32,
     pub paused: bool,
     pub middle_mouse_dragging: bool,
+    pub ctrl_dragging: bool,
+    pub ctrl_pressed: bool,
     pub last_mouse_pos: Option<(i32, i32)>,
 }
 
