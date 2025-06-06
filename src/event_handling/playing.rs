@@ -4,13 +4,15 @@ use crate::render::Viewport;
 use crate::world::World;
 use crate::GameState;
 use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::{self, Keycode, Scancode};
 use sdl2::mouse::MouseButton;
+use sdl2::EventPump;
 
 use crate::render::TILE_PIXEL_WIDTH;
 
 pub fn handle_playing_input(
     event: &Event,
+    event_pump: &EventPump,
     location_viewport: &mut Viewport,
     world: &mut World,
     controls: &mut ControlState,
@@ -111,21 +113,36 @@ pub fn handle_playing_input(
             ..
         } => location_viewport.zoom_out(),
         Event::MouseButtonDown {
-            mouse_btn, x, y, ..
+            mouse_btn,
+            x,
+            y,
+            ..
         } => {
             match mouse_btn {
                 MouseButton::Left => {
-                    match input::get_entity_index_at_screen_coords(*x, *y, location_viewport, world)
+                    let keyboard_state = event_pump.keyboard_state();
+                    if keyboard_state.is_scancode_pressed(Scancode::LCtrl)
+                        || keyboard_state.is_scancode_pressed(Scancode::RCtrl)
                     {
-                        Some(idx) => {
-                            controls.entity_focus_index = idx;
-                            // Note: Current behavior preserves track_mode on new selection.
-                            // If track_mode should be reset or explicitly set, that logic would go here.
-                        }
-                        None => {
-                            // Clicked on empty space, so deselect.
-                            controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
-                            controls.track_mode = false; // Turn off tracking mode
+                        controls.middle_mouse_dragging = true;
+                        controls.last_mouse_pos = Some((*x, *y));
+                    } else {
+                        match input::get_entity_index_at_screen_coords(
+                            *x,
+                            *y,
+                            location_viewport,
+                            world,
+                        ) {
+                            Some(idx) => {
+                                controls.entity_focus_index = idx;
+                                // Note: Current behavior preserves track_mode on new selection.
+                                // If track_mode should be reset or explicitly set, that logic would go here.
+                            }
+                            None => {
+                                // Clicked on empty space, so deselect.
+                                controls.entity_focus_index = usize::MAX; // Sentinel for "no selection"
+                                controls.track_mode = false; // Turn off tracking mode
+                            }
                         }
                     }
                 }
@@ -137,7 +154,9 @@ pub fn handle_playing_input(
             }
         }
         Event::MouseButtonUp { mouse_btn, .. } => {
-            if mouse_btn == &MouseButton::Middle {
+            if controls.middle_mouse_dragging
+                && (*mouse_btn == MouseButton::Middle || *mouse_btn == MouseButton::Left)
+            {
                 controls.middle_mouse_dragging = false;
                 controls.last_mouse_pos = None;
             }

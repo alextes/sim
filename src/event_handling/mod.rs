@@ -87,6 +87,7 @@ pub fn handle_events(
                 // that function will decide what to do based on controls.paused.
                 if let Some(signal) = playing::handle_playing_input(
                     &event,
+                    event_pump,
                     location_viewport,
                     world,
                     controls,
