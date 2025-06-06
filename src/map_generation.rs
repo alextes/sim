@@ -5,8 +5,8 @@ use crate::buildings::{BuildingType, SlotType};
 use crate::location::Point;
 use crate::world::World;
 
-const NUM_RANDOM_STARS: usize = 8;
-const GALAXY_RADIUS: i32 = 300; // defines the spread of stars
+const NUM_RANDOM_STARS: usize = 32;
+const GALAXY_RADIUS: i32 = 128; // defines the spread of stars
 
 fn generate_star_name<R: Rng>(rng: &mut R) -> String {
     let letter1 = rng.random_range('a'..='z');
