@@ -5,8 +5,8 @@ use crate::buildings::{BuildingType, SlotType};
 use crate::location::Point;
 use crate::world::World;
 
-const NUM_RANDOM_STARS: usize = 12;
-const GALAXY_RADIUS: i32 = 100; // defines the spread of stars
+const NUM_RANDOM_STARS: usize = 8;
+const GALAXY_RADIUS: i32 = 300; // defines the spread of stars
 
 fn generate_star_name<R: Rng>(rng: &mut R) -> String {
     let letter1 = rng.random_range('a'..='z');
@@ -51,6 +51,6 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
 
     add_sol_system(world);
 
-    // generate visual star lanes between stars within threshold distance (e.g., 40)
-    world.generate_star_lanes(40);
+    // generate visual star lanes between stars within threshold distance (e.g., 80)
+    world.generate_star_lanes(80);
 }
