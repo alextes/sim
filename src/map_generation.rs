@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::f64::consts::TAU;
 
-use crate::buildings::{BuildingType, SlotType};
+use crate::buildings::BuildingType;
 use crate::location::Point;
 use crate::world::World;
 
@@ -28,15 +28,15 @@ fn add_sol_system(world: &mut World) {
     // pre-build on earth
     if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
         // add a mine to the first available ground slot
-        if let Some(ground_slot) = earth_buildings.find_first_empty_slot(SlotType::Ground) {
+        if let Some(ground_slot) = earth_buildings.find_first_empty_slot() {
             earth_buildings
-                .build(SlotType::Ground, ground_slot, BuildingType::Mine)
+                .build(ground_slot, BuildingType::Mine)
                 .expect("failed to build initial mine");
         }
         // add a solar panel to the first available orbital slot
-        if let Some(orbital_slot) = earth_buildings.find_first_empty_slot(SlotType::Orbital) {
+        if let Some(orbital_slot) = earth_buildings.find_first_empty_slot() {
             earth_buildings
-                .build(SlotType::Orbital, orbital_slot, BuildingType::SolarPanel)
+                .build(orbital_slot, BuildingType::SolarPanel)
                 .expect("failed to build initial solar panel");
         }
     }
@@ -136,11 +136,11 @@ mod tests {
         // Check earth has buildings
         let buildings = world.buildings.get(&earth_id).unwrap();
         assert!(buildings
-            .ground
+            .slots
             .iter()
             .any(|s| s == &Some(BuildingType::Mine)));
         assert!(buildings
-            .orbital
+            .slots
             .iter()
             .any(|s| s == &Some(BuildingType::SolarPanel)));
     }

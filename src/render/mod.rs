@@ -98,11 +98,8 @@ pub fn render_game_frame<'tc>(
         GameState::GameMenu => {
             interface::game_menu::render_game_menu(canvas, sprite_renderer);
         }
-        GameState::BuildMenuSelectingSlotType => {
-            interface::build::render_build_slot_type_menu(canvas, sprite_renderer);
-        }
-        GameState::BuildMenuSelectingBuilding { slot_type } => {
-            interface::build::render_build_building_menu(canvas, sprite_renderer, *slot_type);
+        GameState::BuildMenu => {
+            interface::build::render_build_menu(canvas, sprite_renderer);
         }
         GameState::BuildMenuError { message } => {
             interface::build::render_build_error_menu(canvas, sprite_renderer, message);

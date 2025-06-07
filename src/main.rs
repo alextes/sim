@@ -16,8 +16,7 @@ use tracing::{info, trace};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
-use crate::buildings::SlotType;
-use event_handling::ControlState;
+use crate::event_handling::ControlState;
 use game_loop::GameLoop;
 use interface::DebugRenderInfo;
 use render::{SpriteSheetRenderer, Viewport};
@@ -38,8 +37,7 @@ type SimulationUnit = u64;
 pub enum GameState {
     Playing,
     GameMenu,
-    BuildMenuSelectingSlotType,
-    BuildMenuSelectingBuilding { slot_type: SlotType },
+    BuildMenu,
     BuildMenuError { message: String },
 }
 

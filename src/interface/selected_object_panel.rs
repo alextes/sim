@@ -1,4 +1,4 @@
-use crate::buildings::{BuildingType, EntityBuildings, GROUND_SLOTS, ORBITAL_SLOTS};
+use crate::buildings::{BuildingType, EntityBuildings};
 use crate::colors;
 use crate::render::{tileset, SpriteSheetRenderer};
 use crate::world::{EntityId, World};
@@ -13,12 +13,12 @@ const PANEL_WIDTH_TILES: u8 = 25; // Fixed width
 const PANEL_MAX_HEIGHT_TILES: u8 = 12; // Max height, includes padding and border
 
 // Helper function to format slot display
-fn format_slot(prefix: &str, index: usize, slot: Option<BuildingType>) -> String {
+fn format_slot(index: usize, slot: Option<BuildingType>) -> String {
     let building_name = match slot {
         Some(bt) => EntityBuildings::building_name(bt),
         None => "empty",
     };
-    format!("{}{}: {}", prefix, index + 1, building_name)
+    format!("slot {}: {}", index + 1, building_name)
 }
 
 pub fn render_selected_object_panel(
@@ -38,17 +38,12 @@ pub fn render_selected_object_panel(
             lines.push((format!("selected: {}", name), PANEL_TEXT_COLOR));
 
             if let Some(buildings) = world.buildings.get(&id) {
-                for i in 0..ORBITAL_SLOTS {
-                    lines.push((
-                        format_slot("Orb", i, buildings.orbital[i]),
-                        colors::CYAN, // Example color for orbital slots
-                    ));
-                }
-                if buildings.has_ground_slots {
-                    for i in 0..GROUND_SLOTS {
+                if !buildings.slots.is_empty() {
+                    lines.push(("buildings:".to_string(), PANEL_TEXT_COLOR));
+                    for (i, slot) in buildings.slots.iter().enumerate() {
                         lines.push((
-                            format_slot("Gnd", i, buildings.ground[i]),
-                            colors::ORANGE, // Example color for ground slots
+                            format_slot(i, *slot),
+                            colors::GRAY, // Example color for generic slots
                         ));
                     }
                 }
