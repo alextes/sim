@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::location::{LocationSystem, Point, OrbitalInfo};
+use crate::location::{LocationSystem, OrbitalInfo, Point};
 
 use crate::buildings::EntityBuildings;
 
