@@ -6,14 +6,14 @@ use crate::location::Point;
 use crate::world::World;
 
 const NUM_STARS: usize = 64;
-const GALAXY_RADIUS: i32 = 100; // defines the spread of stars
+const GALAXY_RADIUS: i32 = 600; // defines the spread of stars - increased for more space between systems
 const MAX_PLANETS_PER_STAR: usize = 4;
 
 fn generate_star_name<R: Rng>(rng: &mut R) -> String {
-    let letter1 = rng.gen_range('a'..='z');
-    let letter2 = rng.gen_range('a'..='z');
-    let num1 = rng.gen_range(0..=9);
-    let num2 = rng.gen_range(0..=9);
+    let letter1 = rng.random_range('a'..='z');
+    let letter2 = rng.random_range('a'..='z');
+    let num1 = rng.random_range(0..=9);
+    let num2 = rng.random_range(0..=9);
     format!("{}{}{}{}", letter1, letter2, num1, num2)
 }
 
@@ -47,10 +47,10 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
     for _ in 0..NUM_STARS {
         let star_name = generate_star_name(rng);
 
-        let angle = rng.gen_range(0.0..TAU);
+        let angle = rng.random_range(0.0..TAU);
         // linear distribution of radius sample: r = R * U, (U in [0,1])
         // this results in an areal density proportional to 1/r, i.e., denser towards the center.
-        let radius_sample = rng.gen_range(0.0..1.0f64);
+        let radius_sample = rng.random_range(0.0..1.0f64);
         let radius = GALAXY_RADIUS as f64 * radius_sample;
 
         let x_pos = (radius * angle.cos()).round() as i32;
@@ -63,18 +63,24 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
 
     // generate some planets for the other stars
     for &star_id in &star_ids {
-        let num_planets = rng.gen_range(0..=MAX_PLANETS_PER_STAR);
+        let num_planets = rng.random_range(0..=MAX_PLANETS_PER_STAR);
         let star_name = world.get_entity_name(star_id).unwrap_or_default();
-        let mut last_radius = rng.gen_range(4.0..8.0);
+        let mut last_radius = rng.random_range(4.0..8.0);
 
         for i in 0..num_planets {
             let planet_name = format!("{}-{}", star_name, i + 1);
-            let radius = last_radius + rng.gen_range(5.0..10.0);
-            let initial_angle = rng.gen_range(0.0..TAU);
+            let radius = last_radius + rng.random_range(5.0..10.0);
+            let initial_angle = rng.random_range(0.0..TAU);
             // slower for further planets
-            let angular_velocity = rng.gen_range(0.05..0.2) / (radius / 10.0);
+            let angular_velocity = rng.random_range(0.05..0.2) / (radius / 10.0);
 
-            world.spawn_planet(planet_name, star_id, radius, initial_angle, angular_velocity);
+            world.spawn_planet(
+                planet_name,
+                star_id,
+                radius,
+                initial_angle,
+                angular_velocity,
+            );
             last_radius = radius;
         }
     }
