@@ -19,6 +19,7 @@ use tracing_subscriber::EnvFilter;
 use crate::event_handling::ControlState;
 use game_loop::GameLoop;
 use interface::DebugRenderInfo;
+use render::background::BackgroundLayer;
 use render::{SpriteSheetRenderer, Viewport};
 use world::World;
 
@@ -60,6 +61,8 @@ pub fn main() {
     let mut rng = rand::rng();
 
     map_generation::populate_initial_galaxy(&mut world, &mut rng);
+
+    let background_layer = BackgroundLayer::new(&mut rng);
 
     let mut location_viewport = Viewport::default();
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -161,6 +164,7 @@ pub fn main() {
             render::render_game_frame(
                 &mut canvas,
                 &sprite_renderer,
+                &background_layer,
                 &world,
                 &location_viewport,
                 &controls,

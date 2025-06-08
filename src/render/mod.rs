@@ -1,3 +1,4 @@
+pub mod background;
 pub mod tileset;
 pub mod viewport;
 
@@ -10,6 +11,7 @@ use std::path::Path;
 use crate::colors;
 use crate::event_handling::ControlState;
 use crate::interface::{self, DebugRenderInfo};
+use crate::render::background::BackgroundLayer;
 use crate::render::tileset::Tileset;
 use crate::world::World;
 use crate::GameState;
@@ -53,6 +55,7 @@ impl<'tc> SpriteSheetRenderer<'tc> {
 pub fn render_game_frame<'tc>(
     canvas: &mut Canvas<Window>,
     sprite_renderer: &SpriteSheetRenderer<'tc>,
+    background_layer: &BackgroundLayer,
     world: &World,
     location_viewport: &Viewport,
     controls: &ControlState,
@@ -61,6 +64,9 @@ pub fn render_game_frame<'tc>(
 ) {
     canvas.set_draw_color(colors::BASE);
     canvas.clear();
+
+    // render the parallax background first
+    background_layer.render(canvas, sprite_renderer, location_viewport);
 
     // render the main game world
     render_world_in_viewport(
