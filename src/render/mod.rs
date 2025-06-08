@@ -21,6 +21,17 @@ pub use viewport::{render_world_in_viewport, Viewport};
 
 pub const TILE_PIXEL_WIDTH: u8 = 18;
 
+pub struct RenderContext<'a, 'tc> {
+    pub canvas: &'a mut Canvas<Window>,
+    pub sprite_renderer: &'a SpriteSheetRenderer<'tc>,
+    pub background_layer: &'a BackgroundLayer,
+    pub world: &'a World,
+    pub location_viewport: &'a Viewport,
+    pub controls: &'a ControlState,
+    pub game_state: &'a GameState,
+    pub debug_info: Option<DebugRenderInfo>,
+}
+
 pub struct SpriteSheetRenderer<'tc> {
     pub tileset: Tileset,
     pub texture: RefCell<Texture<'tc>>,
@@ -52,35 +63,27 @@ impl<'tc> SpriteSheetRenderer<'tc> {
     }
 }
 
-pub fn render_game_frame<'tc>(
-    canvas: &mut Canvas<Window>,
-    sprite_renderer: &SpriteSheetRenderer<'tc>,
-    background_layer: &BackgroundLayer,
-    world: &World,
-    location_viewport: &Viewport,
-    controls: &ControlState,
-    game_state: &GameState,
-    debug_info: Option<DebugRenderInfo>,
-) {
-    canvas.set_draw_color(colors::BASE);
-    canvas.clear();
+pub fn render_game_frame(ctx: &mut RenderContext) {
+    ctx.canvas.set_draw_color(colors::BASE);
+    ctx.canvas.clear();
 
     // render the parallax background first
-    background_layer.render(canvas, sprite_renderer, location_viewport);
+    ctx.background_layer
+        .render(ctx.canvas, ctx.sprite_renderer, ctx.location_viewport);
 
     // render the main game world
     render_world_in_viewport(
-        canvas,
-        sprite_renderer,
-        world,
-        location_viewport,
-        controls.debug_enabled,
+        ctx.canvas,
+        ctx.sprite_renderer,
+        ctx.world,
+        ctx.location_viewport,
+        ctx.controls.debug_enabled,
     );
 
     // determine selected entity for the interface
-    let selected_entity = if let Some(index) = controls.entity_focus_index {
-        if !world.entities.is_empty() && index < world.entities.len() {
-            Some(world.entities[index])
+    let selected_entity = if let Some(index) = ctx.controls.entity_focus_index {
+        if !ctx.world.entities.is_empty() && index < ctx.world.entities.len() {
+            Some(ctx.world.entities[index])
         } else {
             None
         }
@@ -90,28 +93,28 @@ pub fn render_game_frame<'tc>(
 
     // render UI elements (panels, etc.)
     interface::render_interface(
-        canvas,
-        sprite_renderer,
-        world,
+        ctx.canvas,
+        ctx.sprite_renderer,
+        ctx.world,
         selected_entity,
-        location_viewport.screen_pixel_height / (TILE_PIXEL_WIDTH as u32),
-        controls,
-        debug_info,
+        ctx.location_viewport.screen_pixel_height / (TILE_PIXEL_WIDTH as u32),
+        ctx.controls,
+        ctx.debug_info,
     );
 
     // render context-specific menus based on game state
-    match game_state {
+    match ctx.game_state {
         GameState::GameMenu => {
-            interface::game_menu::render_game_menu(canvas, sprite_renderer);
+            interface::game_menu::render_game_menu(ctx.canvas, ctx.sprite_renderer);
         }
         GameState::BuildMenu => {
-            interface::build::render_build_menu(canvas, sprite_renderer);
+            interface::build::render_build_menu(ctx.canvas, ctx.sprite_renderer);
         }
         GameState::BuildMenuError { message } => {
-            interface::build::render_build_error_menu(canvas, sprite_renderer, message);
+            interface::build::render_build_error_menu(ctx.canvas, ctx.sprite_renderer, message);
         }
         GameState::Playing => {}
     }
 
-    canvas.present();
+    ctx.canvas.present();
 }

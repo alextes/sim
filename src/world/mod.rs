@@ -2,7 +2,6 @@ use std::cmp::{max, min};
 use std::collections::HashMap;
 
 use rand::seq::IteratorRandom;
-use rand::thread_rng;
 
 use crate::location::{LocationSystem, OrbitalInfo, Point};
 

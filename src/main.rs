@@ -20,7 +20,7 @@ use crate::event_handling::ControlState;
 use game_loop::GameLoop;
 use interface::DebugRenderInfo;
 use render::background::BackgroundLayer;
-use render::{SpriteSheetRenderer, Viewport};
+use render::{RenderContext, SpriteSheetRenderer, Viewport};
 use world::World;
 
 /// Fixed simulation timestep (100Hz)
@@ -161,16 +161,18 @@ pub fn main() {
                 None
             };
 
-            render::render_game_frame(
-                &mut canvas,
-                &sprite_renderer,
-                &background_layer,
-                &world,
-                &location_viewport,
-                &controls,
-                &current_game_state,
-                debug_render_info,
-            );
+            let mut ctx = RenderContext {
+                canvas: &mut canvas,
+                sprite_renderer: &sprite_renderer,
+                background_layer: &background_layer,
+                world: &world,
+                location_viewport: &location_viewport,
+                controls: &controls,
+                game_state: &current_game_state,
+                debug_info: debug_render_info,
+            };
+
+            render::render_game_frame(&mut ctx);
         }
         let next_sim = game_loop.last_update + SIMULATION_DT;
         let next_rdr = game_loop.last_render + RENDER_DT;
