@@ -3,11 +3,12 @@ use std::f64::consts::TAU;
 
 use crate::buildings::BuildingType;
 use crate::location::Point;
-use crate::world::World;
+use crate::world::{EntityId, World};
 
 const NUM_STARS: usize = 64;
 const GALAXY_RADIUS: i32 = 600; // defines the spread of stars - increased for more space between systems
 const MAX_PLANETS_PER_STAR: usize = 4;
+const MIN_STAR_DISTANCE: i32 = 80; // minimum distance between stars to avoid orbit overlaps
 
 fn generate_star_name<R: Rng>(rng: &mut R) -> String {
     let letter1 = rng.random_range('a'..='z');
@@ -17,7 +18,7 @@ fn generate_star_name<R: Rng>(rng: &mut R) -> String {
     format!("{}{}{}{}", letter1, letter2, num1, num2)
 }
 
-fn add_sol_system(world: &mut World) {
+fn add_sol_system(world: &mut World) -> EntityId {
     // sol at center
     let sol_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
     // earth: complete one orbit (2π) in 60 seconds → angular_velocity = tau / 60
@@ -40,29 +41,59 @@ fn add_sol_system(world: &mut World) {
                 .expect("failed to build initial solar panel");
         }
     }
+    sol_id
 }
 
 pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
     let mut star_ids = vec![];
+    let mut star_positions = vec![];
+    let min_dist_sq = MIN_STAR_DISTANCE.pow(2);
+
+    // Add Sol system first and get its position to respect the minimum distance.
+    let sol_id = add_sol_system(world);
+    star_ids.push(sol_id);
+    star_positions.push(world.get_location(sol_id).unwrap()); // sol is guaranteed to have a location
+
     for _ in 0..NUM_STARS {
         let star_name = generate_star_name(rng);
+        let mut position;
+        let mut attempts = 0;
+        loop {
+            let angle = rng.random_range(0.0..TAU);
+            // linear distribution of radius sample: r = R * U, (U in [0,1])
+            // this results in an areal density proportional to 1/r, i.e., denser towards the center.
+            let radius_sample = rng.random_range(0.0..1.0f64);
+            let radius = GALAXY_RADIUS as f64 * radius_sample;
 
-        let angle = rng.random_range(0.0..TAU);
-        // linear distribution of radius sample: r = R * U, (U in [0,1])
-        // this results in an areal density proportional to 1/r, i.e., denser towards the center.
-        let radius_sample = rng.random_range(0.0..1.0f64);
-        let radius = GALAXY_RADIUS as f64 * radius_sample;
+            position = Point {
+                x: (radius * angle.cos()).round() as i32,
+                y: (radius * angle.sin()).round() as i32,
+            };
 
-        let x_pos = (radius * angle.cos()).round() as i32;
-        let y_pos = (radius * angle.sin()).round() as i32;
-        let star_id = world.spawn_star(star_name, Point { x: x_pos, y: y_pos });
+            let is_far_enough = star_positions.iter().all(|&p: &Point| {
+                let dx = position.x - p.x;
+                let dy = position.y - p.y;
+                (dx * dx + dy * dy) >= min_dist_sq
+            });
+
+            if is_far_enough {
+                break;
+            }
+
+            attempts += 1;
+            if attempts > 1000 {
+                // to prevent an infinite loop if parameters are too restrictive
+                tracing::warn!("could not place a star after 1000 attempts, params might be too restrictive. placing anyway.");
+                break;
+            }
+        }
+        let star_id = world.spawn_star(star_name, position);
+        star_positions.push(position);
         star_ids.push(star_id);
     }
 
-    add_sol_system(world);
-
-    // generate some planets for the other stars
-    for &star_id in &star_ids {
+    // generate some planets for the other stars, filtering out sol which is special
+    for &star_id in star_ids.iter().filter(|&&id| id != sol_id) {
         let num_planets = rng.random_range(0..=MAX_PLANETS_PER_STAR);
         let star_name = world.get_entity_name(star_id).unwrap_or_default();
         let mut last_radius = rng.random_range(4.0..8.0);
@@ -113,13 +144,15 @@ mod tests {
     #[test]
     fn test_add_sol_system() {
         let mut world = World::default();
-        add_sol_system(&mut world);
+        let sol_id_from_func = add_sol_system(&mut world);
 
         // Check that sol, earth, moon were created
         let sol_id = world
             .iter_entities()
             .find(|&id| world.get_entity_name(id) == Some("sol".to_string()))
             .unwrap();
+        assert_eq!(sol_id_from_func, sol_id);
+
         let earth_id = world
             .iter_entities()
             .find(|&id| world.get_entity_name(id) == Some("earth".to_string()))

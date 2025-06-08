@@ -1,3 +1,4 @@
+use std::cmp::{max, min};
 use std::collections::HashMap;
 
 use crate::location::{LocationSystem, OrbitalInfo, Point};
@@ -10,6 +11,70 @@ pub use resources::ResourceSystem;
 
 // Entity identifiers for all game objects.
 pub type EntityId = u32;
+
+// --- star lane intersection helpers ---
+
+// helper to check if point q lies on segment pr
+fn on_segment(p: Point, q: Point, r: Point) -> bool {
+    q.x <= max(p.x, r.x) && q.x >= min(p.x, r.x) && q.y <= max(p.y, r.y) && q.y >= min(p.y, r.y)
+}
+
+// helper to find orientation of ordered triplet (p, q, r).
+// 0 --> p, q and r are collinear
+// 1 --> clockwise
+// 2 --> counterclockwise
+fn orientation(p: Point, q: Point, r: Point) -> i32 {
+    let val = (q.y as i64 - p.y as i64) * (r.x as i64 - q.x as i64)
+        - (q.x as i64 - p.x as i64) * (r.y as i64 - q.y as i64);
+
+    if val == 0 {
+        return 0; // collinear
+    }
+    if val > 0 {
+        1 // clockwise
+    } else {
+        2 // counterclockwise
+    }
+}
+
+/// checks if line segment 'p1q1' and 'p2q2' intersect.
+/// important: this function will report an intersection if segments share an endpoint.
+/// the calling logic must handle cases where lanes share a star.
+fn segments_intersect(p1: Point, q1: Point, p2: Point, q2: Point) -> bool {
+    // find the four orientations needed for general and special cases
+    let o1 = orientation(p1, q1, p2);
+    let o2 = orientation(p1, q1, q2);
+    let o3 = orientation(p2, q2, p1);
+    let o4 = orientation(p2, q2, q1);
+
+    // general case: segments cross each other
+    if o1 != o2 && o3 != o4 {
+        return true;
+    }
+
+    // special cases for collinear points
+    // p1, q1 and p2 are collinear and p2 lies on segment p1q1
+    if o1 == 0 && on_segment(p1, p2, q1) {
+        return true;
+    }
+
+    // p1, q1 and q2 are collinear and q2 lies on segment p1q1
+    if o2 == 0 && on_segment(p1, q2, q1) {
+        return true;
+    }
+
+    // p2, q2 and p1 are collinear and p1 lies on segment p2q2
+    if o3 == 0 && on_segment(p2, p1, q2) {
+        return true;
+    }
+
+    // p2, q2 and q1 are collinear and q1 lies on segment p2q2
+    if o4 == 0 && on_segment(p2, q1, q2) {
+        return true;
+    }
+
+    false // doesn't fall in any of the above cases
+}
 
 #[derive(Debug, Default)]
 pub struct World {
@@ -126,24 +191,42 @@ impl World {
         const TARGET_CONNECTIONS_PER_STAR: usize = 4;
         const MINIMUM_CONNECTIONS_PER_STAR: usize = 2;
 
-        // helper to get ordered pair to avoid duplicates
-        let add_lane_fn = |a: EntityId,
-                           b: EntityId,
-                           set: &mut HashSet<(EntityId, EntityId)>,
-                           lanes_vec: &mut Vec<(EntityId, EntityId)>| {
-            if a == b {
-                return false;
-            }
-            let key = if a < b { (a, b) } else { (b, a) };
-            if set.insert(key) {
-                lanes_vec.push(key);
-                return true;
-            }
-            false
-        };
-
+        let mut lanes: Vec<(EntityId, EntityId)> = Vec::new();
         let mut lane_set: HashSet<(EntityId, EntityId)> = HashSet::new();
-        self.lanes.clear();
+
+        // helper to get ordered pair to avoid duplicates
+        let add_lane_fn =
+            |a: EntityId,
+             b: EntityId,
+             current_set: &mut HashSet<(EntityId, EntityId)>,
+             current_lanes: &mut Vec<(EntityId, EntityId)>| {
+                if a == b {
+                    return false;
+                }
+
+                // --- intersection check ---
+                // unwrap is safe here because we only deal with star_ids that are in the world.
+                let p_a = self.get_location(a).unwrap();
+                let p_b = self.get_location(b).unwrap();
+                for &(other_a, other_b) in current_lanes.iter() {
+                    // if they share a star, they don't cross, they connect. skip check.
+                    if a == other_a || a == other_b || b == other_a || b == other_b {
+                        continue;
+                    }
+                    let p_other_a = self.get_location(other_a).unwrap();
+                    let p_other_b = self.get_location(other_b).unwrap();
+                    if segments_intersect(p_a, p_b, p_other_a, p_other_b) {
+                        return false; // intersects, can't add this lane.
+                    }
+                }
+
+                let key = if a < b { (a, b) } else { (b, a) };
+                if current_set.insert(key) {
+                    current_lanes.push(key);
+                    return true;
+                }
+                false
+            };
 
         let star_ids: Vec<EntityId> = self
             .render_glyphs
@@ -152,6 +235,7 @@ impl World {
             .collect();
 
         if star_ids.len() < 2 {
+            self.lanes = lanes;
             return; // not enough stars to form lanes
         }
 
@@ -177,7 +261,7 @@ impl World {
                 if connections_made_for_current_star >= TARGET_CONNECTIONS_PER_STAR {
                     break;
                 }
-                if add_lane_fn(current_star_id, neighbor_id, &mut lane_set, &mut self.lanes) {
+                if add_lane_fn(current_star_id, neighbor_id, &mut lane_set, &mut lanes) {
                     connections_made_for_current_star += 1;
                 }
             }
@@ -185,7 +269,7 @@ impl World {
 
         // second pass: ensure minimum_connections_per_star
         let mut star_connection_counts: HashMap<EntityId, usize> = HashMap::new();
-        for &(a, b) in &self.lanes {
+        for &(a, b) in &lanes {
             *star_connection_counts.entry(a).or_insert(0) += 1;
             *star_connection_counts.entry(b).or_insert(0) += 1;
         }
@@ -224,7 +308,7 @@ impl World {
                     if current_connections >= MINIMUM_CONNECTIONS_PER_STAR {
                         break;
                     }
-                    if add_lane_fn(current_star_id, neighbor_id, &mut lane_set, &mut self.lanes) {
+                    if add_lane_fn(current_star_id, neighbor_id, &mut lane_set, &mut lanes) {
                         current_connections += 1;
                         // also update counts for the other star involved in this new lane
                         *star_connection_counts.entry(neighbor_id).or_insert(0) += 1;
@@ -239,12 +323,12 @@ impl World {
         const ANGLE_SIMILARITY_THRESHOLD_RADIANS: f64 = 15.0 * std::f64::consts::TAU / 360.0; // 15 degrees
 
         let mut current_lanes_as_set: HashSet<(EntityId, EntityId)> =
-            self.lanes.iter().cloned().collect();
+            lanes.iter().cloned().collect();
 
         loop {
             let mut made_change_this_pass = false;
 
-            // Recalculate connection counts based on the current set of lanes for this pass
+            // recalculate connection counts based on the current set of lanes for this pass
             let mut temp_star_connection_counts: HashMap<EntityId, usize> = HashMap::new();
             for &(s1, s2) in &current_lanes_as_set {
                 *temp_star_connection_counts.entry(s1).or_insert(0) += 1;
