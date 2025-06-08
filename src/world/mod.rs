@@ -1,6 +1,9 @@
 use std::cmp::{max, min};
 use std::collections::HashMap;
 
+use rand::seq::IteratorRandom;
+use rand::thread_rng;
+
 use crate::location::{LocationSystem, OrbitalInfo, Point};
 
 use crate::buildings::{EntityBuildings, MOON_SLOTS, PLANET_SLOTS};
@@ -11,6 +14,67 @@ pub use resources::ResourceSystem;
 
 // Entity identifiers for all game objects.
 pub type EntityId = u32;
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Color {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+const STAR_COLORS: [Color; 3] = [
+    Color {
+        r: 255,
+        g: 255,
+        b: 255,
+    }, // white
+    Color {
+        r: 255,
+        g: 255,
+        b: 224,
+    }, // yellow-white
+    Color {
+        r: 173,
+        g: 216,
+        b: 230,
+    }, // pale blue
+];
+
+const PLANET_COLORS: [Color; 3] = [
+    Color {
+        r: 60,
+        g: 179,
+        b: 113,
+    }, // blue-green
+    Color {
+        r: 183,
+        g: 65,
+        b: 14,
+    }, // rusty red
+    Color {
+        r: 244,
+        g: 164,
+        b: 96,
+    }, // sandy brown
+];
+
+const MOON_COLORS: [Color; 3] = [
+    Color {
+        r: 211,
+        g: 211,
+        b: 211,
+    }, // light gray
+    Color {
+        r: 128,
+        g: 128,
+        b: 128,
+    }, // gray
+    Color {
+        r: 169,
+        g: 169,
+        b: 169,
+    }, // dark gray
+];
 
 // --- star lane intersection helpers ---
 
@@ -83,6 +147,8 @@ pub struct World {
     pub entities: Vec<EntityId>,
     /// glyphs to use when rendering each entity
     render_glyphs: HashMap<EntityId, char>,
+    /// colors to use when rendering each entity
+    entity_colors: HashMap<EntityId, Color>,
     /// human-readable names for entities
     entity_names: HashMap<EntityId, String>,
     /// location system managing static and orbital positions
@@ -103,6 +169,9 @@ impl World {
         self.entities.push(id);
         self.entity_names.insert(id, name);
         self.render_glyphs.insert(id, '*');
+        let mut rng = rand::rng();
+        let color = STAR_COLORS.iter().choose(&mut rng).unwrap();
+        self.entity_colors.insert(id, *color);
         self.locations.add_static(id, position);
         self.buildings.insert(id, EntityBuildings::new(0));
         id
@@ -122,6 +191,9 @@ impl World {
         self.entities.push(id);
         self.entity_names.insert(id, name);
         self.render_glyphs.insert(id, 'p');
+        let mut rng = rand::rng();
+        let color = PLANET_COLORS.iter().choose(&mut rng).unwrap();
+        self.entity_colors.insert(id, *color);
         self.locations
             .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
         self.buildings
@@ -143,6 +215,9 @@ impl World {
         self.entities.push(id);
         self.entity_names.insert(id, name);
         self.render_glyphs.insert(id, 'm');
+        let mut rng = rand::rng();
+        let color = MOON_COLORS.iter().choose(&mut rng).unwrap();
+        self.entity_colors.insert(id, *color);
         self.locations
             .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
         self.buildings.insert(id, EntityBuildings::new(MOON_SLOTS));
@@ -180,6 +255,11 @@ impl World {
     /// get the glyph used for rendering this entity.
     pub fn get_render_glyph(&self, entity: EntityId) -> char {
         self.render_glyphs.get(&entity).copied().unwrap_or('?')
+    }
+
+    /// get the color used for rendering this entity.
+    pub fn get_entity_color(&self, entity: EntityId) -> Option<Color> {
+        self.entity_colors.get(&entity).copied()
     }
 
     /// generate visual star lanes connecting stars.

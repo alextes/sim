@@ -133,7 +133,12 @@ fn draw_entities(
                     ctx.tile_on_screen_render_h,
                 );
 
-                renderer.set_texture_color_mod(colors::BLUE.r, colors::BLUE.g, colors::BLUE.b);
+                if let Some(color) = world.get_entity_color(entity_id) {
+                    renderer.set_texture_color_mod(color.r, color.g, color.b);
+                } else {
+                    // fallback to a default color if none is set.
+                    renderer.set_texture_color_mod(255, 255, 255); // white
+                }
 
                 canvas
                     .copy(
