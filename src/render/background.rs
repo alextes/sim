@@ -5,7 +5,6 @@ use rand::Rng;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 
-pub const PARALLAX_FACTOR: f64 = 0.1; // Background scrolls at 10% of the speed of the foreground
 const NUM_BG_STARS: usize = 2000;
 const BG_STAR_SPREAD: f64 = 200.0; // The area over which background stars are scattered - reduced for density
 
@@ -48,11 +47,19 @@ impl BackgroundLayer {
         renderer: &SpriteSheetRenderer,
         viewport: &Viewport,
     ) {
+        const BASE_PARALLAX_SCROLL_FACTOR: f64 = 0.05; // Base scroll, independent of zoom
+        const ZOOM_INFLUENCE_ON_PARALLAX: f64 = 0.05; // How much zoom adds to the effect
+
+        // The effective parallax factor determines how much the background 'slips' against the foreground.
+        // A smaller factor means a greater slip (stronger parallax).
+        // The speed ratio of bg to fg is (BASE + ZOOM_INF * zoom) / zoom = BASE/zoom + ZOOM_INF.
+        // As zoom increases, this ratio decreases, strengthening the effect.
+        let effective_parallax_factor =
+            BASE_PARALLAX_SCROLL_FACTOR + ZOOM_INFLUENCE_ON_PARALLAX * viewport.zoom;
+
         // Calculate the background's viewport based on the main viewport and parallax factor.
-        // The background's content is considered "larger" and further away, so its
-        // viewport anchor moves less than the main one.
-        let bg_anchor_x = viewport.anchor.x * PARALLAX_FACTOR;
-        let bg_anchor_y = viewport.anchor.y * PARALLAX_FACTOR;
+        let bg_anchor_x = viewport.anchor.x * effective_parallax_factor;
+        let bg_anchor_y = viewport.anchor.y * effective_parallax_factor;
 
         // The background does not zoom. This enhances the parallax effect.
         // The size of a background tile on screen is fixed.
