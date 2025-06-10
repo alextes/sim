@@ -30,6 +30,7 @@ pub struct RenderContext<'a, 'tc> {
     pub controls: &'a ControlState,
     pub game_state: &'a GameState,
     pub debug_info: Option<DebugRenderInfo>,
+    pub intro_progress: Option<f64>,
 }
 
 pub struct SpriteSheetRenderer<'tc> {
@@ -63,10 +64,7 @@ impl<'tc> SpriteSheetRenderer<'tc> {
     }
 }
 
-pub fn render_game_frame(ctx: &mut RenderContext) {
-    ctx.canvas.set_draw_color(colors::BASE);
-    ctx.canvas.clear();
-
+fn render_game_scene(ctx: &mut RenderContext) {
     // render the parallax background first
     ctx.background_layer
         .render(ctx.canvas, ctx.sprite_renderer, ctx.location_viewport);
@@ -101,19 +99,36 @@ pub fn render_game_frame(ctx: &mut RenderContext) {
         ctx.controls,
         ctx.debug_info,
     );
+}
 
-    // render context-specific menus based on game state
+pub fn render_game_frame(ctx: &mut RenderContext) {
+    ctx.canvas.set_draw_color(colors::BASE);
+    ctx.canvas.clear();
+
     match ctx.game_state {
+        GameState::Intro => {
+            if let Some(progress) = ctx.intro_progress {
+                interface::intro::render_intro_screen(ctx.canvas, ctx.sprite_renderer, progress);
+            }
+        }
+        GameState::MainMenu => {
+            interface::main_menu::render_main_menu(ctx.canvas, ctx.sprite_renderer);
+        }
+        GameState::Playing => {
+            render_game_scene(ctx);
+        }
         GameState::GameMenu => {
+            render_game_scene(ctx);
             interface::game_menu::render_game_menu(ctx.canvas, ctx.sprite_renderer);
         }
         GameState::BuildMenu => {
+            render_game_scene(ctx);
             interface::build::render_build_menu(ctx.canvas, ctx.sprite_renderer);
         }
         GameState::BuildMenuError { message } => {
+            render_game_scene(ctx);
             interface::build::render_build_error_menu(ctx.canvas, ctx.sprite_renderer, message);
         }
-        GameState::Playing => {}
     }
 
     ctx.canvas.present();

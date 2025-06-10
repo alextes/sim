@@ -36,6 +36,8 @@ type SimulationUnit = u64;
 /// Represents the different interaction modes the game can be in.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameState {
+    Intro,
+    MainMenu,
     Playing,
     GameMenu,
     BuildMenu,
@@ -88,12 +90,22 @@ pub fn main() {
         last_mouse_pos: None,
     };
 
-    let game_state = Arc::new(Mutex::new(GameState::Playing));
+    let game_state = Arc::new(Mutex::new(GameState::Intro));
+    let intro_start_time = Instant::now();
 
     info!("starting main loop");
     'running: loop {
         let now = Instant::now();
         let time_since_last_second_check = now.duration_since(last_loop_start);
+
+        {
+            let mut current_game_state = game_state.lock().unwrap();
+            if *current_game_state == GameState::Intro {
+                if intro_start_time.elapsed() >= Duration::from_secs(3) {
+                    *current_game_state = GameState::MainMenu;
+                }
+            }
+        }
 
         // when paused, prevent simulation backlog from accumulating
         if controls.paused {
@@ -114,15 +126,17 @@ pub fn main() {
         }
         // advance simulation by appropriate number of steps based on time passed since last loop.
         let (steps, should_render) = game_loop.step();
-        for _ in 0..steps {
-            if !controls.paused {
-                simulation_units_counter += 1;
-                trace!(tick = simulation_units_counter, "simulating 1 step");
-                // advance the simulation by (dt * speed_multiplier)
-                world.update(
-                    SIMULATION_DT.as_secs_f64() * controls.sim_speed as f64,
-                    simulation_units_counter,
-                );
+        if *game_state.lock().unwrap() == GameState::Playing {
+            for _ in 0..steps {
+                if !controls.paused {
+                    simulation_units_counter += 1;
+                    trace!(tick = simulation_units_counter, "simulating 1 step");
+                    // advance the simulation by (dt * speed_multiplier)
+                    world.update(
+                        SIMULATION_DT.as_secs_f64() * controls.sim_speed as f64,
+                        simulation_units_counter,
+                    );
+                }
             }
         }
 
@@ -138,8 +152,10 @@ pub fn main() {
             trace!("rendering 1 frame");
             fps_counter += 1;
 
+            let is_playing = *game_state.lock().unwrap() == GameState::Playing;
+
             // Tracking camera update
-            if controls.track_mode {
+            if controls.track_mode && is_playing {
                 if let Some(index) = controls.entity_focus_index {
                     if !world.entities.is_empty() && index < world.entities.len() {
                         let entity_id = world.entities[index];
@@ -161,6 +177,12 @@ pub fn main() {
                 None
             };
 
+            let intro_progress = if current_game_state == GameState::Intro {
+                Some((intro_start_time.elapsed().as_secs_f64() / 3.0).min(1.0))
+            } else {
+                None
+            };
+
             let mut ctx = RenderContext {
                 canvas: &mut canvas,
                 sprite_renderer: &sprite_renderer,
@@ -170,6 +192,7 @@ pub fn main() {
                 controls: &controls,
                 game_state: &current_game_state,
                 debug_info: debug_render_info,
+                intro_progress,
             };
 
             render::render_game_frame(&mut ctx);

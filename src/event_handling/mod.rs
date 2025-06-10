@@ -8,6 +8,7 @@ use crate::world::World;
 use crate::GameState;
 
 mod build_menu;
+mod main_menu;
 mod playing;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +77,9 @@ pub fn handle_events(
         {
             let mut state_guard = game_state.lock().unwrap();
             match *state_guard {
+                GameState::MainMenu => {
+                    return Signal::Quit;
+                }
                 GameState::Playing => {
                     *state_guard = GameState::GameMenu;
                     controls.paused = true;
@@ -90,6 +94,7 @@ pub fn handle_events(
                 GameState::BuildMenuError { .. } => {
                     *state_guard = GameState::Playing;
                 }
+                GameState::Intro => {}
             }
             continue; // skip further processing for this Escape event
         }
@@ -99,6 +104,13 @@ pub fn handle_events(
         let current_state_clone = state_guard.clone();
 
         match current_state_clone {
+            GameState::MainMenu => {
+                if let Some(signal) =
+                    main_menu::handle_main_menu_input(&event, &mut state_guard)
+                {
+                    return signal;
+                }
+            }
             GameState::Playing => {
                 // always call playing::handle_playing_input when in GameState::Playing.
                 // that function will decide what to do based on controls.paused.
@@ -131,6 +143,7 @@ pub fn handle_events(
                     &mut state_guard,
                 );
             }
+            GameState::Intro => {}
         }
     }
     Signal::Continue
