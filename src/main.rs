@@ -22,6 +22,7 @@ use interface::DebugRenderInfo;
 use render::background::BackgroundLayer;
 use render::{RenderContext, SpriteSheetRenderer, Viewport};
 use world::World;
+use crate::interface::intro::IntroState;
 
 /// Fixed simulation timestep (100Hz)
 pub const SIMULATION_DT: Duration = Duration::from_millis(10);
@@ -36,6 +37,7 @@ type SimulationUnit = u64;
 /// Represents the different interaction modes the game can be in.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameState {
+    Intro,
     Playing,
     GameMenu,
     BuildMenu,
@@ -88,7 +90,8 @@ pub fn main() {
         last_mouse_pos: None,
     };
 
-    let game_state = Arc::new(Mutex::new(GameState::Playing));
+    let intro_state = IntroState::new();
+    let game_state = Arc::new(Mutex::new(GameState::Intro));
 
     info!("starting main loop");
     'running: loop {
@@ -150,7 +153,6 @@ pub fn main() {
                 }
             }
 
-            let current_game_state = game_state.lock().unwrap().clone();
             let debug_render_info = if controls.debug_enabled {
                 Some(DebugRenderInfo {
                     sups: simulation_units_per_second,
@@ -161,18 +163,19 @@ pub fn main() {
                 None
             };
 
-            let mut ctx = RenderContext {
+            let mut intro_ctx = RenderContext {
                 canvas: &mut canvas,
                 sprite_renderer: &sprite_renderer,
                 background_layer: &background_layer,
                 world: &world,
                 location_viewport: &location_viewport,
                 controls: &controls,
-                game_state: &current_game_state,
+                game_state: game_state.clone(),
                 debug_info: debug_render_info,
+                intro_state: &intro_state,
             };
 
-            render::render_game_frame(&mut ctx);
+            render::render_game_frame(&mut intro_ctx);
         }
         let next_sim = game_loop.last_update + SIMULATION_DT;
         let next_rdr = game_loop.last_render + RENDER_DT;

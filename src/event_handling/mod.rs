@@ -90,6 +90,9 @@ pub fn handle_events(
                 GameState::BuildMenuError { .. } => {
                     *state_guard = GameState::Playing;
                 }
+                GameState::Intro => {
+                    // Do nothing on escape
+                }
             }
             continue; // skip further processing for this Escape event
         }
@@ -121,6 +124,14 @@ pub fn handle_events(
                 {
                     return Signal::Quit;
                 }
+                if let Event::KeyDown {
+                    keycode: Some(Keycode::P),
+                    ..
+                } = event
+                {
+                    *state_guard = GameState::Playing;
+                    controls.paused = false;
+                }
             }
             GameState::BuildMenu | GameState::BuildMenuError { .. } => {
                 build_menu::handle_build_menu_input(
@@ -130,6 +141,9 @@ pub fn handle_events(
                     controls.entity_focus_index,
                     &mut state_guard,
                 );
+            }
+            GameState::Intro => {
+                // The intro is non-interactive, so we do nothing.
             }
         }
     }

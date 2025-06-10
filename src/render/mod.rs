@@ -7,6 +7,7 @@ use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::{Window, WindowContext};
 use std::cell::{Ref, RefCell};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use crate::colors;
 use crate::event_handling::ControlState;
@@ -15,6 +16,7 @@ use crate::render::background::BackgroundLayer;
 use crate::render::tileset::Tileset;
 use crate::world::World;
 use crate::GameState;
+use crate::interface::intro::IntroState;
 
 // Re-export key items from the viewport module
 pub use viewport::{render_world_in_viewport, Viewport};
@@ -28,8 +30,9 @@ pub struct RenderContext<'a, 'tc> {
     pub world: &'a World,
     pub location_viewport: &'a Viewport,
     pub controls: &'a ControlState,
-    pub game_state: &'a GameState,
+    pub game_state: Arc<Mutex<GameState>>,
     pub debug_info: Option<DebugRenderInfo>,
+    pub intro_state: &'a IntroState,
 }
 
 pub struct SpriteSheetRenderer<'tc> {
@@ -103,17 +106,25 @@ pub fn render_game_frame(ctx: &mut RenderContext) {
     );
 
     // render context-specific menus based on game state
-    match ctx.game_state {
+    match *ctx.game_state.lock().unwrap() {
         GameState::GameMenu => {
             interface::game_menu::render_game_menu(ctx.canvas, ctx.sprite_renderer);
         }
         GameState::BuildMenu => {
             interface::build::render_build_menu(ctx.canvas, ctx.sprite_renderer);
         }
-        GameState::BuildMenuError { message } => {
+        GameState::BuildMenuError { ref message } => {
             interface::build::render_build_error_menu(ctx.canvas, ctx.sprite_renderer, message);
         }
         GameState::Playing => {}
+        GameState::Intro => {
+            interface::intro::render_intro_screen(
+                ctx.canvas,
+                ctx.sprite_renderer,
+                &ctx.game_state,
+                ctx.intro_state,
+            );
+        }
     }
 
     ctx.canvas.present();
