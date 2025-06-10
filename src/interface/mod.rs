@@ -12,6 +12,7 @@ pub mod selected_object_panel;
 pub mod sim_speed_panel;
 
 /// data required for rendering the debug overlay.
+#[derive(Clone, Copy)]
 pub struct DebugRenderInfo {
     pub sups: u64,
     pub fps: u32,
