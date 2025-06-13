@@ -19,7 +19,7 @@ use crate::GameState;
 // Re-export key items from the viewport module
 pub use viewport::{render_world_in_viewport, Viewport};
 
-pub const TILE_PIXEL_WIDTH: u8 = 18;
+pub const TILE_PIXEL_WIDTH: u8 = 9;
 
 pub struct RenderContext<'a, 'tc> {
     pub canvas: &'a mut Canvas<Window>,
@@ -41,7 +41,7 @@ pub struct SpriteSheetRenderer<'tc> {
 impl<'tc> SpriteSheetRenderer<'tc> {
     pub fn new(texture_creator: &'tc TextureCreator<WindowContext>) -> Self {
         let texture = texture_creator
-            .load_texture(Path::new("res/taffer_18.png"))
+            .load_texture(Path::new("res/taffer_9.png"))
             .unwrap_or_else(|e| {
                 panic!("failed to load sprite sheet texture: {}", e);
             });
