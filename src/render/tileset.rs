@@ -89,6 +89,12 @@ impl Tileset {
         char_rects.insert('X', make_tile_rect(8, 5));
         char_rects.insert('Y', make_tile_rect(9, 5));
         char_rects.insert('Z', make_tile_rect(10, 5));
+        char_rects.insert('[', make_tile_rect(11, 5));
+        char_rects.insert('\\', make_tile_rect(12, 5));
+        char_rects.insert(']', make_tile_rect(13, 5));
+        char_rects.insert('^', make_tile_rect(14, 5));
+        char_rects.insert('_', make_tile_rect(15, 5));
+        char_rects.insert('`', make_tile_rect(0, 6));
         char_rects.insert('a', make_tile_rect(1, 6));
         char_rects.insert('b', make_tile_rect(2, 6));
         char_rects.insert('c', make_tile_rect(3, 6));

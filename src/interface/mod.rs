@@ -7,6 +7,8 @@ use sdl2::video::Window;
 pub mod build;
 pub mod debug_overlay;
 pub mod game_menu;
+pub mod intro;
+pub mod main_menu;
 pub mod resources_panel;
 pub mod selected_object_panel;
 pub mod sim_speed_panel;
@@ -160,10 +162,11 @@ pub(super) fn draw_centered_window(
         .unwrap();
 
     // 3. Render text lines, offset by padding from the panel's edge
-    let text_start_x = panel_x + PADDING;
     let text_start_y = panel_y + PADDING;
 
     for (i, (text, fg)) in lines.iter().enumerate() {
+        // center each line of text individually
+        let text_start_x = panel_x + PADDING + (text_content_w - text.len() as u8) / 2;
         render_text_at(
             canvas,
             renderer,
