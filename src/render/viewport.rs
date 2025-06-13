@@ -156,7 +156,7 @@ fn draw_entities(
                     if let Some(name) = world.get_entity_name(entity_id) {
                         let text = name.to_lowercase();
 
-                        const STAR_LABEL_FONT_SIZE_WORLD: f64 = 0.3;
+                        const STAR_LABEL_FONT_SIZE_WORLD: f64 = 0.6;
                         let char_width_world = STAR_LABEL_FONT_SIZE_WORLD;
                         let text_width_world = text.chars().count() as f64 * char_width_world;
 

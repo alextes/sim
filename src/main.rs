@@ -100,7 +100,9 @@ pub fn main() {
 
         {
             let mut current_game_state = game_state.lock().unwrap();
-            if *current_game_state == GameState::Intro && intro_start_time.elapsed() >= Duration::from_millis(100) {
+            if *current_game_state == GameState::Intro
+                && intro_start_time.elapsed() >= Duration::from_millis(100)
+            {
                 *current_game_state = GameState::MainMenu;
             }
         }
