@@ -61,9 +61,11 @@ pub fn handle_playing_input(
             if let Some(index) = controls.entity_focus_index {
                 if index < world.entities.len() {
                     let selected_id = world.entities[index];
-                    if let Some(buildings) = world.buildings.get(&selected_id) {
-                        if !buildings.slots.is_empty() {
-                            **game_state_guard = GameState::BuildMenu;
+                    if world.is_player_controlled(selected_id) {
+                        if let Some(buildings) = world.buildings.get(&selected_id) {
+                            if !buildings.slots.is_empty() {
+                                **game_state_guard = GameState::BuildMenu;
+                            }
                         }
                     }
                 }

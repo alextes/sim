@@ -26,6 +26,8 @@ fn add_sol_system(world: &mut World) -> EntityId {
     // moon: faster orbit around earth, e.g. complete in 5 seconds
     let _moon_id = world.spawn_moon("moon".to_string(), earth_id, 4.0, 0.0, TAU / 5.0);
 
+    world.set_player_controlled(earth_id);
+
     // pre-build on earth
     if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
         // add a mine to the first available ground slot

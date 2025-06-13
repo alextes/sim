@@ -1,5 +1,5 @@
 use std::cmp::{max, min};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rand::seq::IteratorRandom;
 
@@ -158,6 +158,8 @@ pub struct World {
     pub buildings: HashMap<EntityId, EntityBuildings>,
     /// visual-only star lanes between entities
     pub lanes: Vec<(EntityId, EntityId)>,
+    /// set of entities controlled by the player
+    pub player_controlled: HashSet<EntityId>,
 }
 
 impl World {
@@ -259,6 +261,16 @@ impl World {
     /// get the color used for rendering this entity.
     pub fn get_entity_color(&self, entity: EntityId) -> Option<Color> {
         self.entity_colors.get(&entity).copied()
+    }
+
+    /// set an entity as player controlled.
+    pub fn set_player_controlled(&mut self, entity: EntityId) {
+        self.player_controlled.insert(entity);
+    }
+
+    /// check if an entity is player controlled.
+    pub fn is_player_controlled(&self, entity: EntityId) -> bool {
+        self.player_controlled.contains(&entity)
     }
 
     /// generate visual star lanes connecting stars.
