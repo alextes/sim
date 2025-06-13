@@ -104,6 +104,7 @@ fn draw_entities(
     canvas: &mut Canvas<Window>,
     renderer: &SpriteSheetRenderer,
     world: &World,
+    viewport: &Viewport,
     ctx: &ViewportRenderContext,
 ) {
     for entity_id in world.iter_entities() {
@@ -149,6 +150,37 @@ fn draw_entities(
                     .unwrap_or_else(|e| {
                         error!("failed to copy tile for entity {}: {:?}", entity_id, e)
                     });
+
+                const STAR_LABEL_MIN_ZOOM: f64 = 0.7;
+                if glyph == '*' && viewport.zoom > STAR_LABEL_MIN_ZOOM {
+                    if let Some(name) = world.get_entity_name(entity_id) {
+                        let text = name.to_lowercase();
+
+                        const STAR_LABEL_FONT_SIZE_WORLD: f64 = 0.3;
+                        let char_width_world = STAR_LABEL_FONT_SIZE_WORLD;
+                        let text_width_world = text.chars().count() as f64 * char_width_world;
+
+                        let label_pos = PointF64 {
+                            x: (entity_world_x_f64 + 0.5) - (text_width_world / 2.0),
+                            y: entity_world_y_f64 + 1.1,
+                        };
+
+                        render_text_in_world(
+                            canvas,
+                            renderer,
+                            &text,
+                            label_pos,
+                            STAR_LABEL_FONT_SIZE_WORLD,
+                            sdl2::pixels::Color::RGBA(
+                                colors::LGRAY.r,
+                                colors::LGRAY.g,
+                                colors::LGRAY.b,
+                                220,
+                            ),
+                            ctx,
+                        );
+                    }
+                }
             }
         }
     }
@@ -188,7 +220,7 @@ pub fn render_world_in_viewport(
 
     draw_star_lanes(canvas, world, &ctx);
     draw_orbit_lines(canvas, world, viewport, &ctx);
-    draw_entities(canvas, renderer, world, &ctx);
+    draw_entities(canvas, renderer, world, viewport, &ctx);
 
     if debug_enabled {
         draw_viewport_border(canvas, viewport);
@@ -327,6 +359,56 @@ impl Viewport {
         self.anchor.y =
             world_pos_before_zoom.y - mouse_offset_from_center_y / new_world_tile_pixel_size;
     }
+}
+
+fn render_text_in_world(
+    canvas: &mut Canvas<Window>,
+    renderer: &SpriteSheetRenderer,
+    text: &str,
+    world_pos: PointF64,  // top-left of the text
+    font_size_world: f64, // font size in world units (tile size)
+    color: sdl2::pixels::Color,
+    ctx: &ViewportRenderContext,
+) {
+    let char_width_world = font_size_world;
+
+    renderer.set_texture_color_mod(color.r, color.g, color.b);
+    let original_alpha = renderer.texture_ref().alpha_mod();
+    renderer.texture.borrow_mut().set_alpha_mod(color.a);
+    let old_blend_mode = canvas.blend_mode();
+    canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+
+    for (i, ch) in text.chars().enumerate() {
+        // Don't render spaces.
+        if ch == ' ' {
+            continue;
+        }
+        let char_world_x = world_pos.x + i as f64 * char_width_world;
+        let char_world_y = world_pos.y;
+
+        let src = renderer.tileset.get_rect(ch);
+
+        let on_screen_pixel_size = font_size_world * ctx.world_tile_actual_pixel_size_on_screen;
+
+        // Convert world coordinates to screen coordinates
+        let screen_x =
+            (char_world_x - ctx.view_world_origin_x) * ctx.world_tile_actual_pixel_size_on_screen;
+        let screen_y =
+            (char_world_y - ctx.view_world_origin_y) * ctx.world_tile_actual_pixel_size_on_screen;
+
+        let dst = sdl2::rect::Rect::new(
+            screen_x.round() as i32,
+            screen_y.round() as i32,
+            on_screen_pixel_size.round().max(1.0) as u32,
+            on_screen_pixel_size.round().max(1.0) as u32,
+        );
+
+        canvas
+            .copy(&renderer.texture_ref(), Some(src), Some(dst))
+            .ok();
+    }
+    renderer.texture.borrow_mut().set_alpha_mod(original_alpha);
+    canvas.set_blend_mode(old_blend_mode);
 }
 
 #[cfg(test)]
