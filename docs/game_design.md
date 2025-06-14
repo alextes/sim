@@ -81,3 +81,4 @@ technological progress impacts the civilian economy but only develops slowly whe
 - gas resources mostly present in gas giants.
 - many different types of resources, some are rare, some are common, depending on the celestial body and what type it is.
 - complex civilian economy. i.e. the player does not control everything. some industry capacity or specialization can only be incentivized by the player but it is the civilian economy that has to pick up the incentive. the player can order shipyards built, but if a shipyard lacks a certain resource, the player can either build military trade / transport fleets and manage them themselves, or the player can set subsidies for the civilian economy to build these fleets, or even pick up refining locally.
+- lagrange point special orbital structures.
