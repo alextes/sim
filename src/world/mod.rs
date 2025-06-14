@@ -1,16 +1,15 @@
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 
-use rand::seq::IteratorRandom;
-
 use crate::location::{LocationSystem, OrbitalInfo, Point};
 
-use crate::buildings::{EntityBuildings, MOON_SLOTS, PLANET_SLOTS};
+use crate::buildings::EntityBuildings;
 use crate::command::Command;
 use crate::location::PointF64;
 use std::collections::VecDeque;
 
 mod resources;
+pub mod spawning;
 
 pub use resources::ResourceSystem;
 
@@ -29,7 +28,7 @@ pub struct ShipInfo {
     pub speed: f64,
 }
 
-const STAR_COLORS: [Color; 3] = [
+pub const STAR_COLORS: [Color; 3] = [
     Color {
         r: 255,
         g: 255,
@@ -47,7 +46,7 @@ const STAR_COLORS: [Color; 3] = [
     }, // pale blue
 ];
 
-const PLANET_COLORS: [Color; 3] = [
+pub const PLANET_COLORS: [Color; 3] = [
     Color {
         r: 60,
         g: 179,
@@ -65,7 +64,7 @@ const PLANET_COLORS: [Color; 3] = [
     }, // sandy brown
 ];
 
-const MOON_COLORS: [Color; 3] = [
+pub const MOON_COLORS: [Color; 3] = [
     Color {
         r: 211,
         g: 211,
@@ -149,17 +148,17 @@ fn segments_intersect(p1: Point, q1: Point, p2: Point, q2: Point) -> bool {
 
 #[derive(Debug, Default)]
 pub struct World {
-    next_entity_id: EntityId,
+    pub(crate) next_entity_id: EntityId,
     /// ordered list of all entity IDs
     pub entities: Vec<EntityId>,
     /// glyphs to use when rendering each entity
-    render_glyphs: HashMap<EntityId, char>,
+    pub(crate) render_glyphs: HashMap<EntityId, char>,
     /// colors to use when rendering each entity
-    entity_colors: HashMap<EntityId, Color>,
+    pub(crate) entity_colors: HashMap<EntityId, Color>,
     /// human-readable names for entities
-    entity_names: HashMap<EntityId, String>,
+    pub(crate) entity_names: HashMap<EntityId, String>,
     /// location system managing static and orbital positions
-    locations: LocationSystem,
+    pub(crate) locations: LocationSystem,
     /// Global resource counters for the player
     pub resources: ResourceSystem,
     /// Building slots for entities that support them
@@ -179,17 +178,7 @@ pub struct World {
 impl World {
     /// Create a static entity at a fixed point (e.g. a star).
     pub fn spawn_star(&mut self, name: String, position: Point) -> EntityId {
-        let id = self.next_entity_id;
-        self.next_entity_id += 1;
-        self.entities.push(id);
-        self.entity_names.insert(id, name);
-        self.render_glyphs.insert(id, '*');
-        let mut rng = rand::rng();
-        let color = STAR_COLORS.iter().choose(&mut rng).unwrap();
-        self.entity_colors.insert(id, *color);
-        self.locations.add_static(id, position);
-        self.buildings.insert(id, EntityBuildings::new(0));
-        id
+        spawning::spawn_star(self, name, position)
     }
 
     /// Create an orbiting entity (e.g. planet or moon) around an existing entity.
@@ -201,19 +190,7 @@ impl World {
         initial_angle: f64,
         angular_velocity: f64,
     ) -> EntityId {
-        let id = self.next_entity_id;
-        self.next_entity_id += 1;
-        self.entities.push(id);
-        self.entity_names.insert(id, name);
-        self.render_glyphs.insert(id, 'p');
-        let mut rng = rand::rng();
-        let color = PLANET_COLORS.iter().choose(&mut rng).unwrap();
-        self.entity_colors.insert(id, *color);
-        self.locations
-            .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
-        self.buildings
-            .insert(id, EntityBuildings::new(PLANET_SLOTS));
-        id
+        spawning::spawn_planet(self, name, anchor, radius, initial_angle, angular_velocity)
     }
 
     /// Create an orbiting moon, using the 'm' glyph.
@@ -225,39 +202,11 @@ impl World {
         initial_angle: f64,
         angular_velocity: f64,
     ) -> EntityId {
-        let id = self.next_entity_id;
-        self.next_entity_id += 1;
-        self.entities.push(id);
-        self.entity_names.insert(id, name);
-        self.render_glyphs.insert(id, 'm');
-        let mut rng = rand::rng();
-        let color = MOON_COLORS.iter().choose(&mut rng).unwrap();
-        self.entity_colors.insert(id, *color);
-        self.locations
-            .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
-        self.buildings.insert(id, EntityBuildings::new(MOON_SLOTS));
-        id
+        spawning::spawn_moon(self, name, anchor, radius, initial_angle, angular_velocity)
     }
 
     pub fn spawn_frigate(&mut self, name: String, position: Point) -> EntityId {
-        let id = self.next_entity_id;
-        self.next_entity_id += 1;
-        self.entities.push(id);
-        self.entity_names.insert(id, name);
-        self.render_glyphs.insert(id, 'f');
-        // use gray for now
-        self.entity_colors.insert(
-            id,
-            Color {
-                r: 128,
-                g: 128,
-                b: 128,
-            },
-        );
-        self.locations.add_mobile(id, position);
-        self.ships.insert(id, ShipInfo { speed: 5.0 }); // Default speed
-        self.set_player_controlled(id);
-        id
+        spawning::spawn_frigate(self, name, position)
     }
 
     /// adds a command to the world's command queue.
@@ -286,11 +235,7 @@ impl World {
         // ship movement
         let mut completed_moves = Vec::new();
         for (&ship_id, destination) in &self.move_orders {
-            if let Some(current_pos_point) = self.get_location(ship_id) {
-                let current_pos = PointF64 {
-                    x: current_pos_point.x as f64,
-                    y: current_pos_point.y as f64,
-                };
+            if let Some(current_pos) = self.locations.get_location_f64(ship_id) {
                 let ship_info = self.ships.get(&ship_id).unwrap(); // should exist if in move_orders
 
                 let vector_to_dest = PointF64 {
@@ -302,11 +247,9 @@ impl World {
 
                 if distance < move_dist {
                     // arrived
-                    let final_pos = Point {
-                        x: destination.x.round() as i32,
-                        y: destination.y.round() as i32,
-                    };
-                    self.locations.set_position(ship_id, final_pos).unwrap();
+                    self.locations
+                        .set_position_f64(ship_id, *destination)
+                        .unwrap();
                     completed_moves.push(ship_id);
                 } else {
                     // move towards destination
@@ -318,11 +261,7 @@ impl World {
                         x: current_pos.x + direction.x * move_dist,
                         y: current_pos.y + direction.y * move_dist,
                     };
-                    let new_pos_point = Point {
-                        x: new_pos.x.round() as i32,
-                        y: new_pos.y.round() as i32,
-                    };
-                    self.locations.set_position(ship_id, new_pos_point).unwrap();
+                    self.locations.set_position_f64(ship_id, new_pos).unwrap();
                 }
             }
         }
@@ -348,7 +287,11 @@ impl World {
                 let _ = ship_type;
                 if let Some(location) = self.get_location(shipyard_entity_id) {
                     let ship_name = format!("frigate-{}", self.ships.len());
-                    self.spawn_frigate(ship_name, location);
+                    let spawn_pos = Point {
+                        x: location.x + 2,
+                        y: location.y,
+                    };
+                    self.spawn_frigate(ship_name, spawn_pos);
                 }
             }
             Command::BuildBuilding {
@@ -678,6 +621,51 @@ impl World {
 mod tests {
     use super::*;
     use crate::location::Point;
+
+    #[test]
+    fn test_segments_intersect() {
+        // simple intersection
+        let p1 = Point { x: 0, y: 0 };
+        let q1 = Point { x: 10, y: 10 };
+        let p2 = Point { x: 0, y: 10 };
+        let q2 = Point { x: 10, y: 0 };
+        assert!(segments_intersect(p1, q1, p2, q2));
+
+        // no intersection
+        let p3 = Point { x: 0, y: 0 };
+        let q3 = Point { x: 1, y: 1 };
+        let p4 = Point { x: 2, y: 2 };
+        let q4 = Point { x: 3, y: 3 };
+        assert!(!segments_intersect(p3, q3, p4, q4));
+
+        // collinear and overlapping
+        let p5 = Point { x: 0, y: 0 };
+        let q5 = Point { x: 10, y: 0 };
+        let p6 = Point { x: 5, y: 0 };
+        let q6 = Point { x: 15, y: 0 };
+        assert!(segments_intersect(p5, q5, p6, q6));
+
+        // collinear but not overlapping
+        let p7 = Point { x: 0, y: 0 };
+        let q7 = Point { x: 1, y: 0 };
+        let p8 = Point { x: 2, y: 0 };
+        let q8 = Point { x: 3, y: 0 };
+        assert!(!segments_intersect(p7, q7, p8, q8));
+
+        // sharing an endpoint
+        let p9 = Point { x: 0, y: 0 };
+        let q9 = Point { x: 1, y: 1 };
+        let p10 = Point { x: 1, y: 1 };
+        let q10 = Point { x: 2, y: 0 };
+        assert!(segments_intersect(p9, q9, p10, q10));
+
+        // T-junction
+        let p11 = Point { x: 5, y: 0 };
+        let q11 = Point { x: 5, y: 10 };
+        let p12 = Point { x: 0, y: 5 };
+        let q12 = Point { x: 10, y: 5 };
+        assert!(segments_intersect(p11, q11, p12, q12));
+    }
 
     #[test]
     fn test_spawn_frigate() {

@@ -92,9 +92,6 @@ pub fn handle_events(
                 GameState::BuildMenu => {
                     *state_guard = GameState::Playing;
                 }
-                GameState::BuildMenuError { .. } => {
-                    *state_guard = GameState::Playing;
-                }
                 GameState::ShipyardMenu => {
                     *state_guard = GameState::Playing;
                 }
@@ -139,7 +136,7 @@ pub fn handle_events(
                     return Signal::Quit;
                 }
             }
-            GameState::BuildMenu | GameState::BuildMenuError { .. } => {
+            GameState::BuildMenu => {
                 build_menu::handle_build_menu_input(
                     &event,
                     &current_state_clone,

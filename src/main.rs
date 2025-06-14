@@ -43,7 +43,6 @@ pub enum GameState {
     Playing,
     GameMenu,
     BuildMenu,
-    BuildMenuError { message: String },
     ShipyardMenu,
     ShipyardMenuError { message: String },
 }

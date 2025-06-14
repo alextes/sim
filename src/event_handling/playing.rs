@@ -1,3 +1,5 @@
+use std::sync::MutexGuard;
+
 use super::ControlState;
 use crate::buildings::BuildingType;
 use crate::input; // Import the new input module
@@ -44,7 +46,7 @@ fn handle_keydown(
     location_viewport: &mut Viewport,
     world: &mut World,
     controls: &mut ControlState,
-    game_state_guard: &mut std::sync::MutexGuard<'_, GameState>,
+    game_state_guard: &mut MutexGuard<'_, GameState>,
 ) {
     const KEY_PAN_WORLD_DISTANCE_AT_ZOOM_1: f64 = 0.25;
     let current_pan_amount = KEY_PAN_WORLD_DISTANCE_AT_ZOOM_1 / location_viewport.zoom.max(0.01);
@@ -65,16 +67,24 @@ fn handle_keydown(
             if let Some(index) = controls.entity_focus_index {
                 if index < world.entities.len() {
                     let selected_id = world.entities[index];
+                    if world.is_player_controlled(selected_id)
+                        && world.buildings.contains_key(&selected_id)
+                    {
+                        **game_state_guard = GameState::BuildMenu;
+                    }
+                }
+            }
+        }
+        Keycode::S => {
+            if let Some(index) = controls.entity_focus_index {
+                if index < world.entities.len() {
+                    let selected_id = world.entities[index];
                     if world.is_player_controlled(selected_id) {
                         if let Some(buildings) = world.buildings.get(&selected_id) {
-                            if buildings
-                                .slots
-                                .iter()
-                                .any(|s| *s == Some(BuildingType::Shipyard))
-                            {
+                            let has_shipyard =
+                                buildings.slots.contains(&Some(BuildingType::Shipyard));
+                            if has_shipyard {
                                 **game_state_guard = GameState::ShipyardMenu;
-                            } else if !buildings.slots.is_empty() {
-                                **game_state_guard = GameState::BuildMenu;
                             }
                         }
                     }

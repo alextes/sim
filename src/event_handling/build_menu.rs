@@ -19,39 +19,30 @@ pub fn handle_build_menu_input(
         return;
     };
 
-    match current_state {
-        GameState::BuildMenu => {
-            if let Event::KeyDown {
-                keycode: Some(ref keycode),
-                ..
-            } = event
-            {
-                if world.entities.is_empty() {
-                    **game_state_guard = GameState::Playing;
-                    return;
-                }
-                let selected_id = world.entities[entity_focus_index];
-                let building_to_build = match *keycode {
-                    Keycode::Num1 => Some(BuildingType::SolarPanel),
-                    Keycode::Num2 => Some(BuildingType::Mine),
-                    _ => None,
-                };
-
-                if let Some(building) = building_to_build {
-                    world.add_command(crate::command::Command::BuildBuilding {
-                        entity_id: selected_id,
-                        building_type: building,
-                    });
-                    **game_state_guard = GameState::Playing;
-                }
+    if let GameState::BuildMenu = current_state {
+        if let Event::KeyDown {
+            keycode: Some(ref keycode),
+            ..
+        } = event
+        {
+            if world.entities.is_empty() {
+                **game_state_guard = GameState::Playing;
+                return;
             }
-        }
-        GameState::BuildMenuError { .. } => {
-            // Any key press returns to playing state
-            if let Event::KeyDown { .. } = event {
+            let selected_id = world.entities[entity_focus_index];
+            let building_to_build = match *keycode {
+                Keycode::Num1 => Some(BuildingType::SolarPanel),
+                Keycode::Num2 => Some(BuildingType::Mine),
+                _ => None,
+            };
+
+            if let Some(building) = building_to_build {
+                world.add_command(crate::command::Command::BuildBuilding {
+                    entity_id: selected_id,
+                    building_type: building,
+                });
                 **game_state_guard = GameState::Playing;
             }
         }
-        _ => {} // Ignore GameState::Playing as it's handled elsewhere
     }
 }
