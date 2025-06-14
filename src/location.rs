@@ -17,6 +17,12 @@ pub struct PointF64 {
     pub y: f64,
 }
 
+impl From<(f64, f64)> for PointF64 {
+    fn from((x, y): (f64, f64)) -> Self {
+        Self { x, y }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct OrbitalInfo {
     pub anchor: EntityId,
@@ -31,25 +37,31 @@ pub struct LocationSystem {
 
 #[derive(Debug)]
 enum LocatedEntity {
-    Static(Point),
+    Static(PointF64),
     Orbital {
         anchor: EntityId,
         radius: f64,
         angle: f64,
         angular_velocity: f64,
-        position: Point,
+        position: PointF64,
     },
-    Mobile(Point),
+    Mobile(PointF64),
 }
 
 impl LocationSystem {
     /// Add a static (fixed) position for an entity.
     pub fn add_static(&mut self, entity: EntityId, position: Point) {
-        self.entries.insert(entity, LocatedEntity::Static(position));
+        self.entries.insert(
+            entity,
+            LocatedEntity::Static(PointF64 {
+                x: position.x as f64,
+                y: position.y as f64,
+            }),
+        );
     }
 
     /// Add a mobile entity.
-    pub fn add_mobile(&mut self, entity: EntityId, position: Point) {
+    pub fn add_mobile(&mut self, entity: EntityId, position: PointF64) {
         self.entries.insert(entity, LocatedEntity::Mobile(position));
     }
 
@@ -62,10 +74,10 @@ impl LocationSystem {
         initial_angle: f64,
         angular_velocity: f64,
     ) {
-        let anchor_pos = self.get_location(anchor).unwrap_or(Point { x: 0, y: 0 });
-        let position = Point {
-            x: anchor_pos.x + (radius * initial_angle.cos()) as i32,
-            y: anchor_pos.y + (radius * initial_angle.sin()) as i32,
+        let anchor_pos = self.get_location_f64(anchor).unwrap_or_default();
+        let position = PointF64 {
+            x: anchor_pos.x + radius * initial_angle.cos(),
+            y: anchor_pos.y + radius * initial_angle.sin(),
         };
         self.entries.insert(
             entity,
@@ -98,13 +110,13 @@ impl LocationSystem {
         // apply in order, so anchors update before children
         for (id, anchor, radius, old_angle, angular_velocity) in updates {
             let new_angle = old_angle + angular_velocity * dt;
-            let anchor_pos = self.get_location(anchor).unwrap_or_else(|| {
+            let anchor_pos = self.get_location_f64(anchor).unwrap_or_else(|| {
                 error!("update: anchor {} not found", anchor);
-                Point { x: 0, y: 0 }
+                PointF64::default()
             });
-            let new_pos = Point {
-                x: anchor_pos.x + (radius * new_angle.cos()) as i32,
-                y: anchor_pos.y + (radius * new_angle.sin()) as i32,
+            let new_pos = PointF64 {
+                x: anchor_pos.x + (radius * new_angle.cos()),
+                y: anchor_pos.y + (radius * new_angle.sin()),
             };
             if let Some(LocatedEntity::Orbital {
                 ref mut angle,
@@ -122,7 +134,8 @@ impl LocationSystem {
     pub fn set_position(&mut self, entity: EntityId, new_pos: Point) -> Result<()> {
         match self.entries.get_mut(&entity) {
             Some(LocatedEntity::Mobile(pos)) => {
-                *pos = new_pos;
+                pos.x = new_pos.x as f64;
+                pos.y = new_pos.y as f64;
                 Ok(())
             }
             Some(LocatedEntity::Static(_)) => {
@@ -135,8 +148,33 @@ impl LocationSystem {
         }
     }
 
+    /// sets the precise f64 position of a mobile entity.
+    pub fn set_position_f64(&mut self, entity: EntityId, new_pos: PointF64) -> Result<()> {
+        match self.entries.get_mut(&entity) {
+            Some(LocatedEntity::Mobile(pos)) => {
+                *pos = new_pos;
+                Ok(())
+            }
+            Some(LocatedEntity::Static(_)) => {
+                Err(anyhow!("cannot set f64 position on a static entity"))
+            }
+            Some(LocatedEntity::Orbital { .. }) => {
+                Err(anyhow!("cannot set f64 position on an orbital entity"))
+            }
+            None => Err(anyhow!("entity not found")),
+        }
+    }
+
     /// Get the current absolute position of an entity.
     pub fn get_location(&self, entity: EntityId) -> Option<Point> {
+        self.get_location_f64(entity).map(|p| Point {
+            x: p.x.round() as i32,
+            y: p.y.round() as i32,
+        })
+    }
+
+    /// Get the current precise absolute f64 position of an entity.
+    pub fn get_location_f64(&self, entity: EntityId) -> Option<PointF64> {
         self.entries.get(&entity).map(|loc| match loc {
             LocatedEntity::Static(p) => *p,
             LocatedEntity::Orbital { position, .. } => *position,
@@ -187,7 +225,7 @@ mod tests {
     #[test]
     fn test_set_position_mobile() {
         let mut ls = LocationSystem::default();
-        ls.add_mobile(1, Point { x: 0, y: 0 });
+        ls.add_mobile(1, PointF64 { x: 0.0, y: 0.0 });
         assert_eq!(ls.get_location(1), Some(Point { x: 0, y: 0 }));
         ls.set_position(1, Point { x: 10, y: -10 }).unwrap();
         assert_eq!(ls.get_location(1), Some(Point { x: 10, y: -10 }));

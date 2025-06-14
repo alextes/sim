@@ -285,13 +285,9 @@ impl World {
             } => {
                 // for now, we only have one ship type
                 let _ = ship_type;
-                if let Some(location) = self.get_location(shipyard_entity_id) {
+                if let Some(location) = self.locations.get_location(shipyard_entity_id) {
                     let ship_name = format!("frigate-{}", self.ships.len());
-                    let spawn_pos = Point {
-                        x: location.x + 2,
-                        y: location.y,
-                    };
-                    self.spawn_frigate(ship_name, spawn_pos);
+                    self.spawn_frigate(ship_name, location);
                 }
             }
             Command::BuildBuilding {

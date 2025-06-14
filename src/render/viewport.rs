@@ -4,6 +4,7 @@ use sdl2::video::Window;
 use tracing::{error, trace};
 
 use crate::colors;
+use crate::initialization::{INITIAL_WINDOW_HEIGHT, INITIAL_WINDOW_WIDTH};
 use crate::location::PointF64;
 use crate::world::{EntityId, World};
 
@@ -371,13 +372,11 @@ pub struct Viewport {
 
 impl Default for Viewport {
     fn default() -> Self {
-        const DEFAULT_TILES_WIDE: u32 = 64;
-        const DEFAULT_TILES_HIGH: u32 = 64;
         Self {
             anchor: PointF64 { x: 0.0, y: 0.0 },
             zoom: 1.0,
-            screen_pixel_width: DEFAULT_TILES_WIDE * TILE_PIXEL_WIDTH as u32,
-            screen_pixel_height: DEFAULT_TILES_HIGH * TILE_PIXEL_WIDTH as u32,
+            screen_pixel_width: INITIAL_WINDOW_WIDTH,
+            screen_pixel_height: INITIAL_WINDOW_HEIGHT,
         }
     }
 }
@@ -495,14 +494,15 @@ fn render_text_in_world(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::initialization::{INITIAL_WINDOW_HEIGHT, INITIAL_WINDOW_WIDTH};
 
     #[test]
     fn default_viewport() {
         let vp = Viewport::default();
         assert_eq!(vp.anchor, PointF64 { x: 0.0, y: 0.0 });
         assert_eq!(vp.zoom, 1.0);
-        assert_eq!(vp.screen_pixel_width, 64 * TILE_PIXEL_WIDTH as u32);
-        assert_eq!(vp.screen_pixel_height, 64 * TILE_PIXEL_WIDTH as u32);
+        assert_eq!(vp.screen_pixel_width, INITIAL_WINDOW_WIDTH);
+        assert_eq!(vp.screen_pixel_height, INITIAL_WINDOW_HEIGHT);
     }
 
     #[test]
@@ -522,5 +522,42 @@ mod tests {
         // zoom_out should bring it back close to original
         let diff = (vp.zoom - original_zoom).abs();
         assert!(diff < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_screen_to_world_coords() {
+        let mut vp = Viewport {
+            anchor: PointF64 { x: 0.0, y: 0.0 },
+            zoom: 1.0,
+            screen_pixel_width: 800,
+            screen_pixel_height: 600,
+        };
+
+        // case 1: no zoom, anchor at origin
+        vp.zoom = 1.0;
+        vp.anchor = PointF64 { x: 0.0, y: 0.0 };
+        let coords = vp.screen_to_world_coords(400, 300); // screen center
+        assert!((coords.x - 0.0).abs() < 1e-9);
+        assert!((coords.y - 0.0).abs() < 1e-9);
+
+        // case 2: zoomed in, anchor at origin
+        vp.zoom = 2.0;
+        let coords = vp.screen_to_world_coords(400, 300); // screen center
+        assert!((coords.x - 0.0).abs() < 1e-9);
+        assert!((coords.y - 0.0).abs() < 1e-9);
+        // top-left screen should be top-left of smaller world view
+        let tile_size = TILE_PIXEL_WIDTH as f64;
+        let expected_x = 0.0 - (800.0 / 2.0) / (tile_size * 2.0);
+        let expected_y = 0.0 - (600.0 / 2.0) / (tile_size * 2.0);
+        let coords_tl = vp.screen_to_world_coords(0, 0);
+        assert!((coords_tl.x - expected_x).abs() < 1e-9);
+        assert!((coords_tl.y - expected_y).abs() < 1e-9);
+
+        // case 3: zoomed out, anchor offset
+        vp.zoom = 0.5;
+        vp.anchor = PointF64 { x: 100.0, y: -50.0 };
+        let coords_center = vp.screen_to_world_coords(400, 300); // screen center
+        assert!((coords_center.x - 100.0).abs() < 1e-9);
+        assert!((coords_center.y - -50.0).abs() < 1e-9);
     }
 }

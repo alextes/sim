@@ -4,6 +4,9 @@ use sdl2::video::Window;
 use sdl2::Sdl;
 use tracing::debug;
 
+pub const INITIAL_WINDOW_WIDTH: u32 = 800;
+pub const INITIAL_WINDOW_HEIGHT: u32 = 600;
+
 pub fn setup_sdl() -> (
     Sdl,
     Canvas<Window>,
@@ -15,7 +18,7 @@ pub fn setup_sdl() -> (
     let _image_context = sdl2::image::init(InitFlag::PNG).unwrap();
 
     let window = video_subsystem
-        .window("sim", 800, 600)
+        .window("sim", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT)
         .position_centered()
         .resizable()
         .build()

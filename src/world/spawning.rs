@@ -84,13 +84,9 @@ pub fn spawn_frigate(world: &mut World, name: String, position: Point) -> Entity
             b: 128,
         },
     );
-    world.locations.add_mobile(
-        id,
-        PointF64 {
-            x: position.x as f64,
-            y: position.y as f64,
-        },
-    );
+    world
+        .locations
+        .add_mobile(id, (position.x as f64, position.y as f64).into());
     world.ships.insert(id, ShipInfo { speed: 5.0 }); // Default speed
     world.set_player_controlled(id);
     id
