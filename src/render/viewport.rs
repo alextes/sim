@@ -53,10 +53,10 @@ fn draw_move_orders(
             * ctx.world_tile_actual_pixel_size_on_screen;
         let ay = (pos_a.y as f64 + 0.5 - ctx.view_world_origin_y)
             * ctx.world_tile_actual_pixel_size_on_screen;
-        let bx = (destination.x + 0.5 - ctx.view_world_origin_x)
-            * ctx.world_tile_actual_pixel_size_on_screen;
-        let by = (destination.y + 0.5 - ctx.view_world_origin_y)
-            * ctx.world_tile_actual_pixel_size_on_screen;
+        let bx =
+            (destination.x - ctx.view_world_origin_x) * ctx.world_tile_actual_pixel_size_on_screen;
+        let by =
+            (destination.y - ctx.view_world_origin_y) * ctx.world_tile_actual_pixel_size_on_screen;
 
         canvas.set_draw_color(colors::GREEN);
         let p1 = sdl2::rect::Point::new(ax.round() as i32, ay.round() as i32);
@@ -510,8 +510,8 @@ fn render_text_in_world(
 fn draw_selection_box(canvas: &mut Canvas<Window>, start: (i32, i32), end: (i32, i32)) {
     let x = start.0.min(end.0);
     let y = start.1.min(end.1);
-    let width = (start.0 - end.0).abs() as u32;
-    let height = (start.1 - end.1).abs() as u32;
+    let width = (start.0 - end.0).unsigned_abs();
+    let height = (start.1 - end.1).unsigned_abs();
 
     let rect = Rect::new(x, y, width, height);
 

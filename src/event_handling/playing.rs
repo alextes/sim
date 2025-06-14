@@ -149,12 +149,18 @@ fn handle_mouse_button_down(
             controls.last_mouse_pos = Some((x, y));
         }
         MouseButton::Right => {
-            let dest = location_viewport.screen_to_world_coords(x, y);
+            let precise_dest = location_viewport.screen_to_world_coords(x, y);
+            // snap to cell center
+            let cell_center_dest = crate::location::PointF64 {
+                x: precise_dest.x.floor() + 0.5,
+                y: precise_dest.y.floor() + 0.5,
+            };
+
             for &id in &controls.selection {
                 if world.ships.contains_key(&id) {
                     world.add_command(crate::command::Command::MoveShip {
                         ship_id: id,
-                        destination: dest,
+                        destination: cell_center_dest,
                     });
                 }
             }
@@ -185,8 +191,8 @@ fn handle_mouse_button_up(
 
             let start_x = x1.min(x2);
             let start_y = y1.min(y2);
-            let width = (x1 - x2).abs() as u32;
-            let height = (y1 - y2).abs() as u32;
+            let width = (x1 - x2).unsigned_abs();
+            let height = (y1 - y2).unsigned_abs();
 
             let rect = sdl2::rect::Rect::new(start_x, start_y, width, height);
 
@@ -232,7 +238,6 @@ fn apply_box_selection_logic(
         .collect();
     if planets.len() == 1 {
         controls.selection = planets;
-        return;
     }
 
     let stars: Vec<EntityId> = entities_in_box
@@ -252,7 +257,6 @@ fn apply_box_selection_logic(
         .collect();
     if moons.len() == 1 {
         controls.selection = moons;
-        return;
     }
 }
 
