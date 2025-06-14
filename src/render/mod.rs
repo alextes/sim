@@ -13,7 +13,7 @@ use crate::event_handling::ControlState;
 use crate::interface::{self, DebugRenderInfo};
 use crate::render::background::BackgroundLayer;
 use crate::render::tileset::Tileset;
-use crate::world::World;
+use crate::world::{EntityId, World};
 use crate::GameState;
 
 // Re-export key items from the viewport module
@@ -31,6 +31,7 @@ pub struct RenderContext<'a, 'tc> {
     pub game_state: &'a GameState,
     pub debug_info: Option<DebugRenderInfo>,
     pub intro_progress: Option<f64>,
+    pub selected_id: Option<EntityId>,
 }
 
 pub struct SpriteSheetRenderer<'tc> {
@@ -76,25 +77,15 @@ fn render_game_scene(ctx: &mut RenderContext) {
         ctx.world,
         ctx.location_viewport,
         ctx.controls.debug_enabled,
+        ctx.selected_id,
     );
-
-    // determine selected entity for the interface
-    let selected_entity = if let Some(index) = ctx.controls.entity_focus_index {
-        if !ctx.world.entities.is_empty() && index < ctx.world.entities.len() {
-            Some(ctx.world.entities[index])
-        } else {
-            None
-        }
-    } else {
-        None
-    };
 
     // render UI elements (panels, etc.)
     interface::render_interface(
         ctx.canvas,
         ctx.sprite_renderer,
         ctx.world,
-        selected_entity,
+        ctx.selected_id,
         ctx.location_viewport.screen_pixel_height / (TILE_PIXEL_WIDTH as u32),
         ctx.controls,
         ctx.debug_info,
@@ -128,6 +119,18 @@ pub fn render_game_frame(ctx: &mut RenderContext) {
         GameState::BuildMenuError { message } => {
             render_game_scene(ctx);
             interface::build::render_build_error_menu(ctx.canvas, ctx.sprite_renderer, message);
+        }
+        GameState::ShipyardMenu => {
+            render_game_scene(ctx);
+            interface::shipyard_menu::render_shipyard_menu(ctx.canvas, ctx.sprite_renderer);
+        }
+        GameState::ShipyardMenuError { message } => {
+            render_game_scene(ctx);
+            interface::shipyard_menu::render_shipyard_error_menu(
+                ctx.canvas,
+                ctx.sprite_renderer,
+                message,
+            );
         }
     }
 

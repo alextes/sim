@@ -1,5 +1,6 @@
 mod buildings;
 mod colors;
+mod command;
 mod event_handling;
 mod game_loop;
 mod initialization;
@@ -8,6 +9,7 @@ mod interface;
 mod location;
 mod map_generation;
 mod render;
+mod ships;
 mod world;
 
 use std::sync::{Arc, Mutex};
@@ -34,7 +36,7 @@ const ONE_SECOND: Duration = Duration::from_secs(1);
 type SimulationUnit = u64;
 
 /// Represents the different interaction modes the game can be in.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GameState {
     Intro,
     MainMenu,
@@ -42,6 +44,8 @@ pub enum GameState {
     GameMenu,
     BuildMenu,
     BuildMenuError { message: String },
+    ShipyardMenu,
+    ShipyardMenuError { message: String },
 }
 
 pub fn main() {
@@ -183,6 +187,12 @@ pub fn main() {
                 None
             };
 
+            let selected_id = if let Some(index) = controls.entity_focus_index {
+                world.entities.get(index).cloned()
+            } else {
+                None
+            };
+
             let mut ctx = RenderContext {
                 canvas: &mut canvas,
                 sprite_renderer: &sprite_renderer,
@@ -193,6 +203,7 @@ pub fn main() {
                 game_state: &current_game_state,
                 debug_info: debug_render_info,
                 intro_progress,
+                selected_id,
             };
 
             render::render_game_frame(&mut ctx);

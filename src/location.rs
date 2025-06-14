@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use anyhow::{anyhow, Result};
+
 use crate::world::EntityId;
 use tracing::error;
 
@@ -37,12 +39,18 @@ enum LocatedEntity {
         angular_velocity: f64,
         position: Point,
     },
+    Mobile(Point),
 }
 
 impl LocationSystem {
     /// Add a static (fixed) position for an entity.
     pub fn add_static(&mut self, entity: EntityId, position: Point) {
         self.entries.insert(entity, LocatedEntity::Static(position));
+    }
+
+    /// Add a mobile entity.
+    pub fn add_mobile(&mut self, entity: EntityId, position: Point) {
+        self.entries.insert(entity, LocatedEntity::Mobile(position));
     }
 
     /// Add an orbital entry; initial position is computed relative to the anchor's current location.
@@ -110,11 +118,29 @@ impl LocationSystem {
         }
     }
 
+    /// sets the position of a mobile entity.
+    pub fn set_position(&mut self, entity: EntityId, new_pos: Point) -> Result<()> {
+        match self.entries.get_mut(&entity) {
+            Some(LocatedEntity::Mobile(pos)) => {
+                *pos = new_pos;
+                Ok(())
+            }
+            Some(LocatedEntity::Static(_)) => {
+                Err(anyhow!("cannot set position on a static entity"))
+            }
+            Some(LocatedEntity::Orbital { .. }) => {
+                Err(anyhow!("cannot set position on an orbital entity"))
+            }
+            None => Err(anyhow!("entity not found")),
+        }
+    }
+
     /// Get the current absolute position of an entity.
     pub fn get_location(&self, entity: EntityId) -> Option<Point> {
         self.entries.get(&entity).map(|loc| match loc {
             LocatedEntity::Static(p) => *p,
             LocatedEntity::Orbital { position, .. } => *position,
+            LocatedEntity::Mobile(p) => *p,
         })
     }
 
@@ -156,6 +182,22 @@ mod tests {
         ls.add_orbital(1, 0, 5.0, 0.0, 1.0);
         let p = ls.get_location(1).unwrap();
         assert_eq!(p, Point { x: 15, y: 20 });
+    }
+
+    #[test]
+    fn test_set_position_mobile() {
+        let mut ls = LocationSystem::default();
+        ls.add_mobile(1, Point { x: 0, y: 0 });
+        assert_eq!(ls.get_location(1), Some(Point { x: 0, y: 0 }));
+        ls.set_position(1, Point { x: 10, y: -10 }).unwrap();
+        assert_eq!(ls.get_location(1), Some(Point { x: 10, y: -10 }));
+    }
+
+    #[test]
+    fn test_set_position_static_fails() {
+        let mut ls = LocationSystem::default();
+        ls.add_static(1, Point { x: 0, y: 0 });
+        assert!(ls.set_position(1, Point { x: 10, y: -10 }).is_err());
     }
 
     #[test]

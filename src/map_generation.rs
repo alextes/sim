@@ -43,6 +43,23 @@ fn add_sol_system(world: &mut World) -> EntityId {
                 .expect("failed to build initial solar panel");
         }
     }
+    // add a shipyard to earth
+    if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
+        if let Some(slot) = earth_buildings.find_first_empty_slot() {
+            earth_buildings
+                .build(slot, BuildingType::Shipyard)
+                .expect("failed to build initial shipyard");
+        }
+    }
+
+    if let Some(earth_pos) = world.get_location(earth_id) {
+        let frigate_pos = crate::location::Point {
+            x: earth_pos.x + 2,
+            y: earth_pos.y,
+        };
+        world.spawn_frigate("frigate-0".to_string(), frigate_pos);
+    }
+
     sol_id
 }
 

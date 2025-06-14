@@ -1,11 +1,11 @@
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
-use tracing::error;
+use tracing::{error, trace};
 
 use crate::colors;
 use crate::location::PointF64;
-use crate::world::World;
+use crate::world::{EntityId, World};
 
 use super::{SpriteSheetRenderer, TILE_PIXEL_WIDTH};
 
@@ -22,6 +22,73 @@ struct ViewportRenderContext {
     view_bbox_world_y_max: f64,
     tile_on_screen_render_w: u32,
     tile_on_screen_render_h: u32,
+}
+
+fn draw_move_orders(
+    canvas: &mut Canvas<Window>,
+    world: &World,
+    selected_id: Option<EntityId>,
+    ctx: &ViewportRenderContext,
+) {
+    let id = match selected_id {
+        Some(id) => id,
+        None => {
+            trace!("no entity selected, skipping move order rendering");
+            return;
+        }
+    };
+
+    let destination = match world.move_orders.get(&id) {
+        Some(dest) => dest,
+        None => {
+            trace!("selected entity {} has no move order", id);
+            return;
+        }
+    };
+
+    let pos_a = match world.get_location(id) {
+        Some(pos) => pos,
+        None => {
+            error!("selected entity {} has move order but no position", id);
+            return;
+        }
+    };
+
+    // draw line
+    let ax = (pos_a.x as f64 + 0.5 - ctx.view_world_origin_x)
+        * ctx.world_tile_actual_pixel_size_on_screen;
+    let ay = (pos_a.y as f64 + 0.5 - ctx.view_world_origin_y)
+        * ctx.world_tile_actual_pixel_size_on_screen;
+    let bx = (destination.x + 0.5 - ctx.view_world_origin_x)
+        * ctx.world_tile_actual_pixel_size_on_screen;
+    let by = (destination.y + 0.5 - ctx.view_world_origin_y)
+        * ctx.world_tile_actual_pixel_size_on_screen;
+
+    canvas.set_draw_color(colors::GREEN);
+    let p1 = sdl2::rect::Point::new(ax.round() as i32, ay.round() as i32);
+    let p2 = sdl2::rect::Point::new(bx.round() as i32, by.round() as i32);
+    canvas.draw_line(p1, p2).ok();
+
+    // draw marker 'x'
+    let marker_size = (ctx.tile_on_screen_render_w as f64 * 0.5).max(4.0);
+    let p1 = sdl2::rect::Point::new(
+        (bx - marker_size / 2.0).round() as i32,
+        (by - marker_size / 2.0).round() as i32,
+    );
+    let p2 = sdl2::rect::Point::new(
+        (bx + marker_size / 2.0).round() as i32,
+        (by + marker_size / 2.0).round() as i32,
+    );
+    canvas.draw_line(p1, p2).ok();
+    let p1 = sdl2::rect::Point::new(
+        (bx - marker_size / 2.0).round() as i32,
+        (by + marker_size / 2.0).round() as i32,
+    );
+    let p2 = sdl2::rect::Point::new(
+        (bx + marker_size / 2.0).round() as i32,
+        (by - marker_size / 2.0).round() as i32,
+    );
+    canvas.draw_line(p1, p2).ok();
 }
 
 fn draw_star_lanes(canvas: &mut Canvas<Window>, world: &World, ctx: &ViewportRenderContext) {
@@ -106,6 +173,7 @@ fn draw_entities(
     world: &World,
     viewport: &Viewport,
     ctx: &ViewportRenderContext,
+    selected_id: Option<EntityId>,
 ) {
     for entity_id in world.iter_entities() {
         if let Some(pos) = world.get_location(entity_id) {
@@ -133,6 +201,17 @@ fn draw_entities(
                     ctx.tile_on_screen_render_w,
                     ctx.tile_on_screen_render_h,
                 );
+
+                if Some(entity_id) == selected_id {
+                    canvas.set_draw_color(colors::YELLOW);
+                    let outline_rect = Rect::new(
+                        dest_x - 2,
+                        dest_y - 2,
+                        ctx.tile_on_screen_render_w + 4,
+                        ctx.tile_on_screen_render_h + 4,
+                    );
+                    canvas.draw_rect(outline_rect).ok();
+                }
 
                 if let Some(color) = world.get_entity_color(entity_id) {
                     renderer.set_texture_color_mod(color.r, color.g, color.b);
@@ -192,6 +271,7 @@ pub fn render_world_in_viewport(
     world: &World,
     viewport: &Viewport,
     debug_enabled: bool,
+    selected_id: Option<EntityId>,
 ) {
     let world_tile_actual_pixel_size_on_screen =
         (TILE_PIXEL_WIDTH as f64 * viewport.zoom).max(0.001);
@@ -220,7 +300,8 @@ pub fn render_world_in_viewport(
 
     draw_star_lanes(canvas, world, &ctx);
     draw_orbit_lines(canvas, world, viewport, &ctx);
-    draw_entities(canvas, renderer, world, viewport, &ctx);
+    draw_entities(canvas, renderer, world, viewport, &ctx, selected_id);
+    draw_move_orders(canvas, world, selected_id, &ctx);
 
     if debug_enabled {
         draw_viewport_border(canvas, viewport);

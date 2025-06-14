@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum BuildingType {
     SolarPanel,
     Mine,
+    Shipyard,
 }
 
 // Constants for slot counts
@@ -50,6 +51,7 @@ impl EntityBuildings {
         match building {
             BuildingType::SolarPanel => "solar panel",
             BuildingType::Mine => "mine",
+            BuildingType::Shipyard => "shipyard",
         }
     }
 }
@@ -65,6 +67,10 @@ mod tests {
             "solar panel"
         );
         assert_eq!(EntityBuildings::building_name(BuildingType::Mine), "mine");
+        assert_eq!(
+            EntityBuildings::building_name(BuildingType::Shipyard),
+            "shipyard"
+        );
     }
 
     #[test]

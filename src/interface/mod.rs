@@ -11,6 +11,7 @@ pub mod intro;
 pub mod main_menu;
 pub mod resources_panel;
 pub mod selected_object_panel;
+pub mod shipyard_menu;
 pub mod sim_speed_panel;
 
 /// data required for rendering the debug overlay.

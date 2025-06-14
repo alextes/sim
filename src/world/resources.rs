@@ -47,6 +47,7 @@ impl ResourceSystem {
                         BuildingType::Mine => {
                             self.metal += METAL_PER_MINE_PER_INTERVAL;
                         }
+                        BuildingType::Shipyard => {}
                     }
                 }
             }
@@ -72,6 +73,7 @@ impl ResourceSystem {
                     BuildingType::Mine => {
                         metal_rate += METAL_PER_MINE_PER_INTERVAL;
                     }
+                    BuildingType::Shipyard => {}
                 }
             }
         }

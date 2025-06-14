@@ -10,6 +10,7 @@ use crate::GameState;
 mod build_menu;
 mod main_menu;
 mod playing;
+mod shipyard_menu;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
@@ -94,6 +95,12 @@ pub fn handle_events(
                 GameState::BuildMenuError { .. } => {
                     *state_guard = GameState::Playing;
                 }
+                GameState::ShipyardMenu => {
+                    *state_guard = GameState::Playing;
+                }
+                GameState::ShipyardMenuError { .. } => {
+                    *state_guard = GameState::Playing;
+                }
                 GameState::Intro => {}
             }
             continue; // skip further processing for this Escape event
@@ -134,6 +141,15 @@ pub fn handle_events(
             }
             GameState::BuildMenu | GameState::BuildMenuError { .. } => {
                 build_menu::handle_build_menu_input(
+                    &event,
+                    &current_state_clone,
+                    world,
+                    controls.entity_focus_index,
+                    &mut state_guard,
+                );
+            }
+            GameState::ShipyardMenu | GameState::ShipyardMenuError { .. } => {
+                shipyard_menu::handle_shipyard_menu_input(
                     &event,
                     &current_state_clone,
                     world,

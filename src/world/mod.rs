@@ -6,6 +6,9 @@ use rand::seq::IteratorRandom;
 use crate::location::{LocationSystem, OrbitalInfo, Point};
 
 use crate::buildings::{EntityBuildings, MOON_SLOTS, PLANET_SLOTS};
+use crate::command::Command;
+use crate::location::PointF64;
+use std::collections::VecDeque;
 
 mod resources;
 
@@ -19,6 +22,11 @@ pub struct Color {
     pub r: u8,
     pub g: u8,
     pub b: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ShipInfo {
+    pub speed: f64,
 }
 
 const STAR_COLORS: [Color; 3] = [
@@ -160,6 +168,12 @@ pub struct World {
     pub lanes: Vec<(EntityId, EntityId)>,
     /// set of entities controlled by the player
     pub player_controlled: HashSet<EntityId>,
+    /// Ships
+    pub ships: HashMap<EntityId, ShipInfo>,
+    /// ship move orders
+    pub move_orders: HashMap<EntityId, PointF64>,
+    /// command queue
+    pub command_queue: VecDeque<Command>,
 }
 
 impl World {
@@ -225,13 +239,129 @@ impl World {
         id
     }
 
+    pub fn spawn_frigate(&mut self, name: String, position: Point) -> EntityId {
+        let id = self.next_entity_id;
+        self.next_entity_id += 1;
+        self.entities.push(id);
+        self.entity_names.insert(id, name);
+        self.render_glyphs.insert(id, 'f');
+        // use gray for now
+        self.entity_colors.insert(
+            id,
+            Color {
+                r: 128,
+                g: 128,
+                b: 128,
+            },
+        );
+        self.locations.add_mobile(id, position);
+        self.ships.insert(id, ShipInfo { speed: 5.0 }); // Default speed
+        self.set_player_controlled(id);
+        id
+    }
+
+    /// adds a command to the world's command queue.
+    pub fn add_command(&mut self, command: Command) {
+        self.command_queue.push_back(command);
+    }
+
+    /// sets a move order for a ship.
+    pub fn set_move_order(&mut self, ship_id: EntityId, destination: PointF64) {
+        if self.ships.contains_key(&ship_id) {
+            self.move_orders.insert(ship_id, destination);
+        }
+    }
+
     /// advance all orbiters by dt_seconds, updating their stored positions.
     /// also handles periodic resource generation based on simulation ticks.
     pub fn update(&mut self, dt_seconds: f64, _current_tick: u64) {
-        self.locations.update(dt_seconds);
+        let commands: Vec<Command> = self.command_queue.drain(..).collect();
+        for command in commands {
+            self.process_command(command);
+        }
 
-        // delegate resource updates to the ResourceSystem
+        self.locations.update(dt_seconds);
         self.resources.update(dt_seconds, &self.buildings);
+
+        // ship movement
+        let mut completed_moves = Vec::new();
+        for (&ship_id, destination) in &self.move_orders {
+            if let Some(current_pos_point) = self.get_location(ship_id) {
+                let current_pos = PointF64 {
+                    x: current_pos_point.x as f64,
+                    y: current_pos_point.y as f64,
+                };
+                let ship_info = self.ships.get(&ship_id).unwrap(); // should exist if in move_orders
+
+                let vector_to_dest = PointF64 {
+                    x: destination.x - current_pos.x,
+                    y: destination.y - current_pos.y,
+                };
+                let distance = (vector_to_dest.x.powi(2) + vector_to_dest.y.powi(2)).sqrt();
+                let move_dist = ship_info.speed * dt_seconds;
+
+                if distance < move_dist {
+                    // arrived
+                    let final_pos = Point {
+                        x: destination.x.round() as i32,
+                        y: destination.y.round() as i32,
+                    };
+                    self.locations.set_position(ship_id, final_pos).unwrap();
+                    completed_moves.push(ship_id);
+                } else {
+                    // move towards destination
+                    let direction = PointF64 {
+                        x: vector_to_dest.x / distance,
+                        y: vector_to_dest.y / distance,
+                    };
+                    let new_pos = PointF64 {
+                        x: current_pos.x + direction.x * move_dist,
+                        y: current_pos.y + direction.y * move_dist,
+                    };
+                    let new_pos_point = Point {
+                        x: new_pos.x.round() as i32,
+                        y: new_pos.y.round() as i32,
+                    };
+                    self.locations.set_position(ship_id, new_pos_point).unwrap();
+                }
+            }
+        }
+
+        for ship_id in completed_moves {
+            self.move_orders.remove(&ship_id);
+        }
+    }
+
+    fn process_command(&mut self, command: Command) {
+        match command {
+            Command::MoveShip {
+                ship_id,
+                destination,
+            } => {
+                self.set_move_order(ship_id, destination);
+            }
+            Command::BuildShip {
+                shipyard_entity_id,
+                ship_type,
+            } => {
+                // for now, we only have one ship type
+                let _ = ship_type;
+                if let Some(location) = self.get_location(shipyard_entity_id) {
+                    let ship_name = format!("frigate-{}", self.ships.len());
+                    self.spawn_frigate(ship_name, location);
+                }
+            }
+            Command::BuildBuilding {
+                entity_id,
+                building_type,
+            } => {
+                if let Some(buildings) = self.buildings.get_mut(&entity_id) {
+                    if let Some(slot) = buildings.find_first_empty_slot() {
+                        buildings.build(slot, building_type).ok(); // ok to fail silently
+                    }
+                }
+            }
+        }
     }
 
     pub fn iter_orbitals(&self) -> impl Iterator<Item = (EntityId, OrbitalInfo)> + '_ {
@@ -541,5 +671,35 @@ impl World {
     /// iterate over lane pairs
     pub fn iter_lanes(&self) -> impl Iterator<Item = &(EntityId, EntityId)> {
         self.lanes.iter()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::location::Point;
+
+    #[test]
+    fn test_spawn_frigate() {
+        let mut world = World::default();
+        let position = Point { x: 1, y: 2 };
+        let frigate_id = world.spawn_frigate("test_frigate".to_string(), position);
+
+        // Check that the entity was created
+        assert!(world.entities.contains(&frigate_id));
+        assert_eq!(
+            world.get_entity_name(frigate_id),
+            Some("test_frigate".to_string())
+        );
+        assert_eq!(world.get_render_glyph(frigate_id), 'f');
+        assert!(world.get_entity_color(frigate_id).is_some());
+        assert_eq!(world.get_location(frigate_id), Some(position));
+        assert!(world.is_player_controlled(frigate_id));
+
+        // Check that ship-specific data was added
+        assert!(world.ships.contains_key(&frigate_id));
+        if let Some(ship_info) = world.ships.get(&frigate_id) {
+            assert_eq!(ship_info.speed, 5.0);
+        }
     }
 }

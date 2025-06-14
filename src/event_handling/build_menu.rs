@@ -38,35 +38,11 @@ pub fn handle_build_menu_input(
                 };
 
                 if let Some(building) = building_to_build {
-                    if let Some(buildings_mut) = world.buildings.get_mut(&selected_id) {
-                        if buildings_mut.slots.is_empty() {
-                            **game_state_guard = GameState::BuildMenuError {
-                                message: "this entity cannot have buildings.".to_string(),
-                            };
-                            return;
-                        }
-
-                        if let Some(slot_idx) = buildings_mut.find_first_empty_slot() {
-                            match buildings_mut.build(slot_idx, building) {
-                                Ok(_) => **game_state_guard = GameState::Playing, // Success!
-                                Err(msg) => {
-                                    **game_state_guard = GameState::BuildMenuError {
-                                        message: msg.to_string(),
-                                    }
-                                }
-                            }
-                        } else {
-                            **game_state_guard = GameState::BuildMenuError {
-                                message: "no space available".to_string(),
-                            };
-                        }
-                    } else {
-                        // This case should not be reachable if we entered BuildMenu state,
-                        // but handle defensively.
-                        **game_state_guard = GameState::BuildMenuError {
-                            message: "selected entity does not support buildings.".to_string(),
-                        };
-                    }
+                    world.add_command(crate::command::Command::BuildBuilding {
+                        entity_id: selected_id,
+                        building_type: building,
+                    });
+                    **game_state_guard = GameState::Playing;
                 }
             }
         }
