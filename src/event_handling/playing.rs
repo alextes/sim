@@ -4,7 +4,7 @@ use super::ControlState;
 use crate::buildings::BuildingType;
 use crate::input; // Import the new input module
 use crate::render::Viewport;
-use crate::world::World;
+use crate::world::{EntityId, World};
 use crate::GameState;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -12,14 +12,19 @@ use sdl2::mouse::MouseButton;
 
 fn cycle_entity_focus(world: &World, controls: &mut ControlState, is_shift_pressed: bool) {
     if world.entities.is_empty() {
+        controls.selection.clear();
         return;
     }
 
     let num_entities = world.entities.len();
+    let current_index = controls
+        .selection
+        .first()
+        .and_then(|id| world.entities.iter().position(|e| e == id));
 
-    if is_shift_pressed {
+    let next_index = if is_shift_pressed {
         // previous entity
-        let next_index = match controls.entity_focus_index {
+        match current_index {
             Some(current) => {
                 if current == 0 {
                     num_entities - 1
@@ -28,16 +33,15 @@ fn cycle_entity_focus(world: &World, controls: &mut ControlState, is_shift_press
                 }
             }
             None => num_entities - 1, // start from the end
-        };
-        controls.entity_focus_index = Some(next_index);
+        }
     } else {
         // next entity
-        let next_index = match controls.entity_focus_index {
+        match current_index {
             Some(current) => (current + 1) % num_entities,
             None => 0, // start from the beginning
-        };
-        controls.entity_focus_index = Some(next_index);
-    }
+        }
+    };
+    controls.selection = vec![world.entities[next_index]];
 }
 
 fn handle_keydown(
@@ -53,7 +57,11 @@ fn handle_keydown(
 
     match keycode {
         Keycode::F4 => controls.debug_enabled = !controls.debug_enabled,
-        Keycode::F => controls.track_mode = !controls.track_mode,
+        Keycode::F => {
+            if !controls.selection.is_empty() {
+                controls.track_mode = !controls.track_mode
+            }
+        }
         Keycode::Up => location_viewport.anchor.y -= current_pan_amount,
         Keycode::Down => location_viewport.anchor.y += current_pan_amount,
         Keycode::Left => location_viewport.anchor.x -= current_pan_amount,
@@ -64,28 +72,23 @@ fn handle_keydown(
             cycle_entity_focus(world, controls, is_shift_pressed);
         }
         Keycode::B => {
-            if let Some(index) = controls.entity_focus_index {
-                if index < world.entities.len() {
-                    let selected_id = world.entities[index];
-                    if world.is_player_controlled(selected_id)
-                        && world.buildings.contains_key(&selected_id)
-                    {
-                        **game_state_guard = GameState::BuildMenu;
-                    }
+            if controls.selection.len() == 1 {
+                let selected_id = controls.selection[0];
+                if world.is_player_controlled(selected_id)
+                    && world.buildings.contains_key(&selected_id)
+                {
+                    **game_state_guard = GameState::BuildMenu;
                 }
             }
         }
         Keycode::S => {
-            if let Some(index) = controls.entity_focus_index {
-                if index < world.entities.len() {
-                    let selected_id = world.entities[index];
-                    if world.is_player_controlled(selected_id) {
-                        if let Some(buildings) = world.buildings.get(&selected_id) {
-                            let has_shipyard =
-                                buildings.slots.contains(&Some(BuildingType::Shipyard));
-                            if has_shipyard {
-                                **game_state_guard = GameState::ShipyardMenu;
-                            }
+            if controls.selection.len() == 1 {
+                let selected_id = controls.selection[0];
+                if world.is_player_controlled(selected_id) {
+                    if let Some(buildings) = world.buildings.get(&selected_id) {
+                        let has_shipyard = buildings.slots.contains(&Some(BuildingType::Shipyard));
+                        if has_shipyard {
+                            **game_state_guard = GameState::ShipyardMenu;
                         }
                     }
                 }
@@ -127,12 +130,15 @@ fn handle_mouse_button_down(
                 controls.ctrl_left_mouse_dragging = true;
                 controls.last_mouse_pos = Some((x, y));
             } else {
-                match input::get_entity_index_at_screen_coords(x, y, location_viewport, world) {
-                    Some(idx) => {
-                        controls.entity_focus_index = Some(idx);
+                match input::get_entity_id_at_screen_coords(x, y, location_viewport, world) {
+                    Some(id) => {
+                        controls.selection = vec![id];
                     }
                     None => {
-                        controls.entity_focus_index = None;
+                        // start selection box
+                        controls.selection_box_start = Some((x, y));
+                        controls.last_mouse_pos = Some((x, y));
+                        controls.selection.clear();
                         controls.track_mode = false;
                     }
                 }
@@ -143,16 +149,13 @@ fn handle_mouse_button_down(
             controls.last_mouse_pos = Some((x, y));
         }
         MouseButton::Right => {
-            if let Some(index) = controls.entity_focus_index {
-                if index < world.entities.len() {
-                    let selected_id = world.entities[index];
-                    if world.ships.contains_key(&selected_id) {
-                        let dest = location_viewport.screen_to_world_coords(x, y);
-                        world.add_command(crate::command::Command::MoveShip {
-                            ship_id: selected_id,
-                            destination: dest,
-                        });
-                    }
+            let dest = location_viewport.screen_to_world_coords(x, y);
+            for &id in &controls.selection {
+                if world.ships.contains_key(&id) {
+                    world.add_command(crate::command::Command::MoveShip {
+                        ship_id: id,
+                        destination: dest,
+                    });
                 }
             }
         }
@@ -160,16 +163,96 @@ fn handle_mouse_button_down(
     }
 }
 
-fn handle_mouse_button_up(mouse_btn: &MouseButton, controls: &mut ControlState) {
+fn handle_mouse_button_up(
+    mouse_btn: &MouseButton,
+    x: i32,
+    y: i32,
+    location_viewport: &mut Viewport,
+    world: &mut World,
+    controls: &mut ControlState,
+) {
     if mouse_btn == &MouseButton::Middle {
         controls.middle_mouse_dragging = false;
         controls.last_mouse_pos = None;
     }
     if mouse_btn == &MouseButton::Left {
+        if let Some(start_pos) = controls.selection_box_start {
+            // finalize selection box
+            let x1 = start_pos.0;
+            let y1 = start_pos.1;
+            let x2 = x;
+            let y2 = y;
+
+            let start_x = x1.min(x2);
+            let start_y = y1.min(y2);
+            let width = (x1 - x2).abs() as u32;
+            let height = (y1 - y2).abs() as u32;
+
+            let rect = sdl2::rect::Rect::new(start_x, start_y, width, height);
+
+            let entities_in_box =
+                input::get_entities_in_screen_rect(rect, location_viewport, world);
+
+            // apply selection logic
+            apply_box_selection_logic(controls, world, &entities_in_box);
+
+            controls.selection_box_start = None;
+            controls.last_mouse_pos = None;
+        }
+
         controls.ctrl_left_mouse_dragging = false;
         if controls.last_mouse_pos.is_some() {
             controls.last_mouse_pos = None;
         }
+    }
+}
+
+fn apply_box_selection_logic(
+    controls: &mut ControlState,
+    world: &World,
+    entities_in_box: &[EntityId],
+) {
+    controls.selection.clear();
+
+    let ships: Vec<EntityId> = entities_in_box
+        .iter()
+        .filter(|id| world.ships.contains_key(id))
+        .cloned()
+        .collect();
+
+    if !ships.is_empty() {
+        controls.selection = ships;
+        return;
+    }
+
+    let planets: Vec<EntityId> = entities_in_box
+        .iter()
+        .filter(|id| world.get_render_glyph(**id) == 'p')
+        .cloned()
+        .collect();
+    if planets.len() == 1 {
+        controls.selection = planets;
+        return;
+    }
+
+    let stars: Vec<EntityId> = entities_in_box
+        .iter()
+        .filter(|id| world.get_render_glyph(**id) == '*')
+        .cloned()
+        .collect();
+    if stars.len() == 1 {
+        controls.selection = stars;
+        return;
+    }
+
+    let moons: Vec<EntityId> = entities_in_box
+        .iter()
+        .filter(|id| world.get_render_glyph(**id) == 'm')
+        .cloned()
+        .collect();
+    if moons.len() == 1 {
+        controls.selection = moons;
+        return;
     }
 }
 
@@ -195,6 +278,9 @@ fn handle_mouse_motion(
 
             controls.last_mouse_pos = Some((x, y));
         }
+    } else if controls.selection_box_start.is_some() {
+        // update drag selection endpoint
+        controls.last_mouse_pos = Some((x, y));
     }
 }
 
@@ -235,8 +321,10 @@ pub fn handle_playing_input(
         } => {
             handle_mouse_button_down(mouse_btn, *x, *y, location_viewport, world, controls);
         }
-        Event::MouseButtonUp { mouse_btn, .. } => {
-            handle_mouse_button_up(mouse_btn, controls);
+        Event::MouseButtonUp {
+            mouse_btn, x, y, ..
+        } => {
+            handle_mouse_button_up(mouse_btn, *x, *y, location_viewport, world, controls);
         }
         Event::MouseMotion { x, y, .. } => {
             handle_mouse_motion(*x, *y, location_viewport, controls);

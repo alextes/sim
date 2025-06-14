@@ -31,7 +31,7 @@ pub struct RenderContext<'a, 'tc> {
     pub game_state: &'a GameState,
     pub debug_info: Option<DebugRenderInfo>,
     pub intro_progress: Option<f64>,
-    pub selected_id: Option<EntityId>,
+    pub selection: &'a [EntityId],
 }
 
 pub struct SpriteSheetRenderer<'tc> {
@@ -76,8 +76,8 @@ fn render_game_scene(ctx: &mut RenderContext) {
         ctx.sprite_renderer,
         ctx.world,
         ctx.location_viewport,
-        ctx.controls.debug_enabled,
-        ctx.selected_id,
+        ctx.controls,
+        ctx.selection,
     );
 
     // render UI elements (panels, etc.)
@@ -85,7 +85,7 @@ fn render_game_scene(ctx: &mut RenderContext) {
         ctx.canvas,
         ctx.sprite_renderer,
         ctx.world,
-        ctx.selected_id,
+        ctx.selection,
         ctx.location_viewport.screen_pixel_height / (TILE_PIXEL_WIDTH as u32),
         ctx.controls,
         ctx.debug_info,
@@ -118,7 +118,7 @@ pub fn render_game_frame(ctx: &mut RenderContext) {
                 ctx.canvas,
                 ctx.sprite_renderer,
                 ctx.world,
-                ctx.selected_id,
+                ctx.selection.first().cloned(),
             );
         }
         GameState::ShipyardMenu => {

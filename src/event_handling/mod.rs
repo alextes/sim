@@ -4,7 +4,7 @@ use sdl2::EventPump;
 use std::sync::{Arc, Mutex};
 
 use crate::render::Viewport;
-use crate::world::World;
+use crate::world::{EntityId, World};
 use crate::GameState;
 
 mod build_menu;
@@ -20,7 +20,7 @@ pub enum Signal {
 
 #[derive(Debug)]
 pub struct ControlState {
-    pub entity_focus_index: Option<usize>,
+    pub selection: Vec<EntityId>,
     pub debug_enabled: bool,
     pub track_mode: bool,
     pub sim_speed: u32,
@@ -29,6 +29,7 @@ pub struct ControlState {
     pub ctrl_left_mouse_dragging: bool,
     pub ctrl_down: bool,
     pub last_mouse_pos: Option<(i32, i32)>,
+    pub selection_box_start: Option<(i32, i32)>,
 }
 
 pub fn handle_events(
@@ -141,7 +142,7 @@ pub fn handle_events(
                     &event,
                     &current_state_clone,
                     world,
-                    controls.entity_focus_index,
+                    &controls.selection,
                     &mut state_guard,
                 );
             }
@@ -150,7 +151,7 @@ pub fn handle_events(
                     &event,
                     &current_state_clone,
                     world,
-                    controls.entity_focus_index,
+                    &controls.selection,
                     &mut state_guard,
                 );
             }

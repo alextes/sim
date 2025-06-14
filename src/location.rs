@@ -131,6 +131,7 @@ impl LocationSystem {
     }
 
     /// sets the position of a mobile entity.
+    #[cfg(test)]
     pub fn set_position(&mut self, entity: EntityId, new_pos: Point) -> Result<()> {
         match self.entries.get_mut(&entity) {
             Some(LocatedEntity::Mobile(pos)) => {

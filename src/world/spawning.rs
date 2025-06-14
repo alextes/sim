@@ -1,7 +1,6 @@
 //! entity spawning logic.
 use super::{Color, EntityId, Point, ShipInfo, World, MOON_COLORS, PLANET_COLORS, STAR_COLORS};
 use crate::buildings::{EntityBuildings, MOON_SLOTS, PLANET_SLOTS};
-use crate::location::PointF64;
 use rand::seq::IteratorRandom;
 
 /// Create a static entity at a fixed point (e.g. a star).

@@ -68,7 +68,7 @@ pub fn render_interface(
     canvas: &mut Canvas<Window>,
     renderer: &SpriteSheetRenderer,
     world: &World,
-    selected: Option<EntityId>,
+    selection: &[EntityId],
     viewport_height_tiles: u32,
     controls: &crate::event_handling::ControlState,
     debug_info: Option<DebugRenderInfo>,
@@ -79,7 +79,7 @@ pub fn render_interface(
         canvas,
         renderer,
         world,
-        selected,
+        selection,
         controls.track_mode,
         viewport_height_tiles,
     );

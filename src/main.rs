@@ -82,7 +82,11 @@ pub fn main() {
     let mut fps_per_second: u32 = 0;
 
     let mut controls = ControlState {
-        entity_focus_index: Some(0),
+        selection: if world.entities.is_empty() {
+            vec![]
+        } else {
+            vec![world.entities[0]]
+        },
         debug_enabled: false,
         track_mode: false,
         sim_speed: 1,
@@ -91,6 +95,7 @@ pub fn main() {
         ctrl_left_mouse_dragging: false,
         ctrl_down: false,
         last_mouse_pos: None,
+        selection_box_start: None,
     };
 
     let game_state = Arc::new(Mutex::new(GameState::Intro));
@@ -159,12 +164,9 @@ pub fn main() {
 
             // Tracking camera update
             if controls.track_mode && is_playing {
-                if let Some(index) = controls.entity_focus_index {
-                    if !world.entities.is_empty() && index < world.entities.len() {
-                        let entity_id = world.entities[index];
-                        if let Some(loc) = world.get_location(entity_id) {
-                            location_viewport.center_on_entity(loc.x, loc.y);
-                        }
+                if let Some(entity_id) = controls.selection.first() {
+                    if let Some(loc) = world.get_location(*entity_id) {
+                        location_viewport.center_on_entity(loc.x, loc.y);
                     }
                 }
             }
@@ -186,12 +188,6 @@ pub fn main() {
                 None
             };
 
-            let selected_id = if let Some(index) = controls.entity_focus_index {
-                world.entities.get(index).cloned()
-            } else {
-                None
-            };
-
             let mut ctx = RenderContext {
                 canvas: &mut canvas,
                 sprite_renderer: &sprite_renderer,
@@ -202,7 +198,7 @@ pub fn main() {
                 game_state: &current_game_state,
                 debug_info: debug_render_info,
                 intro_progress,
-                selected_id,
+                selection: &controls.selection,
             };
 
             render::render_game_frame(&mut ctx);

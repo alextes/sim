@@ -1,9 +1,10 @@
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
-use tracing::{error, trace};
+use tracing::error;
 
 use crate::colors;
+use crate::event_handling::ControlState;
 use crate::initialization::{INITIAL_WINDOW_HEIGHT, INITIAL_WINDOW_WIDTH};
 use crate::location::PointF64;
 use crate::world::{EntityId, World};
@@ -28,68 +29,61 @@ struct ViewportRenderContext {
 fn draw_move_orders(
     canvas: &mut Canvas<Window>,
     world: &World,
-    selected_id: Option<EntityId>,
+    selection: &[EntityId],
     ctx: &ViewportRenderContext,
 ) {
-    let id = match selected_id {
-        Some(id) => id,
-        None => {
-            trace!("no entity selected, skipping move order rendering");
-            return;
-        }
-    };
+    for &id in selection {
+        let destination = match world.move_orders.get(&id) {
+            Some(dest) => dest,
+            None => {
+                continue;
+            }
+        };
 
-    let destination = match world.move_orders.get(&id) {
-        Some(dest) => dest,
-        None => {
-            trace!("selected entity {} has no move order", id);
-            return;
-        }
-    };
+        let pos_a = match world.get_location(id) {
+            Some(pos) => pos,
+            None => {
+                error!("selected entity {} has move order but no position", id);
+                continue;
+            }
+        };
 
-    let pos_a = match world.get_location(id) {
-        Some(pos) => pos,
-        None => {
-            error!("selected entity {} has move order but no position", id);
-            return;
-        }
-    };
+        // draw line
+        let ax = (pos_a.x as f64 + 0.5 - ctx.view_world_origin_x)
+            * ctx.world_tile_actual_pixel_size_on_screen;
+        let ay = (pos_a.y as f64 + 0.5 - ctx.view_world_origin_y)
+            * ctx.world_tile_actual_pixel_size_on_screen;
+        let bx = (destination.x + 0.5 - ctx.view_world_origin_x)
+            * ctx.world_tile_actual_pixel_size_on_screen;
+        let by = (destination.y + 0.5 - ctx.view_world_origin_y)
+            * ctx.world_tile_actual_pixel_size_on_screen;
 
-    // draw line
-    let ax = (pos_a.x as f64 + 0.5 - ctx.view_world_origin_x)
-        * ctx.world_tile_actual_pixel_size_on_screen;
-    let ay = (pos_a.y as f64 + 0.5 - ctx.view_world_origin_y)
-        * ctx.world_tile_actual_pixel_size_on_screen;
-    let bx = (destination.x + 0.5 - ctx.view_world_origin_x)
-        * ctx.world_tile_actual_pixel_size_on_screen;
-    let by = (destination.y + 0.5 - ctx.view_world_origin_y)
-        * ctx.world_tile_actual_pixel_size_on_screen;
+        canvas.set_draw_color(colors::GREEN);
+        let p1 = sdl2::rect::Point::new(ax.round() as i32, ay.round() as i32);
+        let p2 = sdl2::rect::Point::new(bx.round() as i32, by.round() as i32);
+        canvas.draw_line(p1, p2).ok();
 
-    canvas.set_draw_color(colors::GREEN);
-    let p1 = sdl2::rect::Point::new(ax.round() as i32, ay.round() as i32);
-    let p2 = sdl2::rect::Point::new(bx.round() as i32, by.round() as i32);
-    canvas.draw_line(p1, p2).ok();
-
-    // draw marker 'x'
-    let marker_size = (ctx.tile_on_screen_render_w as f64 * 0.5).max(4.0);
-    let p1 = sdl2::rect::Point::new(
-        (bx - marker_size / 2.0).round() as i32,
-        (by - marker_size / 2.0).round() as i32,
-    );
-    let p2 = sdl2::rect::Point::new(
-        (bx + marker_size / 2.0).round() as i32,
-        (by + marker_size / 2.0).round() as i32,
-    );
-    canvas.draw_line(p1, p2).ok();
-    let p1 = sdl2::rect::Point::new(
-        (bx - marker_size / 2.0).round() as i32,
-        (by + marker_size / 2.0).round() as i32,
-    );
-    let p2 = sdl2::rect::Point::new(
-        (bx + marker_size / 2.0).round() as i32,
-        (by - marker_size / 2.0).round() as i32,
-    );
-    canvas.draw_line(p1, p2).ok();
+        // draw marker 'x'
+        let marker_size = (ctx.tile_on_screen_render_w as f64 * 0.5).max(4.0);
+        let p1 = sdl2::rect::Point::new(
+            (bx - marker_size / 2.0).round() as i32,
+            (by - marker_size / 2.0).round() as i32,
+        );
+        let p2 = sdl2::rect::Point::new(
+            (bx + marker_size / 2.0).round() as i32,
+            (by + marker_size / 2.0).round() as i32,
+        );
+        canvas.draw_line(p1, p2).ok();
+        let p1 = sdl2::rect::Point::new(
+            (bx - marker_size / 2.0).round() as i32,
+            (by + marker_size / 2.0).round() as i32,
+        );
+        let p2 = sdl2::rect::Point::new(
+            (bx + marker_size / 2.0).round() as i32,
+            (by - marker_size / 2.0).round() as i32,
+        );
+        canvas.draw_line(p1, p2).ok();
+    }
 }
 
 fn draw_star_lanes(canvas: &mut Canvas<Window>, world: &World, ctx: &ViewportRenderContext) {
@@ -174,8 +168,10 @@ fn draw_entities(
     world: &World,
     viewport: &Viewport,
     ctx: &ViewportRenderContext,
-    selected_id: Option<EntityId>,
+    selection: &[EntityId],
 ) {
+    let selection_set: std::collections::HashSet<EntityId> = selection.iter().cloned().collect();
+
     for entity_id in world.iter_entities() {
         if let Some(pos) = world.get_location(entity_id) {
             let entity_world_x_f64 = pos.x as f64;
@@ -203,7 +199,7 @@ fn draw_entities(
                     ctx.tile_on_screen_render_h,
                 );
 
-                if Some(entity_id) == selected_id {
+                if selection_set.contains(&entity_id) {
                     canvas.set_draw_color(colors::YELLOW);
                     let outline_rect = Rect::new(
                         dest_x - 2,
@@ -271,8 +267,8 @@ pub fn render_world_in_viewport(
     renderer: &SpriteSheetRenderer,
     world: &World,
     viewport: &Viewport,
-    debug_enabled: bool,
-    selected_id: Option<EntityId>,
+    controls: &ControlState,
+    selection: &[EntityId],
 ) {
     let world_tile_actual_pixel_size_on_screen =
         (TILE_PIXEL_WIDTH as f64 * viewport.zoom).max(0.001);
@@ -301,11 +297,15 @@ pub fn render_world_in_viewport(
 
     draw_star_lanes(canvas, world, &ctx);
     draw_orbit_lines(canvas, world, viewport, &ctx);
-    draw_entities(canvas, renderer, world, viewport, &ctx, selected_id);
-    draw_move_orders(canvas, world, selected_id, &ctx);
+    draw_entities(canvas, renderer, world, viewport, &ctx, selection);
+    draw_move_orders(canvas, world, selection, &ctx);
 
-    if debug_enabled {
+    if controls.debug_enabled {
         draw_viewport_border(canvas, viewport);
+        draw_grid(canvas, viewport, &ctx);
+    }
+    if let (Some(start), Some(end)) = (controls.selection_box_start, controls.last_mouse_pos) {
+        draw_selection_box(canvas, start, end);
     }
 }
 
@@ -406,6 +406,22 @@ impl Viewport {
         }
     }
 
+    pub fn world_to_screen_coords(&self, world_pos: crate::location::Point) -> (i32, i32) {
+        let world_tile_actual_pixel_size_on_screen = self.world_tile_pixel_size_on_screen();
+
+        let view_world_origin_x = self.anchor.x
+            - (self.screen_pixel_width as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
+        let view_world_origin_y = self.anchor.y
+            - (self.screen_pixel_height as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
+
+        let screen_x =
+            (world_pos.x as f64 - view_world_origin_x) * world_tile_actual_pixel_size_on_screen;
+        let screen_y =
+            (world_pos.y as f64 - view_world_origin_y) * world_tile_actual_pixel_size_on_screen;
+
+        (screen_x.round() as i32, screen_y.round() as i32)
+    }
+
     pub fn center_on_entity(&mut self, x: i32, y: i32) {
         self.anchor.x = x as f64;
         self.anchor.y = y as f64;
@@ -488,6 +504,61 @@ fn render_text_in_world(
             .ok();
     }
     renderer.texture.borrow_mut().set_alpha_mod(original_alpha);
+    canvas.set_blend_mode(old_blend_mode);
+}
+
+fn draw_selection_box(canvas: &mut Canvas<Window>, start: (i32, i32), end: (i32, i32)) {
+    let x = start.0.min(end.0);
+    let y = start.1.min(end.1);
+    let width = (start.0 - end.0).abs() as u32;
+    let height = (start.1 - end.1).abs() as u32;
+
+    let rect = Rect::new(x, y, width, height);
+
+    canvas.set_draw_color(colors::WHITE);
+    canvas.draw_rect(rect).ok();
+}
+
+fn draw_grid(canvas: &mut Canvas<Window>, viewport: &Viewport, ctx: &ViewportRenderContext) {
+    let old_blend_mode = canvas.blend_mode();
+    canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+    canvas.set_draw_color(sdl2::pixels::Color::RGBA(
+        colors::DGRAY.r,
+        colors::DGRAY.g,
+        colors::DGRAY.b,
+        50, // softly visible
+    ));
+
+    // vertical lines
+    let x_start = ctx.view_bbox_world_x_min.floor() as i32;
+    let x_end = ctx.view_bbox_world_x_max.ceil() as i32;
+    for x_world in x_start..=x_end {
+        let x_screen = ((x_world as f64 - ctx.view_world_origin_x)
+            * ctx.world_tile_actual_pixel_size_on_screen)
+            .round() as i32;
+        canvas
+            .draw_line(
+                (x_screen, 0),
+                (x_screen, viewport.screen_pixel_height as i32),
+            )
+            .ok();
+    }
+
+    // horizontal lines
+    let y_start = ctx.view_bbox_world_y_min.floor() as i32;
+    let y_end = ctx.view_bbox_world_y_max.ceil() as i32;
+    for y_world in y_start..=y_end {
+        let y_screen = ((y_world as f64 - ctx.view_world_origin_y)
+            * ctx.world_tile_actual_pixel_size_on_screen)
+            .round() as i32;
+        canvas
+            .draw_line(
+                (0, y_screen),
+                (viewport.screen_pixel_width as i32, y_screen),
+            )
+            .ok();
+    }
+
     canvas.set_blend_mode(old_blend_mode);
 }
 
