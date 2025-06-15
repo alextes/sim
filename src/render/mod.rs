@@ -10,7 +10,7 @@ use std::path::Path;
 
 use crate::colors;
 use crate::event_handling::ControlState;
-use crate::interface::{self, DebugRenderInfo};
+use crate::interface::{self, DebugRenderInfo, UIContext};
 use crate::render::background::BackgroundLayer;
 use crate::render::tileset::Tileset;
 use crate::world::{EntityId, World};
@@ -32,6 +32,7 @@ pub struct RenderContext<'a, 'tc> {
     pub debug_info: Option<DebugRenderInfo>,
     pub intro_progress: Option<f64>,
     pub selection: &'a [EntityId],
+    pub total_sim_ticks: u64,
 }
 
 pub struct SpriteSheetRenderer<'tc> {
@@ -81,15 +82,16 @@ fn render_game_scene(ctx: &mut RenderContext) {
     );
 
     // render UI elements (panels, etc.)
-    interface::render_interface(
-        ctx.canvas,
-        ctx.sprite_renderer,
-        ctx.world,
-        ctx.selection,
-        ctx.location_viewport.screen_pixel_height / (TILE_PIXEL_WIDTH as u32),
-        ctx.controls,
-        ctx.debug_info,
-    );
+    let ui_context = UIContext {
+        world: ctx.world,
+        selection: ctx.selection,
+        viewport_height_tiles: ctx.location_viewport.screen_pixel_height
+            / (TILE_PIXEL_WIDTH as u32),
+        controls: ctx.controls,
+        debug_info: ctx.debug_info,
+        total_sim_ticks: ctx.total_sim_ticks,
+    };
+    interface::render_interface(ctx.canvas, ctx.sprite_renderer, &ui_context);
 }
 
 pub fn render_game_frame(ctx: &mut RenderContext) {

@@ -1,6 +1,7 @@
 use crate::buildings::{BuildingType, EntityBuildings};
 use crate::colors;
 use crate::render::{tileset, SpriteSheetRenderer};
+use crate::world::types::ResourceType;
 use crate::world::{EntityId, World};
 use sdl2::render::Canvas;
 use sdl2::video::Window;
@@ -43,6 +44,46 @@ pub fn render_selected_object_panel(
         let id = selection[0];
         if let Some(name) = world.get_entity_name(id) {
             lines.push((format!("selected: {}", name), PANEL_TEXT_COLOR));
+
+            if let Some(celestial_data) = world.celestial_data.get(&id) {
+                if celestial_data.population > 0.0 {
+                    lines.push((
+                        format!("pop: {:.2}m", celestial_data.population),
+                        colors::GRAY,
+                    ));
+                }
+                if !celestial_data.yields.is_empty() {
+                    lines.push(("yields:".to_string(), PANEL_TEXT_COLOR));
+                    // Sorting to ensure consistent order
+                    let mut yields: Vec<(&ResourceType, &f32)> =
+                        celestial_data.yields.iter().collect();
+                    yields.sort_by_key(|(k, _)| *k);
+
+                    for (resource, grade) in yields {
+                        let (name, color) = match resource {
+                            ResourceType::Metal => ("metal", colors::LGRAY),
+                            ResourceType::Nobles => ("nobles", colors::LBLUE),
+                            ResourceType::Organics => ("organics", colors::LGREEN),
+                        };
+                        lines.push((format!("  {}: {:.2}", name, grade), color));
+                    }
+                }
+                if !celestial_data.stocks.is_empty() {
+                    lines.push(("stocks:".to_string(), PANEL_TEXT_COLOR));
+                    let mut stocks: Vec<(&ResourceType, &f32)> =
+                        celestial_data.stocks.iter().collect();
+                    stocks.sort_by_key(|(k, _)| *k);
+
+                    for (resource, amount) in stocks {
+                        let (name, color) = match resource {
+                            ResourceType::Metal => ("metal", colors::LGRAY),
+                            ResourceType::Nobles => ("nobles", colors::LBLUE),
+                            ResourceType::Organics => ("organics", colors::LGREEN),
+                        };
+                        lines.push((format!("  {}: {:.1}", name, amount), color));
+                    }
+                }
+            }
 
             if let Some(buildings) = world.buildings.get(&id) {
                 if !buildings.slots.is_empty() {

@@ -77,6 +77,7 @@ pub fn main() {
 
     let mut last_loop_start = Instant::now();
     let mut simulation_units_counter: SimulationUnit = 0;
+    let mut total_sim_ticks: u64 = 0;
     let mut simulation_units_per_second: SimulationUnit = 0;
     let mut fps_counter: u32 = 0;
     let mut fps_per_second: u32 = 0;
@@ -138,11 +139,12 @@ pub fn main() {
             for _ in 0..steps {
                 if !controls.paused {
                     simulation_units_counter += 1;
-                    trace!(tick = simulation_units_counter, "simulating 1 step");
+                    total_sim_ticks += 1;
+                    trace!(tick = total_sim_ticks, "simulating 1 step");
                     // advance the simulation by (dt * speed_multiplier)
                     world.update(
                         SIMULATION_DT.as_secs_f64() * controls.sim_speed as f64,
-                        simulation_units_counter,
+                        total_sim_ticks,
                     );
                 }
             }
@@ -199,6 +201,7 @@ pub fn main() {
                 debug_info: debug_render_info,
                 intro_progress,
                 selection: &controls.selection,
+                total_sim_ticks,
             };
 
             render::render_game_frame(&mut ctx);
