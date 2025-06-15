@@ -10,8 +10,10 @@ use std::collections::VecDeque;
 
 mod resources;
 pub mod spawning;
+pub mod types;
 
 pub use resources::ResourceSystem;
+use types::CelestialBodyData;
 
 // Entity identifiers for all game objects.
 pub type EntityId = u32;
@@ -161,6 +163,8 @@ pub struct World {
     pub(crate) locations: LocationSystem,
     /// Global resource counters for the player
     pub resources: ResourceSystem,
+    /// Data for celestial bodies (population, yields, etc.)
+    pub celestial_data: HashMap<EntityId, CelestialBodyData>,
     /// Building slots for entities that support them
     pub buildings: HashMap<EntityId, EntityBuildings>,
     /// visual-only star lanes between entities
@@ -230,7 +234,8 @@ impl World {
         }
 
         self.locations.update(dt_seconds);
-        self.resources.update(dt_seconds, &self.buildings);
+        self.resources
+            .update(dt_seconds, &self.buildings, &self.celestial_data);
 
         // ship movement
         let mut completed_moves = Vec::new();

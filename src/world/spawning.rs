@@ -1,7 +1,10 @@
 //! entity spawning logic.
 use super::{Color, EntityId, Point, ShipInfo, World, MOON_COLORS, PLANET_COLORS, STAR_COLORS};
 use crate::buildings::{EntityBuildings, MOON_SLOTS, PLANET_SLOTS};
+use crate::world::types::{CelestialBodyData, ResourceType};
 use rand::seq::IteratorRandom;
+use rand::Rng;
+use std::collections::HashMap;
 
 /// Create a static entity at a fixed point (e.g. a star).
 pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId {
@@ -15,6 +18,9 @@ pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId 
     world.entity_colors.insert(id, *color);
     world.locations.add_static(id, position);
     world.buildings.insert(id, EntityBuildings::new(0));
+    world
+        .celestial_data
+        .insert(id, CelestialBodyData::default());
     id
 }
 
@@ -41,6 +47,19 @@ pub fn spawn_planet(
     world
         .buildings
         .insert(id, EntityBuildings::new(PLANET_SLOTS));
+
+    let mut yields = HashMap::new();
+    yields.insert(ResourceType::Metal, rng.gen_range(0.5..1.5));
+    yields.insert(ResourceType::Nobles, rng.gen_range(0.1..0.5));
+    yields.insert(ResourceType::Organics, rng.gen_range(0.5..1.5));
+
+    world.celestial_data.insert(
+        id,
+        CelestialBodyData {
+            population: 1.0,
+            yields,
+        },
+    );
     id
 }
 
@@ -65,6 +84,19 @@ pub fn spawn_moon(
         .locations
         .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
     world.buildings.insert(id, EntityBuildings::new(MOON_SLOTS));
+
+    let mut yields = HashMap::new();
+    yields.insert(ResourceType::Metal, rng.gen_range(0.2..0.8));
+    yields.insert(ResourceType::Nobles, rng.gen_range(0.3..0.8));
+    yields.insert(ResourceType::Organics, rng.gen_range(0.1..0.4));
+
+    world.celestial_data.insert(
+        id,
+        CelestialBodyData {
+            population: 0.2,
+            yields,
+        },
+    );
     id
 }
 
