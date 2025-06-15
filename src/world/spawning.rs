@@ -2,6 +2,8 @@
 use super::{Color, EntityId, Point, ShipInfo, World, MOON_COLORS, PLANET_COLORS, STAR_COLORS};
 use crate::buildings::{EntityBuildings, MOON_SLOTS, PLANET_SLOTS};
 use rand::seq::IteratorRandom;
+use super::resources::BodyResourceData;
+use rand::Rng;
 
 /// Create a static entity at a fixed point (e.g. a star).
 pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId {
@@ -15,6 +17,16 @@ pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId 
     world.entity_colors.insert(id, *color);
     world.locations.add_static(id, position);
     world.buildings.insert(id, EntityBuildings::new(0));
+    // initialize body resources
+    world.body_resources.insert(
+        id,
+        BodyResourceData {
+            ore_yield: rng.random_range(0.5..1.5),
+            gas_yield: rng.random_range(0.5..1.5),
+            crystal_yield: rng.random_range(0.5..1.5),
+            population: 1.0,
+        },
+    );
     id
 }
 
@@ -41,6 +53,16 @@ pub fn spawn_planet(
     world
         .buildings
         .insert(id, EntityBuildings::new(PLANET_SLOTS));
+    // initialize body resources
+    world.body_resources.insert(
+        id,
+        BodyResourceData {
+            ore_yield: rng.random_range(0.5..1.5),
+            gas_yield: rng.random_range(0.5..1.5),
+            crystal_yield: rng.random_range(0.5..1.5),
+            population: 1.0,
+        },
+    );
     id
 }
 
@@ -65,6 +87,16 @@ pub fn spawn_moon(
         .locations
         .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
     world.buildings.insert(id, EntityBuildings::new(MOON_SLOTS));
+    // initialize body resources
+    world.body_resources.insert(
+        id,
+        BodyResourceData {
+            ore_yield: rng.random_range(0.5..1.5),
+            gas_yield: rng.random_range(0.5..1.5),
+            crystal_yield: rng.random_range(0.5..1.5),
+            population: 1.0,
+        },
+    );
     id
 }
 

@@ -7,6 +7,7 @@ use crate::buildings::EntityBuildings;
 use crate::command::Command;
 use crate::location::PointF64;
 use std::collections::VecDeque;
+use crate::world::resources::BodyResourceData;
 
 mod resources;
 pub mod spawning;
@@ -173,6 +174,8 @@ pub struct World {
     pub move_orders: HashMap<EntityId, PointF64>,
     /// command queue
     pub command_queue: VecDeque<Command>,
+    /// static resource data for each celestial body
+    pub body_resources: HashMap<EntityId, BodyResourceData>,
 }
 
 impl World {
@@ -230,7 +233,8 @@ impl World {
         }
 
         self.locations.update(dt_seconds);
-        self.resources.update(dt_seconds, &self.buildings);
+        self.resources
+            .update(dt_seconds, &self.buildings, &self.body_resources);
 
         // ship movement
         let mut completed_moves = Vec::new();

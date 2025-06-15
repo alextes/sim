@@ -16,19 +16,60 @@ pub const RESOURCE_INTERVAL_SECONDS: f64 = 0.25; // update four times per second
 pub const ENERGY_PER_SOLAR_PANEL_PER_INTERVAL: f32 = 1.0 * RESOURCE_INTERVAL_SECONDS as f32; // Energy per interval
 pub const METAL_PER_MINE_PER_INTERVAL: f32 = 0.5 * RESOURCE_INTERVAL_SECONDS as f32; // Metal per interval
 
+/// commodities extracted from celestial bodies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Commodity {
+    Ore,
+    Gas,
+    Crystal,
+}
+
+/// deposit information for a celestial body.
+/// each body has three deposits (ore, gas, crystal) for now.
+#[derive(Debug, Clone)]
+pub struct BodyResourceData {
+    pub ore_yield: f32,
+    pub gas_yield: f32,
+    pub crystal_yield: f32,
+    /// current population on the body (kept simple for now, default 1.0)
+    pub population: f32,
+}
+
+impl Default for BodyResourceData {
+    fn default() -> Self {
+        Self {
+            ore_yield: 1.0,
+            gas_yield: 1.0,
+            crystal_yield: 1.0,
+            population: 1.0,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct ResourceSystem {
     pub energy: f32,
     pub metal: f32,
+    // new global resource counters extracted from celestial bodies
+    pub ore: f32,
+    pub gas: f32,
+    pub crystal: f32,
     time_accumulator: f64, // Accumulates dt_seconds
 }
 
 impl ResourceSystem {
     /// Updates resource counts based on buildings and elapsed simulated time.
+    /// additionally extracts raw commodities from celestial bodies following the
+    /// formula: population x infrastructure x yield_grade.
+    ///
+    /// - population is stored in `BodyResourceData` (currently constant 1.0).
+    /// - infrastructure is the number of `BuildingType::Mine` on the body.
+    /// - yield_grade is the per-commodity yield stored on the body.
     pub fn update(
         &mut self,
         dt_seconds: f64, // Delta time for the current simulation step
         buildings_map: &HashMap<EntityId, EntityBuildings>,
+        body_resources_map: &HashMap<EntityId, BodyResourceData>,
     ) {
         self.time_accumulator += dt_seconds;
 
@@ -36,9 +77,9 @@ impl ResourceSystem {
         if self.time_accumulator >= RESOURCE_INTERVAL_SECONDS {
             self.time_accumulator -= RESOURCE_INTERVAL_SECONDS;
 
-            // Calculate production for this interval
+            // ---------------------- building-based resources ----------------------
+            // existing energy & metal generation from buildings
             for buildings in buildings_map.values() {
-                // Count solar panels and mines in all slots
                 for building in buildings.slots.iter().flatten() {
                     match building {
                         BuildingType::SolarPanel => {
@@ -50,6 +91,35 @@ impl ResourceSystem {
                         BuildingType::Shipyard => {}
                     }
                 }
+            }
+
+            // ---------------------- commodity extraction ----------------------
+            for (entity_id, body_data) in body_resources_map {
+                // infrastructure: number of mines on this body
+                let infra = buildings_map
+                    .get(entity_id)
+                    .map(|b| {
+                        b.slots
+                            .iter()
+                            .filter(|slot| matches!(slot, Some(BuildingType::Mine)))
+                            .count() as f32
+                    })
+                    .unwrap_or(0.0);
+
+                if infra <= 0.0 {
+                    continue; // nothing to extract here
+                }
+
+                let pop = body_data.population.max(0.0);
+
+                // extraction amount for each commodity in this interval
+                let ore_amount = pop * infra * body_data.ore_yield;
+                let gas_amount = pop * infra * body_data.gas_yield;
+                let crystal_amount = pop * infra * body_data.crystal_yield;
+
+                self.ore += ore_amount;
+                self.gas += gas_amount;
+                self.crystal += crystal_amount;
             }
         }
     }
@@ -86,12 +156,13 @@ impl ResourceSystem {
 mod tests {
     use super::*;
     use crate::buildings::{BuildingType, EntityBuildings, PLANET_SLOTS};
+    use std::collections::HashMap;
 
     fn create_buildings_with_counts(
         solar_panels: usize,
         mines: usize,
     ) -> HashMap<EntityId, EntityBuildings> {
-        let mut buildings = HashMap::new();
+        let mut buildings = HashMap::<EntityId, EntityBuildings>::new();
         let mut buildings_data = EntityBuildings::new(PLANET_SLOTS);
 
         // Add solar panels
@@ -128,17 +199,32 @@ mod tests {
     }
 
     #[test]
-    fn test_resource_system_update() {
-        let buildings = create_buildings_with_counts(2, 1);
+    fn test_resource_system_update_with_body_resources() {
+        let buildings = create_buildings_with_counts(0, 2);
         let mut resource_system = ResourceSystem::default();
 
+        // prepare body resources map with single body id 1
+        let mut body_resources_map = HashMap::new();
+        body_resources_map.insert(
+            1,
+            BodyResourceData {
+                ore_yield: 1.0,
+                gas_yield: 2.0,
+                crystal_yield: 0.5,
+                population: 1.0,
+            },
+        );
+
         // Update for one full interval
-        resource_system.update(RESOURCE_INTERVAL_SECONDS, &buildings);
+        resource_system.update(
+            RESOURCE_INTERVAL_SECONDS,
+            &buildings,
+            &body_resources_map,
+        );
 
-        let expected_energy = 2.0 * ENERGY_PER_SOLAR_PANEL_PER_INTERVAL;
-        let expected_metal = 1.0 * METAL_PER_MINE_PER_INTERVAL;
-
-        assert_eq!(resource_system.energy, expected_energy);
-        assert_eq!(resource_system.metal, expected_metal);
+        // two mines * population 1 * yield
+        assert_eq!(resource_system.ore, 2.0);
+        assert_eq!(resource_system.gas, 4.0);
+        assert_eq!(resource_system.crystal, 1.0);
     }
 }
