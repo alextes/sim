@@ -31,8 +31,8 @@ planets and moons can be settled with colony ships or conquered from rivals. pla
 ## economy v1 – three-resource mercantilism
 
 1. resource spread  
-   • each celestial body holds exactly three resource types pulled from the pool (metals, volatiles, organics, rare exotics, crystals, microbes, isotopes, dark matter, etc.) and a yield grade.  
-   • sol worlds skew toward metals + volatiles; the rival empire owns more organics + exotics, ensuring asymmetrical demand.  
+   • each celestial body holds exactly three resource types pulled from the pool (metals, volatiles, organics, rare exotics, crystals, microbes, isotopes, dark matter, etc.) and a yield grade.
+   • sol worlds skew toward metals + volatiles; the rival empire owns more organics + exotics, ensuring asymmetrical demand.
    • monthly extraction = population × infrastructure × yield grade.
 
 2. planetary supply & demand  
@@ -105,6 +105,26 @@ hull size, hardpoints, internal slots, power & heat budgets; player can clone te
 ### weapons
 
 kinetic, laser, plasma, missile, ion, particle, wave, gravitic (placeholder icons: -, ---, o, >, +, \*, ), >)
+
+## Propulsion
+
+the vast distances between star systems necessitate two distinct modes of travel, each with its own engine and fuel type.
+
+### in-system drive (sub-light)
+
+the standard engine for maneuvering within a star system.
+
+- **function**: used for travel between planets, moons, and stations within a single star system. it is also the only drive capable of engaging in combat and performing the final "last-mile" approach to celestial bodies and structures.
+- **fuel**: consumes standard `fuel cells`, which are readily produced from common resources.
+- **velocity**: provides constant thrust, allowing for acceleration and deceleration. top speed is limited, making interstellar travel impractical.
+
+### interstellar drive (warp drive)
+
+a specialized engine for traversing the void between stars.
+
+- **function**: enables near-instantaneous jumps between star systems. the drive requires time to charge before a jump and has a cooldown period afterward.
+- **fuel**: consumes `warp cores`, a rare and expensive fuel type synthesized from exotic resources.
+- **usage within a system**: the warp drive can be used for short-range jumps within a system. however, safety protocols prevent activating the drive too close to significant gravity wells. this means ships cannot warp directly to a planet, starport, or star. a certain "safe distance" must be maintained, after which the ship must use its in-system drive for the final approach. this makes it practical for quickly crossing a system, but not for precise maneuvering.
 
 ## strategic scaling & fleets
 
