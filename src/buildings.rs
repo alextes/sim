@@ -1,6 +1,8 @@
 #![allow(dead_code)] // TODO remove later
 
+use crate::world::types::ResourceType;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Types of buildings that can be constructed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -10,9 +12,30 @@ pub enum BuildingType {
     Shipyard,
 }
 
+impl BuildingType {
+    /// Returns the resource cost to build a given building type.
+    pub fn cost(&self) -> HashMap<ResourceType, f32> {
+        let mut costs = HashMap::new();
+        match self {
+            BuildingType::Mine => {
+                costs.insert(ResourceType::Metals, 50.0);
+            }
+            BuildingType::SolarPanel => {
+                costs.insert(ResourceType::Metals, 20.0);
+                costs.insert(ResourceType::Crystals, 10.0);
+            }
+            BuildingType::Shipyard => {
+                costs.insert(ResourceType::Metals, 200.0);
+            }
+        }
+        costs
+    }
+}
+
 // Constants for slot counts
 pub const PLANET_SLOTS: usize = 4;
 pub const MOON_SLOTS: usize = 2;
+pub const GAS_GIANT_SLOTS: usize = 8;
 
 /// Represents the building slots available on an entity.
 #[derive(Debug, Clone, Serialize, Deserialize)]

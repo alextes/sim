@@ -18,10 +18,8 @@ pub const ENERGY_PER_SOLAR_PANEL_PER_INTERVAL: f32 = 1.0 * RESOURCE_INTERVAL_SEC
 
 #[derive(Debug, Default)]
 pub struct ResourceSystem {
-    pub energy: f32,
-    pub metal: f32,
-    pub nobles: f32,
-    pub organics: f32,
+    // This system is now only responsible for ticking time forward for production.
+    // All resource stockpiles are held in CelestialBodyData.
     time_accumulator: f64, // Accumulates dt_seconds
 }
 
@@ -48,7 +46,8 @@ impl ResourceSystem {
 
         for (entity_id, celestial_data) in celestial_data_map.iter_mut() {
             // As per user request, only for planets for now
-            if render_glyphs.get(entity_id).copied().unwrap_or('?') != 'p' {
+            let glyph = render_glyphs.get(entity_id).copied().unwrap_or('?');
+            if glyph != 'p' && glyph != 'm' && glyph != 'g' {
                 continue;
             }
 
@@ -76,16 +75,14 @@ impl ResourceSystem {
         }
     }
 
-    /// Calculate the current production rates for energy and metal.
+    /// Calculate the current production rates for all resources across all celestial bodies.
+    /// this is an aggregate view for the UI, not a global stockpile.
     pub fn calculate_rates(
         &self,
         buildings_map: &HashMap<EntityId, EntityBuildings>,
         celestial_data_map: &HashMap<EntityId, CelestialBodyData>,
-    ) -> (f32, f32, f32, f32) {
-        let mut energy_rate = 0.0;
-        let mut metal_rate = 0.0;
-        let mut nobles_rate = 0.0;
-        let mut organics_rate = 0.0;
+    ) -> HashMap<ResourceType, f32> {
+        let mut rates = HashMap::new();
 
         // Calculate rates based on buildings
         for (entity_id, buildings) in buildings_map.iter() {
@@ -95,30 +92,28 @@ impl ResourceSystem {
             };
 
             let mut infra = 0.0;
+            let mut energy_rate = 0.0; // Track energy separately for now
 
             for building in buildings.slots.iter().flatten() {
                 match building {
+                    BuildingType::Mine => infra += 1.0,
                     BuildingType::SolarPanel => {
+                        // note: this is a simple placeholder for energy.
+                        // a proper implementation would have energy as a resource with local storage.
                         energy_rate += ENERGY_PER_SOLAR_PANEL_PER_INTERVAL;
-                    }
-                    BuildingType::Mine => {
-                        infra += 1.0;
                     }
                     BuildingType::Shipyard => {}
                 }
             }
 
-            for (resource_type, yield_grade) in &celestial_data.yields {
-                let production_rate = celestial_data.population * infra * yield_grade;
-                match resource_type {
-                    ResourceType::Metal => metal_rate += production_rate,
-                    ResourceType::Nobles => nobles_rate += production_rate,
-                    ResourceType::Organics => organics_rate += production_rate,
+            if infra > 0.0 {
+                for (resource_type, yield_grade) in &celestial_data.yields {
+                    let production_rate = celestial_data.population * infra * yield_grade;
+                    *rates.entry(*resource_type).or_insert(0.0) += production_rate;
                 }
             }
         }
-
-        (energy_rate, metal_rate, nobles_rate, organics_rate)
+        rates
     }
 }
 
@@ -149,8 +144,8 @@ mod tests {
 
         let mut celestial_data_map = HashMap::new();
         let mut yields = HashMap::new();
-        yields.insert(ResourceType::Metal, 1.2);
-        yields.insert(ResourceType::Nobles, 0.4);
+        yields.insert(ResourceType::Metals, 1.2);
+        yields.insert(ResourceType::Crystals, 0.4);
         yields.insert(ResourceType::Organics, 0.8);
 
         celestial_data_map.insert(
@@ -183,11 +178,11 @@ mod tests {
         let interval_f32 = RESOURCE_INTERVAL_SECONDS as f32;
         let stocks = &celestial_data.get(&1).unwrap().stocks;
         assert_eq!(
-            *stocks.get(&ResourceType::Metal).unwrap(),
+            *stocks.get(&ResourceType::Metals).unwrap(),
             1.0 * 1.0 * 1.2 * interval_f32
         );
         assert_eq!(
-            *stocks.get(&ResourceType::Nobles).unwrap(),
+            *stocks.get(&ResourceType::Crystals).unwrap(),
             1.0 * 1.0 * 0.4 * interval_f32
         );
         assert_eq!(

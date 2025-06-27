@@ -6,9 +6,10 @@ use crate::location::Point;
 use crate::world::{EntityId, World};
 
 const NUM_STARS: usize = 64;
-const GALAXY_RADIUS: i32 = 600; // defines the spread of stars - increased for more space between systems
+const GALAXY_RADIUS: i32 = 6000; // defines the spread of stars - increased for more space between systems
 const MAX_PLANETS_PER_STAR: usize = 4;
-const MIN_STAR_DISTANCE: i32 = 80; // minimum distance between stars to avoid orbit overlaps
+const MAX_GAS_GIANTS_PER_STAR: usize = 3;
+const MIN_STAR_DISTANCE: i32 = 800; // minimum distance between stars to avoid orbit overlaps
 
 fn generate_star_name<R: Rng>(rng: &mut R) -> String {
     let letter1 = rng.random_range('a'..='z');
@@ -131,6 +132,17 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
                 initial_angle,
                 angular_velocity,
             );
+            last_radius = radius;
+        }
+
+        let num_gas_giants = rng.random_range(0..=MAX_GAS_GIANTS_PER_STAR);
+        for i in 0..num_gas_giants {
+            let gg_name = format!("{}-gg-{}", star_name, i + 1);
+            let radius = last_radius + rng.random_range(15.0..25.0);
+            let initial_angle = rng.random_range(0.0..TAU);
+            let angular_velocity = rng.random_range(0.01..0.05) / (radius / 10.0);
+
+            world.spawn_gas_giant(gg_name, star_id, radius, initial_angle, angular_velocity);
             last_radius = radius;
         }
     }

@@ -3,6 +3,7 @@ use crate::colors;
 use crate::render::{tileset, SpriteSheetRenderer};
 use crate::world::types::ResourceType;
 use crate::world::{EntityId, World};
+use sdl2::pixels::Color;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 
@@ -20,6 +21,20 @@ fn format_slot(index: usize, slot: Option<BuildingType>) -> String {
         None => "empty",
     };
     format!("slot {}: {}", index + 1, building_name)
+}
+
+fn resource_display_info(resource: &ResourceType) -> (&'static str, Color) {
+    match resource {
+        ResourceType::Metals => ("metals", colors::LGRAY),
+        ResourceType::Organics => ("organics", colors::LGREEN),
+        ResourceType::Crystals => ("crystals", colors::CYAN),
+        ResourceType::Isotopes => ("isotopes", colors::MAGENTA),
+        ResourceType::Microbes => ("microbes", colors::YELLOW),
+        ResourceType::Volatiles => ("volatiles", colors::ORANGE),
+        ResourceType::RareExotics => ("exotics", colors::LRED),
+        ResourceType::DarkMatter => ("dark matter", colors::DGRAY),
+        ResourceType::NobleGases => ("noble gases", colors::LBLUE),
+    }
 }
 
 pub fn render_selected_object_panel(
@@ -60,11 +75,7 @@ pub fn render_selected_object_panel(
                     yields.sort_by_key(|(k, _)| *k);
 
                     for (resource, grade) in yields {
-                        let (name, color) = match resource {
-                            ResourceType::Metal => ("metal", colors::LGRAY),
-                            ResourceType::Nobles => ("nobles", colors::LBLUE),
-                            ResourceType::Organics => ("organics", colors::LGREEN),
-                        };
+                        let (name, color) = resource_display_info(resource);
                         lines.push((format!("  {}: {:.2}", name, grade), color));
                     }
                 }
@@ -75,11 +86,7 @@ pub fn render_selected_object_panel(
                     stocks.sort_by_key(|(k, _)| *k);
 
                     for (resource, amount) in stocks {
-                        let (name, color) = match resource {
-                            ResourceType::Metal => ("metal", colors::LGRAY),
-                            ResourceType::Nobles => ("nobles", colors::LBLUE),
-                            ResourceType::Organics => ("organics", colors::LGREEN),
-                        };
+                        let (name, color) = resource_display_info(resource);
                         lines.push((format!("  {}: {:.1}", name, amount), color));
                     }
                 }

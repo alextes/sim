@@ -197,6 +197,17 @@ impl World {
         spawning::spawn_planet(self, name, anchor, radius, initial_angle, angular_velocity)
     }
 
+    pub fn spawn_gas_giant(
+        &mut self,
+        name: String,
+        anchor: EntityId,
+        radius: f64,
+        initial_angle: f64,
+        angular_velocity: f64,
+    ) -> EntityId {
+        spawning::spawn_gas_giant(self, name, anchor, radius, initial_angle, angular_velocity)
+    }
+
     /// Create an orbiting moon, using the 'm' glyph.
     pub fn spawn_moon(
         &mut self,
@@ -303,10 +314,47 @@ impl World {
                 entity_id,
                 building_type,
             } => {
-                if let Some(buildings) = self.buildings.get_mut(&entity_id) {
-                    if let Some(slot) = buildings.find_first_empty_slot() {
-                        buildings.build(slot, building_type).ok(); // ok to fail silently
+                let costs = building_type.cost();
+                let mut can_afford = true;
+
+                if let Some(celestial_data) = self.celestial_data.get_mut(&entity_id) {
+                    for (resource, cost) in &costs {
+                        let stock = celestial_data.stocks.entry(*resource).or_insert(0.0);
+                        if *stock < *cost {
+                            can_afford = false;
+                            tracing::warn!(
+                                "cannot build {:?}, not enough {:?} (need {}, have {})",
+                                building_type,
+                                resource,
+                                cost,
+                                stock
+                            );
+                            break;
+                        }
                     }
+
+                    if can_afford {
+                        if let Some(buildings) = self.buildings.get_mut(&entity_id) {
+                            if let Some(slot) = buildings.find_first_empty_slot() {
+                                if buildings.build(slot, building_type).is_ok() {
+                                    // Deduct costs only after successfully building
+                                    for (resource, cost) in &costs {
+                                        if let Some(stock) = celestial_data.stocks.get_mut(resource)
+                                        {
+                                            *stock -= *cost;
+                                        }
+                                    }
+                                    tracing::info!(
+                                        "built {:?} on entity {}",
+                                        building_type,
+                                        entity_id
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    tracing::warn!("tried to build on an entity with no celestial data");
                 }
             }
         }

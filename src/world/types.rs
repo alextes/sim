@@ -4,10 +4,34 @@ use std::collections::HashMap;
 /// the types of resources that can be extracted from celestial bodies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum ResourceType {
-    Metal,
-    Nobles,
+    // planetary
+    Metals,
     Organics,
+    Crystals,
+    Isotopes,
+    Microbes,
+
+    // gas giants
+    Volatiles,
+    RareExotics,
+    DarkMatter,
+    NobleGases,
 }
+
+pub const PLANETARY_RESOURCES: &[ResourceType] = &[
+    ResourceType::Metals,
+    ResourceType::Organics,
+    ResourceType::Crystals,
+    ResourceType::Isotopes,
+    ResourceType::Microbes,
+];
+
+pub const GAS_GIANT_RESOURCES: &[ResourceType] = &[
+    ResourceType::Volatiles,
+    ResourceType::RareExotics,
+    ResourceType::DarkMatter,
+    ResourceType::NobleGases,
+];
 
 /// data specific to celestial bodies, such as population and resource yields.
 #[derive(Debug, Clone)]
