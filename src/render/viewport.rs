@@ -429,12 +429,12 @@ impl Viewport {
 
     pub fn zoom_in(&mut self) {
         self.zoom *= 1.2;
-        self.zoom = self.zoom.clamp(0.1, 10.0);
+        self.zoom = self.zoom.clamp(0.05, 10.0);
     }
 
     pub fn zoom_out(&mut self) {
         self.zoom /= 1.2;
-        self.zoom = self.zoom.clamp(0.1, 10.0);
+        self.zoom = self.zoom.clamp(0.05, 10.0);
     }
 
     pub fn zoom_at(&mut self, zoom_factor: f64, mouse_screen_pos: (i32, i32)) {
@@ -442,7 +442,7 @@ impl Viewport {
             self.screen_to_world_coords(mouse_screen_pos.0, mouse_screen_pos.1);
 
         self.zoom *= zoom_factor;
-        self.zoom = self.zoom.clamp(0.1, 10.0);
+        self.zoom = self.zoom.clamp(0.05, 10.0);
 
         let new_world_tile_pixel_size = (TILE_PIXEL_WIDTH as f64 * self.zoom).max(0.001);
         let mouse_offset_from_center_x =
