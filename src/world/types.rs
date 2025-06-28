@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// the types of resources that can be extracted from celestial bodies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ResourceType {
     // planetary
     Metals,
