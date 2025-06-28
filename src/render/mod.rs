@@ -45,7 +45,7 @@ impl<'tc> SpriteSheetRenderer<'tc> {
         let texture = texture_creator
             .load_texture(Path::new("res/taffer_9.png"))
             .unwrap_or_else(|e| {
-                panic!("failed to load sprite sheet texture: {}", e);
+                panic!("failed to load sprite sheet texture: {e}");
             });
         tracing::debug!("sprite sheet texture loaded by spritesheetrenderer");
 
