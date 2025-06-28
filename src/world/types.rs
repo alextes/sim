@@ -17,6 +17,15 @@ pub enum ResourceType {
     NobleGases,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EntityType {
+    Star,
+    Planet,
+    Moon,
+    GasGiant,
+    Ship,
+}
+
 pub const PLANETARY_RESOURCES: &[ResourceType] = &[
     ResourceType::Metals,
     ResourceType::Organics,

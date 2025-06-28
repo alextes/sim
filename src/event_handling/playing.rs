@@ -4,6 +4,7 @@ use super::ControlState;
 use crate::buildings::BuildingType;
 use crate::input; // Import the new input module
 use crate::render::Viewport;
+use crate::world::types::EntityType;
 use crate::world::{EntityId, World};
 use crate::GameState;
 use sdl2::event::Event;
@@ -222,7 +223,7 @@ fn apply_box_selection_logic(
 
     let ships: Vec<EntityId> = entities_in_box
         .iter()
-        .filter(|id| world.ships.contains_key(id))
+        .filter(|id| world.get_entity_type(**id) == Some(EntityType::Ship))
         .cloned()
         .collect();
 
@@ -231,18 +232,9 @@ fn apply_box_selection_logic(
         return;
     }
 
-    let planets: Vec<EntityId> = entities_in_box
-        .iter()
-        .filter(|id| world.get_render_glyph(**id) == 'p')
-        .cloned()
-        .collect();
-    if planets.len() == 1 {
-        controls.selection = planets;
-    }
-
     let stars: Vec<EntityId> = entities_in_box
         .iter()
-        .filter(|id| world.get_render_glyph(**id) == '*')
+        .filter(|id| world.get_entity_type(**id) == Some(EntityType::Star))
         .cloned()
         .collect();
     if stars.len() == 1 {
@@ -250,9 +242,29 @@ fn apply_box_selection_logic(
         return;
     }
 
+    let gas_giants: Vec<EntityId> = entities_in_box
+        .iter()
+        .filter(|id| world.get_entity_type(**id) == Some(EntityType::GasGiant))
+        .cloned()
+        .collect();
+    if gas_giants.len() == 1 {
+        controls.selection = gas_giants;
+        return;
+    }
+
+    let planets: Vec<EntityId> = entities_in_box
+        .iter()
+        .filter(|id| world.get_entity_type(**id) == Some(EntityType::Planet))
+        .cloned()
+        .collect();
+    if planets.len() == 1 {
+        controls.selection = planets;
+        return;
+    }
+
     let moons: Vec<EntityId> = entities_in_box
         .iter()
-        .filter(|id| world.get_render_glyph(**id) == 'm')
+        .filter(|id| world.get_entity_type(**id) == Some(EntityType::Moon))
         .cloned()
         .collect();
     if moons.len() == 1 {

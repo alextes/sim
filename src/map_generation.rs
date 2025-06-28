@@ -86,6 +86,7 @@ fn add_sol_system(world: &mut World) -> EntityId {
 }
 
 pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
+    tracing::info!("populating initial galaxy...");
     let mut star_ids = vec![];
     let mut star_positions = vec![];
     let min_dist_sq = MIN_STAR_DISTANCE.pow(2);
@@ -126,6 +127,8 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
                 // to prevent an infinite loop if parameters are too restrictive
                 tracing::warn!("could not place a star after 1000 attempts, params might be too restrictive. placing anyway.");
                 break;
+            } else {
+                tracing::trace!("star placement attempt {}...", attempts);
             }
         }
         let star_id = world.spawn_star(star_name, position);
@@ -259,14 +262,16 @@ mod tests {
         // NUM_STARS from this function + 1 star from add_sol_system
         let star_count = world
             .iter_entities()
-            .filter(|&id| world.get_render_glyph(id) == '*')
+            .filter(|&id| world.get_entity_type(id) == Some(crate::world::types::EntityType::Star))
             .count();
         assert_eq!(star_count, NUM_STARS + 1);
 
         // sol system entities (3) + NUM_STARS + planets
         let planet_count = world
             .iter_entities()
-            .filter(|&id| world.get_render_glyph(id) == 'p')
+            .filter(|&id| {
+                world.get_entity_type(id) == Some(crate::world::types::EntityType::Planet)
+            })
             .count();
         // 1 for earth
         assert!(planet_count >= 1);

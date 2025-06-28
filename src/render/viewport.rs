@@ -9,7 +9,6 @@ use crate::initialization::{INITIAL_WINDOW_HEIGHT, INITIAL_WINDOW_WIDTH};
 use crate::location::PointF64;
 use crate::world::types::EntityType;
 use crate::world::{EntityId, World};
-use std::collections::HashMap;
 
 use super::{SpriteSheetRenderer, TILE_PIXEL_WIDTH};
 
@@ -159,16 +158,16 @@ fn draw_orbit_lines(
     world: &World,
     viewport: &Viewport,
     ctx: &ViewportRenderContext,
-    entity_types: &HashMap<EntityId, EntityType>,
 ) {
     let old_blend_mode = canvas.blend_mode();
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
 
     for (entity_id, orbital_info) in world.iter_orbitals() {
-        let entity_type = match entity_types.get(&entity_id) {
+        let entity_type = match world.get_entity_type(entity_id) {
             Some(t) => t,
             None => continue,
         };
+
         let anchor_pos = match world.get_location(orbital_info.anchor) {
             Some(pos) => pos,
             None => continue,
@@ -221,7 +220,6 @@ fn draw_entities(
     viewport: &Viewport,
     ctx: &ViewportRenderContext,
     selection: &[EntityId],
-    entity_types: &HashMap<EntityId, EntityType>,
 ) {
     let selection_set: std::collections::HashSet<EntityId> = selection.iter().cloned().collect();
 
@@ -281,7 +279,7 @@ fn draw_entities(
                     });
 
                 const STAR_LABEL_MIN_ZOOM: f64 = 0.7;
-                if let Some(EntityType::Star) = entity_types.get(&entity_id) {
+                if let Some(EntityType::Star) = world.get_entity_type(entity_id) {
                     if viewport.zoom > STAR_LABEL_MIN_ZOOM {
                         if let Some(name) = world.get_entity_name(entity_id) {
                             let text = name.to_lowercase();
@@ -324,7 +322,6 @@ pub fn render_world_in_viewport(
     viewport: &Viewport,
     controls: &ControlState,
     selection: &[EntityId],
-    entity_types: &HashMap<EntityId, EntityType>,
 ) {
     let world_tile_actual_pixel_size_on_screen =
         (TILE_PIXEL_WIDTH as f64 * viewport.zoom).max(0.001);
@@ -352,16 +349,8 @@ pub fn render_world_in_viewport(
     };
 
     draw_star_lanes(canvas, world, &ctx);
-    draw_orbit_lines(canvas, world, viewport, &ctx, entity_types);
-    draw_entities(
-        canvas,
-        renderer,
-        world,
-        viewport,
-        &ctx,
-        selection,
-        entity_types,
-    );
+    draw_orbit_lines(canvas, world, viewport, &ctx);
+    draw_entities(canvas, renderer, world, viewport, &ctx, selection);
     draw_move_orders(canvas, world, selection, &ctx);
 
     if controls.debug_enabled {

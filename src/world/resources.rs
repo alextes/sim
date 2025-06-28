@@ -1,6 +1,7 @@
 #![allow(dead_code)] // TODO remove later
 
 use crate::buildings::{BuildingType, EntityBuildings};
+use crate::world::types::EntityType;
 use crate::world::types::{CelestialBodyData, ResourceType};
 use crate::world::EntityId;
 use crate::SIMULATION_DT;
@@ -27,7 +28,7 @@ impl ResourceSystem {
     pub fn update(
         &mut self,
         dt_seconds: f64, // Delta time for the current simulation step
-        render_glyphs: &HashMap<EntityId, char>,
+        entity_types: &HashMap<EntityId, EntityType>,
         buildings_map: &HashMap<EntityId, EntityBuildings>,
         celestial_data_map: &mut HashMap<EntityId, CelestialBodyData>,
     ) {
@@ -44,10 +45,16 @@ impl ResourceSystem {
         let production_multiplier = num_intervals as f32 * RESOURCE_INTERVAL_SECONDS as f32;
 
         for (entity_id, celestial_data) in celestial_data_map.iter_mut() {
-            // As per user request, only for planets for now
-            let glyph = render_glyphs.get(entity_id).copied().unwrap_or('?');
-            if glyph != 'p' && glyph != 'm' && glyph != 'g' {
-                continue;
+            let entity_type = match entity_types.get(entity_id) {
+                Some(t) => t,
+                None => continue,
+            };
+
+            match entity_type {
+                EntityType::Planet | EntityType::Moon | EntityType::GasGiant => {
+                    // This entity type produces resources.
+                }
+                _ => continue, // Other types do not produce resources.
             }
 
             let buildings = match buildings_map.get(entity_id) {
@@ -117,7 +124,7 @@ mod tests {
     fn create_test_data(
         mines: usize,
     ) -> (
-        HashMap<EntityId, char>,
+        HashMap<EntityId, EntityType>,
         HashMap<EntityId, EntityBuildings>,
         HashMap<EntityId, CelestialBodyData>,
     ) {
@@ -147,20 +154,20 @@ mod tests {
             },
         );
 
-        let mut render_glyphs = HashMap::new();
-        render_glyphs.insert(entity_id, 'p');
+        let mut entity_types = HashMap::new();
+        entity_types.insert(entity_id, EntityType::Planet);
 
-        (render_glyphs, buildings_map, celestial_data_map)
+        (entity_types, buildings_map, celestial_data_map)
     }
 
     #[test]
     fn test_resource_system_update() {
-        let (glyphs, buildings, mut celestial_data) = create_test_data(1);
+        let (entity_types, buildings, mut celestial_data) = create_test_data(1);
         let mut resource_system = ResourceSystem::default();
 
         resource_system.update(
             RESOURCE_INTERVAL_SECONDS,
-            &glyphs,
+            &entity_types,
             &buildings,
             &mut celestial_data,
         );

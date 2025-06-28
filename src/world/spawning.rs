@@ -1,7 +1,9 @@
 //! entity spawning logic.
 use super::{Color, EntityId, Point, ShipInfo, World, MOON_COLORS, PLANET_COLORS, STAR_COLORS};
 use crate::buildings::{EntityBuildings, GAS_GIANT_SLOTS, MOON_SLOTS, PLANET_SLOTS};
-use crate::world::types::{CelestialBodyData, GAS_GIANT_RESOURCES, PLANETARY_RESOURCES};
+use crate::world::types::{
+    CelestialBodyData, EntityType, GAS_GIANT_RESOURCES, PLANETARY_RESOURCES,
+};
 use rand::prelude::*;
 use std::collections::HashMap;
 
@@ -11,6 +13,7 @@ pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId 
     world.next_entity_id += 1;
     world.entities.push(id);
     world.entity_names.insert(id, name);
+    world.entity_types.insert(id, EntityType::Star);
     world.render_glyphs.insert(id, 's');
     let mut rng = rand::rng();
     let color = STAR_COLORS.iter().choose(&mut rng).unwrap();
@@ -36,6 +39,7 @@ pub fn spawn_planet(
     world.next_entity_id += 1;
     world.entities.push(id);
     world.entity_names.insert(id, name);
+    world.entity_types.insert(id, EntityType::Planet);
     world.render_glyphs.insert(id, 'p');
     let mut rng = rand::rng();
     let color = PLANET_COLORS.iter().choose(&mut rng).unwrap();
@@ -80,6 +84,7 @@ pub fn spawn_moon(
     world.next_entity_id += 1;
     world.entities.push(id);
     world.entity_names.insert(id, name);
+    world.entity_types.insert(id, EntityType::Moon);
     world.render_glyphs.insert(id, 'm');
     let mut rng = rand::rng();
     let color = MOON_COLORS.iter().choose(&mut rng).unwrap();
@@ -114,6 +119,7 @@ pub fn spawn_frigate(world: &mut World, name: String, position: Point) -> Entity
     world.next_entity_id += 1;
     world.entities.push(id);
     world.entity_names.insert(id, name);
+    world.entity_types.insert(id, EntityType::Ship);
     world.render_glyphs.insert(id, 'f');
     // use gray for now
     world.entity_colors.insert(
@@ -144,6 +150,7 @@ pub fn spawn_gas_giant(
     world.next_entity_id += 1;
     world.entities.push(id);
     world.entity_names.insert(id, name);
+    world.entity_types.insert(id, EntityType::GasGiant);
     world.render_glyphs.insert(id, 'g');
     let mut rng = rand::rng();
     let color = PLANET_COLORS.iter().choose(&mut rng).unwrap(); // Reuse planet colors for now
