@@ -14,7 +14,7 @@ pub fn render_stardate_panel(
 ) -> u8 {
     // returns total panel height in tiles
     let stardate = total_sim_ticks as f64 / 100.0; // 100 ticks per second
-    let date_text = format!("DATE: {:.2}", stardate);
+    let date_text = format!("DATE: {stardate:.2}");
     let text_len = date_text.len() as u8;
 
     // panel dimensions
