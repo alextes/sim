@@ -1,8 +1,4 @@
-use crate::{
-    colors,
-    interface::draw_colored_centered_window,
-    render::SpriteSheetRenderer,
-};
+use crate::{colors, interface::draw_colored_centered_window, render::SpriteSheetRenderer};
 use sdl2::pixels::Color;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
