@@ -63,9 +63,8 @@ pub fn spawn_planet(
     world.celestial_data.insert(
         id,
         CelestialBodyData {
-            population: 0.0,
             yields,
-            stocks: HashMap::new(),
+            ..Default::default()
         },
     );
     id
@@ -106,9 +105,8 @@ pub fn spawn_moon(
     world.celestial_data.insert(
         id,
         CelestialBodyData {
-            population: 0.0,
             yields,
-            stocks: HashMap::new(),
+            ..Default::default()
         },
     );
     id
@@ -174,6 +172,7 @@ pub fn spawn_gas_giant(
     world.celestial_data.insert(
         id,
         CelestialBodyData {
+            credits: 0.0,
             population: 0.0, // No population on gas giants
             yields,
             stocks: HashMap::new(),

@@ -67,6 +67,12 @@ pub fn render_selected_object_panel(
                         colors::GRAY,
                     ));
                 }
+                if celestial_data.credits > 0.0 {
+                    lines.push((
+                        format!("civ credits: {:.0}", celestial_data.credits),
+                        colors::YELLOW,
+                    ));
+                }
                 if !celestial_data.yields.is_empty() {
                     lines.push(("yields:".to_string(), PANEL_TEXT_COLOR));
                     // Sorting to ensure consistent order

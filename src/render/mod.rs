@@ -90,6 +90,7 @@ fn render_game_scene(ctx: &mut RenderContext) {
         controls: ctx.controls,
         debug_info: ctx.debug_info,
         total_sim_ticks: ctx.total_sim_ticks,
+        player_credits: ctx.world.player_credits,
     };
     interface::render_interface(ctx.canvas, ctx.sprite_renderer, &ui_context);
 }

@@ -5,6 +5,7 @@ use sdl2::render::Canvas;
 use sdl2::video::Window;
 
 pub mod build;
+pub mod credits_panel;
 pub mod debug_overlay;
 pub mod game_menu;
 pub mod intro;
@@ -29,6 +30,7 @@ pub struct UIContext<'a> {
     pub controls: &'a crate::event_handling::ControlState,
     pub debug_info: Option<DebugRenderInfo>,
     pub total_sim_ticks: u64,
+    pub player_credits: f64,
 }
 
 /// helper to render text aligned at the given (x,y) tile coordinates.
@@ -112,13 +114,24 @@ pub fn render_interface(
     let (screen_px_w, _) = canvas.output_size().unwrap_or((0, 0));
     let screen_tiles_w = (screen_px_w / TILE_PIXEL_WIDTH as u32) as u8;
 
-    stardate_panel::render_stardate_panel(
+    const TOP_MARGIN: u8 = 1;
+    const PANEL_SPACING: u8 = 1;
+
+    // --- top-left panels ---
+    let mut left_y_offset = TOP_MARGIN;
+
+    let stardate_panel_height = stardate_panel::render_stardate_panel(
         canvas,
         renderer,
         ctx.total_sim_ticks,
-        1, // Y-coordinate for the topmost panel
+        left_y_offset, // Y-coordinate for the topmost panel
         screen_tiles_w,
     );
+    left_y_offset += stardate_panel_height + PANEL_SPACING;
+
+    credits_panel::render_credits_panel(canvas, renderer, ctx.player_credits, left_y_offset);
+
+    // --- bottom-left panel ---
     selected_object_panel::render_selected_object_panel(
         canvas,
         renderer,
@@ -129,10 +142,7 @@ pub fn render_interface(
     );
 
     // --- right-aligned panels (top-right corner) ---
-    const TOP_SCREEN_MARGIN: u8 = 1; // Y-coordinate for the topmost panel
-    const PANEL_SPACING: u8 = 1; // Vertical spacing between panels
-
-    let mut current_y_offset = TOP_SCREEN_MARGIN;
+    let mut right_y_offset = TOP_MARGIN;
 
     // render sim speed panel
     let sim_speed_panel_height = sim_speed_panel::render_sim_speed_panel(
@@ -140,10 +150,10 @@ pub fn render_interface(
         renderer,
         ctx.controls.sim_speed,
         ctx.controls.paused,
-        current_y_offset, // Its top y position
-        screen_tiles_w,   // Screen width for its internal right-alignment
+        right_y_offset, // Its top y position
+        screen_tiles_w, // Screen width for its internal right-alignment
     );
-    current_y_offset += sim_speed_panel_height + PANEL_SPACING;
+    right_y_offset += sim_speed_panel_height + PANEL_SPACING;
 
     // render debug overlay panel (if enabled and data is present)
     if ctx.controls.debug_enabled {
@@ -154,8 +164,8 @@ pub fn render_interface(
                 info.sups,
                 info.fps,
                 info.zoom,
-                current_y_offset, // Its top y position, below sim_speed_panel
-                screen_tiles_w,   // Screen width for its internal right-alignment
+                right_y_offset, // Its top y position, below sim_speed_panel
+                screen_tiles_w, // Screen width for its internal right-alignment
             );
         }
     }

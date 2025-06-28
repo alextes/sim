@@ -48,6 +48,7 @@ fn add_sol_system(world: &mut World) -> EntityId {
             .insert(crate::world::types::ResourceType::Metals, 500.0);
         data.stocks
             .insert(crate::world::types::ResourceType::Organics, 200.0);
+        data.credits = 5000.0;
     }
 
     // pre-build on earth
@@ -87,6 +88,7 @@ fn add_sol_system(world: &mut World) -> EntityId {
 
 pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
     tracing::info!("populating initial galaxy...");
+    world.player_credits = 1_000_000.0;
     let mut star_ids = vec![];
     let mut star_positions = vec![];
     let min_dist_sq = MIN_STAR_DISTANCE.pow(2);

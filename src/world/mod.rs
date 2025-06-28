@@ -179,6 +179,8 @@ pub struct World {
     pub move_orders: HashMap<EntityId, PointF64>,
     /// command queue
     pub command_queue: VecDeque<Command>,
+    /// player/state credits.
+    pub player_credits: f64,
 }
 
 impl World {

@@ -151,6 +151,7 @@ mod tests {
                 population: 1.0,
                 yields,
                 stocks: HashMap::new(),
+                credits: 0.0,
             },
         );
 
