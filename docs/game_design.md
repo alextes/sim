@@ -98,6 +98,15 @@ sample unlocks
 
 frames: frigate, destroyer, cruiser, carrier, fighter, bomber, explorer, colony ship
 
+### civilian ships
+
+the civilian economy operates its own fleets for various purposes, independent of direct player control. these ships are built and managed autonomously by planetary civilian sectors.
+
+- **mining ships**: extract raw resources from planets, moons, and asteroids. they form the backbone of the civilian industrial base.
+- **trade ships (freighters)**: transport goods and resources between star systems, creating a galactic marketplace. they respond to supply and demand, seeking profitable trade routes.
+- **migration transports**: move populations between worlds, seeking better opportunities or fleeing poor conditions. this is a key driver of demographic shifts in the galaxy.
+- **tourism vessels**: generate income by ferrying tourists to and from planets with high appeal (e.g., unique features, high amenities).
+
 ### ship design
 
 hull size, hardpoints, internal slots, power & heat budgets; player can clone templates or design new hulls. ai uses default templates.
