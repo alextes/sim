@@ -58,7 +58,7 @@ pub fn render_selected_object_panel(
     if selection.len() == 1 {
         let id = selection[0];
         if let Some(name) = world.get_entity_name(id) {
-            lines.push((format!("selected: {}", name), PANEL_TEXT_COLOR));
+            lines.push((format!("selected: {name}"), PANEL_TEXT_COLOR));
 
             if let Some(celestial_data) = world.celestial_data.get(&id) {
                 if celestial_data.population > 0.0 {
@@ -76,7 +76,7 @@ pub fn render_selected_object_panel(
 
                     for (resource, grade) in yields {
                         let (name, color) = resource_display_info(resource);
-                        lines.push((format!("  {}: {:.2}", name, grade), color));
+                        lines.push((format!("  {name}: {grade:.2}"), color));
                     }
                 }
                 if !celestial_data.stocks.is_empty() {
@@ -87,7 +87,7 @@ pub fn render_selected_object_panel(
 
                     for (resource, amount) in stocks {
                         let (name, color) = resource_display_info(resource);
-                        lines.push((format!("  {}: {:.1}", name, amount), color));
+                        lines.push((format!("  {name}: {amount:.1}"), color));
                     }
                 }
             }
@@ -114,7 +114,7 @@ pub fn render_selected_object_panel(
             .filter(|id| world.ships.contains_key(id))
             .count();
         if ship_count > 0 {
-            lines.push((format!("- {} ships", ship_count), colors::GRAY));
+            lines.push((format!("- {ship_count} ships"), colors::GRAY));
         }
     }
 
