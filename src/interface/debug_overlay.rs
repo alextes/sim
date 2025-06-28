@@ -20,8 +20,8 @@ pub fn render_debug_overlay(
     screen_tiles_w: u8,
 ) -> u8 {
     // Returns total panel height in tiles
-    let line1 = format!("SUPS {} FPS {}", sups, fps);
-    let line2 = format!("zoom: {:.2}", zoom);
+    let line1 = format!("SUPS {sups} FPS {fps}");
+    let line2 = format!("zoom: {zoom:.2}");
     let lines_content: [&str; 2] = [&line1, &line2];
 
     let max_text_len = lines_content.iter().map(|s| s.len()).max().unwrap_or(0) as u8;
