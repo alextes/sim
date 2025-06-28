@@ -73,8 +73,10 @@ impl ResourceSystem {
             }
 
             for (resource_type, yield_grade) in &celestial_data.yields {
-                let production =
-                    celestial_data.population * infra * *yield_grade * production_multiplier;
+                let production = (celestial_data.population / 1_000_000.0)
+                    * infra
+                    * *yield_grade
+                    * production_multiplier;
                 let stock = celestial_data.stocks.entry(*resource_type).or_insert(0.0);
                 *stock += production;
             }
@@ -105,12 +107,29 @@ impl ResourceSystem {
 
             if infra > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
-                    let production_rate = celestial_data.population * infra * yield_grade;
+                    let production_rate =
+                        (celestial_data.population / 1_000_000.0) * infra * yield_grade;
                     *rates.entry(*resource_type).or_insert(0.0) += production_rate;
                 }
             }
         }
         rates
+    }
+}
+
+/// returns the base credit value for a single unit of a resource.
+pub fn get_resource_base_price(resource: ResourceType) -> f64 {
+    match resource {
+        ResourceType::Metals => 1.0,
+        ResourceType::Crystals => 5.0,
+        ResourceType::Organics => 2.0,
+        ResourceType::Volatiles => 1.5,
+        ResourceType::Isotopes => 10.0,
+        ResourceType::RareExotics => 20.0,
+        ResourceType::Microbes => 3.0,
+        ResourceType::DarkMatter => 100.0,
+        ResourceType::NobleGases => 4.0,
+        ResourceType::FuelCells => 2.0,
     }
 }
 

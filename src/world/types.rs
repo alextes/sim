@@ -15,6 +15,8 @@ pub enum ResourceType {
     RareExotics,
     DarkMatter,
     NobleGases,
+    /// synthetic fuel for standard ship drives.
+    FuelCells,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

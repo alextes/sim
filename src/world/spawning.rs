@@ -57,7 +57,7 @@ pub fn spawn_planet(
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
-        yields.insert(resource, rng.random_range(0.5..1.5));
+        yields.insert(resource, rng.random_range(50.0..150.0));
     }
 
     world.celestial_data.insert(
@@ -99,7 +99,7 @@ pub fn spawn_moon(
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
-        yields.insert(resource, rng.random_range(0.2..0.8));
+        yields.insert(resource, rng.random_range(20.0..80.0));
     }
 
     world.celestial_data.insert(
@@ -166,7 +166,7 @@ pub fn spawn_gas_giant(
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
-        yields.insert(resource, rng.random_range(0.8..2.0));
+        yields.insert(resource, rng.random_range(80.0..200.0));
     }
 
     world.celestial_data.insert(

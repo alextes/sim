@@ -34,6 +34,7 @@ fn resource_display_info(resource: &ResourceType) -> (&'static str, Color) {
         ResourceType::RareExotics => ("exotics", colors::LRED),
         ResourceType::DarkMatter => ("dark matter", colors::DGRAY),
         ResourceType::NobleGases => ("noble gases", colors::LBLUE),
+        ResourceType::FuelCells => ("fuel cells", colors::RED),
     }
 }
 

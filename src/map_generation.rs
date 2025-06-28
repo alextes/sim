@@ -44,6 +44,12 @@ fn add_sol_system(world: &mut World) -> EntityId {
         let mut rng = rand::rng();
         let population_variation = rng.random_range(-0.2..0.2);
         data.population = (100_000_000.0 * (1.0 + population_variation)) as f32;
+        data.yields
+            .insert(crate::world::types::ResourceType::Metals, 1.0);
+        data.yields
+            .insert(crate::world::types::ResourceType::Organics, 0.7);
+        data.yields
+            .insert(crate::world::types::ResourceType::Crystals, 0.4);
         data.stocks
             .insert(crate::world::types::ResourceType::Metals, 500.0);
         data.stocks
