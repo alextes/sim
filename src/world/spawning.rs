@@ -59,7 +59,7 @@ pub fn spawn_planet(
     world.celestial_data.insert(
         id,
         CelestialBodyData {
-            population: 1.0,
+            population: 0.0,
             yields,
             stocks: HashMap::new(),
         },
@@ -101,7 +101,7 @@ pub fn spawn_moon(
     world.celestial_data.insert(
         id,
         CelestialBodyData {
-            population: 0.2,
+            population: 0.0,
             yields,
             stocks: HashMap::new(),
         },

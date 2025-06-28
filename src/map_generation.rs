@@ -16,18 +16,39 @@ fn generate_star_name<R: Rng>(rng: &mut R) -> String {
     let letter2 = rng.random_range('a'..='z');
     let num1 = rng.random_range(0..=9);
     let num2 = rng.random_range(0..=9);
-    format!("{}{}{}{}", letter1, letter2, num1, num2)
+    format!("{letter1}{letter2}{num1}{num2}")
 }
 
 fn add_sol_system(world: &mut World) -> EntityId {
     // sol at center
     let sol_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+
+    // planets
+    // venus
+    world.spawn_planet("venus".to_string(), sol_id, 12.0, 1.0, TAU / 45.0);
     // earth: complete one orbit (2π) in 60 seconds → angular_velocity = tau / 60
     let earth_id = world.spawn_planet("earth".to_string(), sol_id, 16.0, 0.0, TAU / 60.0);
     // moon: faster orbit around earth, e.g. complete in 5 seconds
     let _moon_id = world.spawn_moon("moon".to_string(), earth_id, 4.0, 0.0, TAU / 5.0);
+    // mars
+    world.spawn_planet("mars".to_string(), sol_id, 24.0, 2.5, TAU / 90.0);
+
+    // gas giants
+    world.spawn_gas_giant("jupiter".to_string(), sol_id, 40.0, 4.0, TAU / 200.0);
+    world.spawn_gas_giant("saturn".to_string(), sol_id, 60.0, 5.5, TAU / 350.0);
 
     world.set_player_controlled(earth_id);
+
+    // set starting population and resources for earth
+    if let Some(data) = world.celestial_data.get_mut(&earth_id) {
+        let mut rng = rand::rng();
+        let population_variation = rng.random_range(-0.2..0.2);
+        data.population = (100_000_000.0 * (1.0 + population_variation)) as f32;
+        data.stocks
+            .insert(crate::world::types::ResourceType::Metals, 500.0);
+        data.stocks
+            .insert(crate::world::types::ResourceType::Organics, 200.0);
+    }
 
     // pre-build on earth
     if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
@@ -192,10 +213,30 @@ mod tests {
             .iter_entities()
             .find(|&id| world.get_entity_name(id) == Some("moon".to_string()))
             .unwrap();
+        let venus_id = world
+            .iter_entities()
+            .find(|&id| world.get_entity_name(id) == Some("venus".to_string()))
+            .unwrap();
+        let mars_id = world
+            .iter_entities()
+            .find(|&id| world.get_entity_name(id) == Some("mars".to_string()))
+            .unwrap();
+        let jupiter_id = world
+            .iter_entities()
+            .find(|&id| world.get_entity_name(id) == Some("jupiter".to_string()))
+            .unwrap();
+        let saturn_id = world
+            .iter_entities()
+            .find(|&id| world.get_entity_name(id) == Some("saturn".to_string()))
+            .unwrap();
 
         assert_eq!(world.get_render_glyph(sol_id), '*');
         assert_eq!(world.get_render_glyph(earth_id), 'p');
         assert_eq!(world.get_render_glyph(moon_id), 'm');
+        assert_eq!(world.get_render_glyph(venus_id), 'p');
+        assert_eq!(world.get_render_glyph(mars_id), 'p');
+        assert_eq!(world.get_render_glyph(jupiter_id), 'g');
+        assert_eq!(world.get_render_glyph(saturn_id), 'g');
 
         // Check earth has buildings
         let buildings = world.buildings.get(&earth_id).unwrap();
