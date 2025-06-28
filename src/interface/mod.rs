@@ -65,6 +65,36 @@ pub fn render_text_at(
     }
 }
 
+/// helper to render text with per-character coloring.
+pub fn render_colored_text_at(
+    canvas: &mut Canvas<Window>,
+    renderer: &SpriteSheetRenderer,
+    text_with_colors: &[(char, sdl2::pixels::Color)],
+    background_color: sdl2::pixels::Color,
+    x_tile: u8,
+    y_tile: u8,
+) {
+    // draw background rectangle behind the text
+    canvas.set_draw_color(background_color);
+    canvas
+        .draw_rect(tileset::make_multi_tile_rect(
+            x_tile,
+            y_tile,
+            text_with_colors.len() as u8,
+            1,
+        ))
+        .unwrap();
+
+    for (i, (ch, color)) in text_with_colors.iter().enumerate() {
+        renderer.set_texture_color_mod(color.r, color.g, color.b);
+        let src = renderer.tileset.get_rect(*ch);
+        let dst = tileset::make_tile_rect(x_tile + i as u8, y_tile);
+        canvas
+            .copy(&renderer.texture_ref(), Some(src), Some(dst))
+            .ok();
+    }
+}
+
 // constants for panels
 pub const PANEL_BORDER_COLOR: sdl2::pixels::Color = colors::DGRAY; // dark gray border
 pub const PANEL_BACKGROUND_COLOR: sdl2::pixels::Color = colors::BLACK;
@@ -185,6 +215,65 @@ pub(super) fn draw_centered_window(
             text,
             PANEL_BACKGROUND_COLOR, // Text background matches the panel background
             *fg,
+            text_start_x,
+            text_start_y + i as u8,
+        );
+    }
+}
+
+// helper function to draw a centered window with a border and text lines with per-character colors.
+// made pub(super) to be accessible by submodules.
+pub(super) fn draw_colored_centered_window(
+    canvas: &mut Canvas<Window>,
+    renderer: &SpriteSheetRenderer,
+    lines: &[Vec<(char, sdl2::pixels::Color)>],
+) {
+    const PADDING: u8 = 1; // 1 tile padding around text content, inside the panel
+
+    // dimensions of the text content itself
+    let text_content_w = lines.iter().map(|line| line.len()).max().unwrap_or(0) as u8;
+    let text_content_h = lines.len() as u8;
+
+    // total dimensions of the panel (text + padding on all sides)
+    let panel_w = text_content_w + 2 * PADDING;
+    let panel_h = text_content_h + 2 * PADDING;
+
+    // screen size in tiles
+    let (px_w, px_h) = canvas.output_size().unwrap();
+    let tiles_w = (px_w / TILE_PIXEL_WIDTH as u32) as u8;
+    let tiles_h = (px_h / TILE_PIXEL_WIDTH as u32) as u8;
+
+    // top-left corner of the panel
+    let panel_x = tiles_w.saturating_sub(panel_w) / 2;
+    let panel_y = tiles_h.saturating_sub(panel_h) / 2;
+
+    // 1. draw the background for the entire panel area
+    canvas.set_draw_color(PANEL_BACKGROUND_COLOR);
+    canvas
+        .fill_rect(tileset::make_multi_tile_rect(
+            panel_x, panel_y, panel_w, panel_h,
+        ))
+        .unwrap();
+
+    // 2. draw the border outline on top of the background
+    canvas.set_draw_color(PANEL_BORDER_COLOR);
+    canvas
+        .draw_rect(tileset::make_multi_tile_rect(
+            panel_x, panel_y, panel_w, panel_h,
+        ))
+        .unwrap();
+
+    // 3. render text lines, offset by padding from the panel's edge
+    let text_start_y = panel_y + PADDING;
+
+    for (i, line) in lines.iter().enumerate() {
+        // center each line of text individually
+        let text_start_x = panel_x + PADDING + (text_content_w - line.len() as u8) / 2;
+        render_colored_text_at(
+            canvas,
+            renderer,
+            line,
+            PANEL_BACKGROUND_COLOR, // Text background matches the panel background
             text_start_x,
             text_start_y + i as u8,
         );
