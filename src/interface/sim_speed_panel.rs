@@ -20,7 +20,7 @@ pub fn render_sim_speed_panel(
     let speed_text = if paused {
         "SPEED: PAUSED".to_string()
     } else {
-        format!("SPEED: {}x", sim_speed)
+        format!("SPEED: {sim_speed}x")
     };
     let text_len = speed_text.len() as u8;
 
