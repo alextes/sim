@@ -1,6 +1,9 @@
 //! entity spawning logic.
 use super::{Color, EntityId, Point, ShipInfo, World, MOON_COLORS, PLANET_COLORS, STAR_COLORS};
 use crate::buildings::{EntityBuildings, GAS_GIANT_SLOTS, MOON_SLOTS, PLANET_SLOTS};
+use crate::location::PointF64;
+use crate::world::components::CivilianShipState;
+use crate::world::components::{Cargo, CivilianShipAI};
 use crate::world::types::{
     CelestialBodyData, EntityType, GAS_GIANT_RESOURCES, PLANETARY_RESOURCES,
 };
@@ -23,6 +26,7 @@ pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId 
     world
         .celestial_data
         .insert(id, CelestialBodyData::default());
+    world.set_player_controlled(id);
     id
 }
 
@@ -178,5 +182,53 @@ pub fn spawn_gas_giant(
             stocks: HashMap::new(),
         },
     );
+    id
+}
+
+pub fn spawn_mining_ship(
+    world: &mut World,
+    name: String,
+    position: Point,
+    home_base_id: EntityId,
+) -> EntityId {
+    let id = world.next_entity_id;
+    world.next_entity_id += 1;
+    world.entities.push(id);
+
+    world.entity_names.insert(id, format!("{name} #{id}"));
+    world.entity_types.insert(id, EntityType::Ship);
+    world.render_glyphs.insert(id, 'm');
+    world.entity_colors.insert(
+        id,
+        Color {
+            r: 160,
+            g: 160,
+            b: 160,
+        },
+    );
+    world.locations.add_mobile(
+        id,
+        PointF64 {
+            x: position.x as f64,
+            y: position.y as f64,
+        },
+    );
+    world.ships.insert(
+        id,
+        ShipInfo {
+            speed: 2.0, // slower than frigates
+        },
+    );
+    world.cargo.insert(id, Cargo::new(100.0));
+    world.civilian_ai.insert(
+        id,
+        CivilianShipAI {
+            state: CivilianShipState::Idle,
+            home_base: home_base_id,
+        },
+    );
+
+    // note: not calling set_player_controlled
+
     id
 }

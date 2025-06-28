@@ -2,7 +2,7 @@
 
 use crate::buildings::{BuildingType, EntityBuildings};
 use crate::world::types::EntityType;
-use crate::world::types::{CelestialBodyData, ResourceType};
+use crate::world::types::{CelestialBodyData, Good, RawResource, Storable};
 use crate::world::EntityId;
 use crate::SIMULATION_DT;
 use std::collections::HashMap;
@@ -62,23 +62,75 @@ impl ResourceSystem {
                 None => continue,
             };
 
-            let infra = buildings
+            // handle raw resource extraction from mines
+            let mine_infra = buildings
                 .slots
                 .iter()
                 .filter(|s| s.is_some() && s.unwrap() == BuildingType::Mine)
                 .count() as f32;
 
-            if infra == 0.0 {
-                continue;
+            if mine_infra > 0.0 {
+                for (resource_type, yield_grade) in &celestial_data.yields {
+                    let production = (celestial_data.population / 1_000_000.0)
+                        * mine_infra
+                        * *yield_grade
+                        * production_multiplier;
+                    let stock = celestial_data
+                        .stocks
+                        .entry(Storable::Raw(*resource_type))
+                        .or_insert(0.0);
+                    *stock += production;
+                }
             }
 
-            for (resource_type, yield_grade) in &celestial_data.yields {
-                let production = (celestial_data.population / 1_000_000.0)
-                    * infra
-                    * *yield_grade
-                    * production_multiplier;
-                let stock = celestial_data.stocks.entry(*resource_type).or_insert(0.0);
-                *stock += production;
+            // handle manufactured goods production
+            let cracker_infra = buildings
+                .slots
+                .iter()
+                .filter(|s| s.is_some() && s.unwrap() == BuildingType::FuelCellCracker)
+                .count() as f32;
+
+            if cracker_infra > 0.0 {
+                // recipe: 1 volatile + 0.1 metals -> 1 fuel cell
+                let volatiles_needed = 1.0 * cracker_infra * production_multiplier;
+                let metals_needed = 0.1 * cracker_infra * production_multiplier;
+
+                let available_volatiles = celestial_data
+                    .stocks
+                    .get(&Storable::Raw(RawResource::Volatiles))
+                    .copied()
+                    .unwrap_or(0.0);
+                let available_metals = celestial_data
+                    .stocks
+                    .get(&Storable::Raw(RawResource::Metals))
+                    .copied()
+                    .unwrap_or(0.0);
+
+                let production_possible_by_volatiles = available_volatiles / 1.0;
+                let production_possible_by_metals = available_metals / 0.1;
+
+                let actual_production = volatiles_needed
+                    .min(metals_needed)
+                    .min(production_possible_by_volatiles)
+                    .min(production_possible_by_metals);
+
+                if actual_production > 0.0 {
+                    // consume resources
+                    *celestial_data
+                        .stocks
+                        .entry(Storable::Raw(RawResource::Volatiles))
+                        .or_insert(0.0) -= actual_production * 1.0;
+                    *celestial_data
+                        .stocks
+                        .entry(Storable::Raw(RawResource::Metals))
+                        .or_insert(0.0) -= actual_production * 0.1;
+
+                    // produce fuel cells
+                    *celestial_data
+                        .stocks
+                        .entry(Storable::Good(Good::FuelCells))
+                        .or_insert(0.0) += actual_production;
+                }
             }
         }
     }
@@ -89,7 +141,7 @@ impl ResourceSystem {
         &self,
         buildings_map: &HashMap<EntityId, EntityBuildings>,
         celestial_data_map: &HashMap<EntityId, CelestialBodyData>,
-    ) -> HashMap<ResourceType, f32> {
+    ) -> HashMap<Storable, f32> {
         let mut rates = HashMap::new();
 
         // Calculate rates based on buildings
@@ -99,18 +151,30 @@ impl ResourceSystem {
                 None => continue,
             };
 
-            let infra = buildings
+            let mine_infra = buildings
                 .slots
                 .iter()
                 .filter(|s| matches!(s, Some(BuildingType::Mine)))
                 .count() as f32;
 
-            if infra > 0.0 {
+            if mine_infra > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
                     let production_rate =
-                        (celestial_data.population / 1_000_000.0) * infra * yield_grade;
-                    *rates.entry(*resource_type).or_insert(0.0) += production_rate;
+                        (celestial_data.population / 1_000_000.0) * mine_infra * yield_grade;
+                    *rates.entry(Storable::Raw(*resource_type)).or_insert(0.0) += production_rate;
                 }
+            }
+
+            let cracker_infra = buildings
+                .slots
+                .iter()
+                .filter(|s| matches!(s, Some(BuildingType::FuelCellCracker)))
+                .count() as f32;
+
+            if cracker_infra > 0.0 {
+                // this is a simplified view. it does not account for input resource availability.
+                let production_rate = cracker_infra * 1.0; // assuming 1 fuel cell per second per cracker
+                *rates.entry(Storable::Good(Good::FuelCells)).or_insert(0.0) += production_rate;
             }
         }
         rates
@@ -118,18 +182,22 @@ impl ResourceSystem {
 }
 
 /// returns the base credit value for a single unit of a resource.
-pub fn get_resource_base_price(resource: ResourceType) -> f64 {
+pub fn get_resource_base_price(resource: Storable) -> f64 {
     match resource {
-        ResourceType::Metals => 1.0,
-        ResourceType::Crystals => 5.0,
-        ResourceType::Organics => 2.0,
-        ResourceType::Volatiles => 1.5,
-        ResourceType::Isotopes => 10.0,
-        ResourceType::RareExotics => 20.0,
-        ResourceType::Microbes => 3.0,
-        ResourceType::DarkMatter => 100.0,
-        ResourceType::NobleGases => 4.0,
-        ResourceType::FuelCells => 2.0,
+        Storable::Raw(raw) => match raw {
+            RawResource::Metals => 1.0,
+            RawResource::Crystals => 5.0,
+            RawResource::Organics => 2.0,
+            RawResource::Volatiles => 1.5,
+            RawResource::Isotopes => 10.0,
+            RawResource::RareExotics => 20.0,
+            RawResource::Microbes => 3.0,
+            RawResource::DarkMatter => 100.0,
+            RawResource::NobleGases => 4.0,
+        },
+        Storable::Good(good) => match good {
+            Good::FuelCells => 2.0,
+        },
     }
 }
 
@@ -137,7 +205,7 @@ pub fn get_resource_base_price(resource: ResourceType) -> f64 {
 mod tests {
     use super::*;
     use crate::buildings::{BuildingType, EntityBuildings, PLANET_SLOTS};
-    use crate::world::types::{CelestialBodyData, ResourceType};
+    use crate::world::types::{CelestialBodyData, RawResource, Storable};
     use std::collections::HashMap;
 
     fn create_test_data(
@@ -160,9 +228,9 @@ mod tests {
 
         let mut celestial_data_map = HashMap::new();
         let mut yields = HashMap::new();
-        yields.insert(ResourceType::Metals, 1.2);
-        yields.insert(ResourceType::Crystals, 0.4);
-        yields.insert(ResourceType::Organics, 0.8);
+        yields.insert(RawResource::Metals, 1.2);
+        yields.insert(RawResource::Crystals, 0.4);
+        yields.insert(RawResource::Organics, 0.8);
 
         celestial_data_map.insert(
             entity_id,
@@ -195,15 +263,15 @@ mod tests {
         let interval_f32 = RESOURCE_INTERVAL_SECONDS as f32;
         let stocks = &celestial_data.get(&1).unwrap().stocks;
         assert_eq!(
-            *stocks.get(&ResourceType::Metals).unwrap(),
+            *stocks.get(&Storable::Raw(RawResource::Metals)).unwrap(),
             1.0 * 1.0 * 1.2 * interval_f32
         );
         assert_eq!(
-            *stocks.get(&ResourceType::Crystals).unwrap(),
+            *stocks.get(&Storable::Raw(RawResource::Crystals)).unwrap(),
             1.0 * 1.0 * 0.4 * interval_f32
         );
         assert_eq!(
-            *stocks.get(&ResourceType::Organics).unwrap(),
+            *stocks.get(&Storable::Raw(RawResource::Organics)).unwrap(),
             1.0 * 1.0 * 0.8 * interval_f32
         );
     }

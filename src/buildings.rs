@@ -1,6 +1,6 @@
 #![allow(dead_code)] // TODO remove later
 
-use crate::world::types::ResourceType;
+use crate::world::types::{RawResource, Storable};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -10,22 +10,27 @@ pub enum BuildingType {
     SolarPanel,
     Mine,
     Shipyard,
+    FuelCellCracker,
 }
 
 impl BuildingType {
     /// Returns the resource cost to build a given building type.
-    pub fn cost(&self) -> HashMap<ResourceType, f32> {
+    pub fn cost(&self) -> HashMap<Storable, f32> {
         let mut costs = HashMap::new();
         match self {
             BuildingType::Mine => {
-                costs.insert(ResourceType::Metals, 50.0);
+                costs.insert(Storable::Raw(RawResource::Metals), 50.0);
             }
             BuildingType::SolarPanel => {
-                costs.insert(ResourceType::Metals, 20.0);
-                costs.insert(ResourceType::Crystals, 10.0);
+                costs.insert(Storable::Raw(RawResource::Metals), 20.0);
+                costs.insert(Storable::Raw(RawResource::Crystals), 10.0);
             }
             BuildingType::Shipyard => {
-                costs.insert(ResourceType::Metals, 200.0);
+                costs.insert(Storable::Raw(RawResource::Metals), 200.0);
+            }
+            BuildingType::FuelCellCracker => {
+                costs.insert(Storable::Raw(RawResource::Metals), 150.0);
+                costs.insert(Storable::Raw(RawResource::Crystals), 75.0);
             }
         }
         costs
@@ -75,6 +80,7 @@ impl EntityBuildings {
             BuildingType::SolarPanel => "solar panel",
             BuildingType::Mine => "mine",
             BuildingType::Shipyard => "shipyard",
+            BuildingType::FuelCellCracker => "fuel cell cracker",
         }
     }
 }
@@ -93,6 +99,10 @@ mod tests {
         assert_eq!(
             EntityBuildings::building_name(BuildingType::Shipyard),
             "shipyard"
+        );
+        assert_eq!(
+            EntityBuildings::building_name(BuildingType::FuelCellCracker),
+            "fuel cell cracker"
         );
     }
 

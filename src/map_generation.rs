@@ -45,15 +45,19 @@ fn add_sol_system(world: &mut World) -> EntityId {
         let population_variation = rng.random_range(-0.2..0.2);
         data.population = (100_000_000.0 * (1.0 + population_variation)) as f32;
         data.yields
-            .insert(crate::world::types::ResourceType::Metals, 1.0);
+            .insert(crate::world::types::RawResource::Metals, 1.0);
         data.yields
-            .insert(crate::world::types::ResourceType::Organics, 0.7);
+            .insert(crate::world::types::RawResource::Organics, 0.7);
         data.yields
-            .insert(crate::world::types::ResourceType::Crystals, 0.4);
-        data.stocks
-            .insert(crate::world::types::ResourceType::Metals, 500.0);
-        data.stocks
-            .insert(crate::world::types::ResourceType::Organics, 200.0);
+            .insert(crate::world::types::RawResource::Crystals, 0.4);
+        data.stocks.insert(
+            crate::world::types::Storable::Raw(crate::world::types::RawResource::Metals),
+            500.0,
+        );
+        data.stocks.insert(
+            crate::world::types::Storable::Raw(crate::world::types::RawResource::Organics),
+            200.0,
+        );
         data.credits = 5000.0;
     }
 

@@ -1,7 +1,7 @@
 use crate::buildings::{BuildingType, EntityBuildings};
 use crate::colors;
 use crate::render::{tileset, SpriteSheetRenderer};
-use crate::world::types::ResourceType;
+use crate::world::types::{Good, RawResource, Storable};
 use crate::world::{EntityId, World};
 use sdl2::pixels::Color;
 use sdl2::render::Canvas;
@@ -23,18 +23,30 @@ fn format_slot(index: usize, slot: Option<BuildingType>) -> String {
     format!("slot {}: {}", index + 1, building_name)
 }
 
-fn resource_display_info(resource: &ResourceType) -> (&'static str, Color) {
+fn raw_resource_display_info(resource: &RawResource) -> (&'static str, Color) {
     match resource {
-        ResourceType::Metals => ("metals", colors::LGRAY),
-        ResourceType::Organics => ("organics", colors::LGREEN),
-        ResourceType::Crystals => ("crystals", colors::CYAN),
-        ResourceType::Isotopes => ("isotopes", colors::MAGENTA),
-        ResourceType::Microbes => ("microbes", colors::YELLOW),
-        ResourceType::Volatiles => ("volatiles", colors::ORANGE),
-        ResourceType::RareExotics => ("exotics", colors::LRED),
-        ResourceType::DarkMatter => ("dark matter", colors::DGRAY),
-        ResourceType::NobleGases => ("noble gases", colors::LBLUE),
-        ResourceType::FuelCells => ("fuel cells", colors::RED),
+        RawResource::Metals => ("metals", colors::LGRAY),
+        RawResource::Organics => ("organics", colors::LGREEN),
+        RawResource::Crystals => ("crystals", colors::CYAN),
+        RawResource::Isotopes => ("isotopes", colors::MAGENTA),
+        RawResource::Microbes => ("microbes", colors::YELLOW),
+        RawResource::Volatiles => ("volatiles", colors::ORANGE),
+        RawResource::RareExotics => ("exotics", colors::LRED),
+        RawResource::DarkMatter => ("dark matter", colors::DGRAY),
+        RawResource::NobleGases => ("noble gases", colors::LBLUE),
+    }
+}
+
+fn good_display_info(good: &Good) -> (&'static str, Color) {
+    match good {
+        Good::FuelCells => ("fuel cells", colors::RED),
+    }
+}
+
+fn storable_display_info(storable: &Storable) -> (&'static str, Color) {
+    match storable {
+        Storable::Raw(r) => raw_resource_display_info(r),
+        Storable::Good(g) => good_display_info(g),
     }
 }
 
@@ -77,23 +89,22 @@ pub fn render_selected_object_panel(
                 if !celestial_data.yields.is_empty() {
                     lines.push(("yields:".to_string(), PANEL_TEXT_COLOR));
                     // Sorting to ensure consistent order
-                    let mut yields: Vec<(&ResourceType, &f32)> =
+                    let mut yields: Vec<(&RawResource, &f32)> =
                         celestial_data.yields.iter().collect();
                     yields.sort_by_key(|(k, _)| *k);
 
                     for (resource, grade) in yields {
-                        let (name, color) = resource_display_info(resource);
+                        let (name, color) = raw_resource_display_info(resource);
                         lines.push((format!("  {name}: {grade:.2}"), color));
                     }
                 }
                 if !celestial_data.stocks.is_empty() {
                     lines.push(("stocks:".to_string(), PANEL_TEXT_COLOR));
-                    let mut stocks: Vec<(&ResourceType, &f32)> =
-                        celestial_data.stocks.iter().collect();
+                    let mut stocks: Vec<(&Storable, &f32)> = celestial_data.stocks.iter().collect();
                     stocks.sort_by_key(|(k, _)| *k);
 
                     for (resource, amount) in stocks {
-                        let (name, color) = resource_display_info(resource);
+                        let (name, color) = storable_display_info(resource);
                         lines.push((format!("  {name}: {amount:.1}"), color));
                     }
                 }
