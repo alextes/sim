@@ -14,6 +14,7 @@ use super::{SpriteSheetRenderer, TILE_PIXEL_WIDTH};
 
 const PLANET_ORBIT_MIN_ZOOM: f64 = 0.4;
 const MOON_ORBIT_MIN_ZOOM: f64 = 1.0;
+const STAR_MAP_ZOOM_THRESHOLD: f64 = PLANET_ORBIT_MIN_ZOOM;
 
 struct ViewportRenderContext {
     view_world_origin_x: f64,
@@ -25,6 +26,14 @@ struct ViewportRenderContext {
     view_bbox_world_y_max: f64,
     tile_on_screen_render_w: u32,
     tile_on_screen_render_h: u32,
+}
+
+struct DrawSpriteContext<'a, 'b, 'c, 'd, 'e, 'f> {
+    canvas: &'a mut Canvas<Window>,
+    renderer: &'b SpriteSheetRenderer<'f>,
+    world: &'c World,
+    viewport: &'d Viewport,
+    ctx: &'e ViewportRenderContext,
 }
 
 fn draw_move_orders(
@@ -213,6 +222,147 @@ fn draw_orbit_lines(
     canvas.set_blend_mode(old_blend_mode);
 }
 
+fn is_in_view(pos: crate::location::Point, ctx: &ViewportRenderContext) -> bool {
+    let entity_world_x_f64 = pos.x as f64;
+    let entity_world_y_f64 = pos.y as f64;
+
+    entity_world_x_f64 + 1.0 > ctx.view_bbox_world_x_min
+        && entity_world_x_f64 < ctx.view_bbox_world_x_max
+        && entity_world_y_f64 + 1.0 > ctx.view_bbox_world_y_min
+        && entity_world_y_f64 < ctx.view_bbox_world_y_max
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_entity_sprite(
+    context: &mut DrawSpriteContext,
+    entity_id: EntityId,
+    entity_type: Option<EntityType>,
+    dest_x: i32,
+    dest_y: i32,
+) -> Rect {
+    let glyph = context.world.get_render_glyph(entity_id);
+    let src_rect_in_tileset = context.renderer.tileset.get_rect(glyph);
+
+    let mut dest_rect_on_screen = Rect::new(
+        dest_x,
+        dest_y,
+        context.ctx.tile_on_screen_render_w,
+        context.ctx.tile_on_screen_render_h,
+    );
+
+    if let Some(EntityType::Star) = entity_type {
+        if context.viewport.zoom < STAR_MAP_ZOOM_THRESHOLD {
+            const STAR_MAP_MODE_PIXEL_SIZE: u32 = 8;
+            dest_rect_on_screen.set_width(STAR_MAP_MODE_PIXEL_SIZE);
+            dest_rect_on_screen.set_height(STAR_MAP_MODE_PIXEL_SIZE);
+            dest_rect_on_screen.center_on(sdl2::rect::Point::new(dest_x, dest_y));
+        }
+    }
+
+    if let Some(color) = context.world.get_entity_color(entity_id) {
+        context
+            .renderer
+            .set_texture_color_mod(color.r, color.g, color.b);
+    } else {
+        // fallback to a default color if none is set.
+        context.renderer.set_texture_color_mod(255, 255, 255); // white
+    }
+
+    context
+        .canvas
+        .copy(
+            &context.renderer.texture_ref(),
+            Some(src_rect_in_tileset),
+            Some(dest_rect_on_screen),
+        )
+        .unwrap_or_else(|e| error!("failed to copy tile for entity {}: {:?}", entity_id, e));
+
+    dest_rect_on_screen
+}
+
+fn draw_selection_outline(canvas: &mut Canvas<Window>, entity_render_rect: &Rect) {
+    canvas.set_draw_color(colors::YELLOW);
+    let outline_rect = Rect::new(
+        entity_render_rect.x() - 2,
+        entity_render_rect.y() - 2,
+        entity_render_rect.width() + 4,
+        entity_render_rect.height() + 4,
+    );
+    canvas.draw_rect(outline_rect).ok();
+}
+
+fn draw_star_label(
+    canvas: &mut Canvas<Window>,
+    renderer: &SpriteSheetRenderer,
+    world: &World,
+    viewport: &Viewport,
+    entity_id: EntityId,
+    pos: crate::location::Point,
+    ctx: &ViewportRenderContext,
+) {
+    let entity_world_x_f64 = pos.x as f64;
+    let entity_world_y_f64 = pos.y as f64;
+
+    if viewport.zoom < STAR_MAP_ZOOM_THRESHOLD {
+        if let Some(name) = world.get_entity_name(entity_id) {
+            let text = name.to_lowercase();
+
+            const TARGET_FONT_PIXEL_SIZE: f64 = 10.0;
+            let font_size_world =
+                TARGET_FONT_PIXEL_SIZE / ctx.world_tile_actual_pixel_size_on_screen;
+            let text_width_world = text.chars().count() as f64 * font_size_world;
+
+            let system_radius_world = world.get_system_radius(entity_id);
+
+            let label_pos = PointF64 {
+                x: (entity_world_x_f64 + 0.5) - (text_width_world / 2.0),
+                y: entity_world_y_f64 + 0.5 + system_radius_world,
+            };
+
+            render_text_in_world(
+                canvas,
+                renderer,
+                &text,
+                label_pos,
+                font_size_world,
+                sdl2::pixels::Color::RGBA(colors::LGRAY.r, colors::LGRAY.g, colors::LGRAY.b, 220),
+                ctx,
+            );
+        }
+    } else {
+        const STAR_LABEL_MIN_ZOOM: f64 = 0.7;
+        if viewport.zoom > STAR_LABEL_MIN_ZOOM {
+            if let Some(name) = world.get_entity_name(entity_id) {
+                let text = name.to_lowercase();
+
+                const STAR_LABEL_FONT_SIZE_WORLD: f64 = 1.2;
+                let char_width_world = STAR_LABEL_FONT_SIZE_WORLD;
+                let text_width_world = text.chars().count() as f64 * char_width_world;
+
+                let label_pos = PointF64 {
+                    x: (entity_world_x_f64 + 0.5) - (text_width_world / 2.0),
+                    y: entity_world_y_f64 + 1.1,
+                };
+
+                render_text_in_world(
+                    canvas,
+                    renderer,
+                    &text,
+                    label_pos,
+                    STAR_LABEL_FONT_SIZE_WORLD,
+                    sdl2::pixels::Color::RGBA(
+                        colors::LGRAY.r,
+                        colors::LGRAY.g,
+                        colors::LGRAY.b,
+                        220,
+                    ),
+                    ctx,
+                );
+            }
+        }
+    }
+}
+
 fn draw_entities(
     canvas: &mut Canvas<Window>,
     renderer: &SpriteSheetRenderer,
@@ -224,92 +374,46 @@ fn draw_entities(
     let selection_set: std::collections::HashSet<EntityId> = selection.iter().cloned().collect();
 
     for entity_id in world.iter_entities() {
+        let entity_type = world.get_entity_type(entity_id);
+
+        if viewport.zoom < STAR_MAP_ZOOM_THRESHOLD && !matches!(entity_type, Some(EntityType::Star))
+        {
+            continue;
+        }
+
         if let Some(pos) = world.get_location(entity_id) {
+            if !is_in_view(pos, ctx) {
+                continue;
+            }
+
             let entity_world_x_f64 = pos.x as f64;
             let entity_world_y_f64 = pos.y as f64;
 
-            if entity_world_x_f64 + 1.0 > ctx.view_bbox_world_x_min
-                && entity_world_x_f64 < ctx.view_bbox_world_x_max
-                && entity_world_y_f64 + 1.0 > ctx.view_bbox_world_y_min
-                && entity_world_y_f64 < ctx.view_bbox_world_y_max
-            {
-                let glyph = world.get_render_glyph(entity_id);
-                let src_rect_in_tileset = renderer.tileset.get_rect(glyph);
+            let screen_pixel_x_float = (entity_world_x_f64 - ctx.view_world_origin_x)
+                * ctx.world_tile_actual_pixel_size_on_screen;
+            let screen_pixel_y_float = (entity_world_y_f64 - ctx.view_world_origin_y)
+                * ctx.world_tile_actual_pixel_size_on_screen;
 
-                let screen_pixel_x_float = (entity_world_x_f64 - ctx.view_world_origin_x)
-                    * ctx.world_tile_actual_pixel_size_on_screen;
-                let screen_pixel_y_float = (entity_world_y_f64 - ctx.view_world_origin_y)
-                    * ctx.world_tile_actual_pixel_size_on_screen;
+            let dest_x = screen_pixel_x_float.round() as i32;
+            let dest_y = screen_pixel_y_float.round() as i32;
 
-                let dest_x = screen_pixel_x_float.round() as i32;
-                let dest_y = screen_pixel_y_float.round() as i32;
-                let dest_rect_on_screen = Rect::new(
-                    dest_x,
-                    dest_y,
-                    ctx.tile_on_screen_render_w,
-                    ctx.tile_on_screen_render_h,
-                );
+            let mut draw_sprite_ctx = DrawSpriteContext {
+                canvas,
+                renderer,
+                world,
+                viewport,
+                ctx,
+            };
 
-                if selection_set.contains(&entity_id) {
-                    canvas.set_draw_color(colors::YELLOW);
-                    let outline_rect = Rect::new(
-                        dest_x - 2,
-                        dest_y - 2,
-                        ctx.tile_on_screen_render_w + 4,
-                        ctx.tile_on_screen_render_h + 4,
-                    );
-                    canvas.draw_rect(outline_rect).ok();
-                }
+            let dest_rect_on_screen =
+                draw_entity_sprite(&mut draw_sprite_ctx, entity_id, entity_type, dest_x, dest_y);
 
-                if let Some(color) = world.get_entity_color(entity_id) {
-                    renderer.set_texture_color_mod(color.r, color.g, color.b);
-                } else {
-                    // fallback to a default color if none is set.
-                    renderer.set_texture_color_mod(255, 255, 255); // white
-                }
+            if selection_set.contains(&entity_id) {
+                draw_selection_outline(canvas, &dest_rect_on_screen);
+            }
 
-                canvas
-                    .copy(
-                        &renderer.texture_ref(),
-                        Some(src_rect_in_tileset),
-                        Some(dest_rect_on_screen),
-                    )
-                    .unwrap_or_else(|e| {
-                        error!("failed to copy tile for entity {}: {:?}", entity_id, e)
-                    });
-
-                const STAR_LABEL_MIN_ZOOM: f64 = 0.7;
-                if let Some(EntityType::Star) = world.get_entity_type(entity_id) {
-                    if viewport.zoom > STAR_LABEL_MIN_ZOOM {
-                        if let Some(name) = world.get_entity_name(entity_id) {
-                            let text = name.to_lowercase();
-
-                            const STAR_LABEL_FONT_SIZE_WORLD: f64 = 1.2;
-                            let char_width_world = STAR_LABEL_FONT_SIZE_WORLD;
-                            let text_width_world = text.chars().count() as f64 * char_width_world;
-
-                            let label_pos = PointF64 {
-                                x: (entity_world_x_f64 + 0.5) - (text_width_world / 2.0),
-                                y: entity_world_y_f64 + 1.1,
-                            };
-
-                            render_text_in_world(
-                                canvas,
-                                renderer,
-                                &text,
-                                label_pos,
-                                STAR_LABEL_FONT_SIZE_WORLD,
-                                sdl2::pixels::Color::RGBA(
-                                    colors::LGRAY.r,
-                                    colors::LGRAY.g,
-                                    colors::LGRAY.b,
-                                    220,
-                                ),
-                                ctx,
-                            );
-                        }
-                    }
-                }
+            if let Some(EntityType::Star) = entity_type {
+                draw_star_label(canvas, renderer, world, viewport, entity_id, pos, ctx);
             }
         }
     }
