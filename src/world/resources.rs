@@ -14,7 +14,6 @@ static SIMULATION_HZ: LazyLock<f64> = LazyLock::new(|| 1.0 / SIMULATION_DT.as_se
 // Generate resources every N seconds of simulated time.
 // SIMULATION_DT is 10ms (0.01s), so 100 ticks = 1.0 second.
 pub const RESOURCE_INTERVAL_SECONDS: f64 = 1.0; // update once per second
-pub const ENERGY_PER_SOLAR_PANEL_PER_INTERVAL: f32 = 1.0 * RESOURCE_INTERVAL_SECONDS as f32; // Energy per interval
 
 #[derive(Debug, Default)]
 pub struct ResourceSystem {
@@ -91,20 +90,11 @@ impl ResourceSystem {
                 None => continue,
             };
 
-            let mut infra = 0.0;
-            let mut energy_rate = 0.0; // Track energy separately for now
-
-            for building in buildings.slots.iter().flatten() {
-                match building {
-                    BuildingType::Mine => infra += 1.0,
-                    BuildingType::SolarPanel => {
-                        // note: this is a simple placeholder for energy.
-                        // a proper implementation would have energy as a resource with local storage.
-                        energy_rate += ENERGY_PER_SOLAR_PANEL_PER_INTERVAL;
-                    }
-                    BuildingType::Shipyard => {}
-                }
-            }
+            let infra = buildings
+                .slots
+                .iter()
+                .filter(|s| matches!(s, Some(BuildingType::Mine)))
+                .count() as f32;
 
             if infra > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
