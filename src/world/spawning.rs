@@ -11,7 +11,7 @@ pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId 
     world.next_entity_id += 1;
     world.entities.push(id);
     world.entity_names.insert(id, name);
-    world.render_glyphs.insert(id, '*');
+    world.render_glyphs.insert(id, 's');
     let mut rng = rand::rng();
     let color = STAR_COLORS.iter().choose(&mut rng).unwrap();
     world.entity_colors.insert(id, *color);
