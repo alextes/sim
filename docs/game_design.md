@@ -126,6 +126,44 @@ a specialized engine for traversing the void between stars.
 - **fuel**: consumes `warp cores`, a rare and expensive fuel type synthesized from exotic resources.
 - **usage within a system**: the warp drive can be used for short-range jumps within a system. however, safety protocols prevent activating the drive too close to significant gravity wells. this means ships cannot warp directly to a planet, starport, or star. a certain "safe distance" must be maintained, after which the ship must use its in-system drive for the final approach. this makes it practical for quickly crossing a system, but not for precise maneuvering.
 
+## population
+
+population is the lifeblood of an empire, providing the workforce for industry and research, and the soldiers for its armies. managing population growth, happiness, and migration is key to success.
+
+### population growth
+
+population growth is primarily biological, though future advances may unlock cybernetic or synthetic populations with different characteristics.
+
+natural growth is influenced by several factors:
+
+- **base growth rate**: each species has a natural growth rate. for humans, this is a slow and steady increase.
+- **planet quality**: the habitability of a planet affects growth. factors include gravity, atmosphere, and temperature. terraforming can improve these conditions.
+- **food availability**: a surplus of food boosts growth rates, while shortages can halt it or even cause population decline.
+- **amenities**: buildings like hospitals, entertainment complexes, and parks increase happiness and, in turn, population growth. these are unlocked through research.
+- **policies**: imperial policies can encourage or discourage population growth.
+
+for initial implementation, a simple constant annual growth rate is applied to all populated worlds.
+
+### migration
+
+pops will automatically migrate between worlds within an empire to seek better living conditions. the primary drivers for migration are:
+
+- **job availability**: pops will move to planets with open jobs that match their skills.
+- **housing**: a lack of housing on a world will push pops to emigrate.
+- **planet quality & amenities**: higher quality worlds with better amenities will attract migrants.
+- **imperial policies**: migration can be encouraged or restricted through policies.
+
+migration will be a future mechanic and is not in the initial implementation.
+
+### military interaction
+
+population is directly affected by military actions.
+
+- **bombardment**: orbital bombardment by enemy fleets will reduce a planet's population and destroy infrastructure. it also reduces a planet's defense capabilities, making it easier to invade.
+- **armies**: planets can recruit and garrison ground armies. these armies are used for planetary defense against invasions and for conquering enemy worlds. army strength is drawn from the local population.
+
+this mechanic is planned for a later stage of development.
+
 ## strategic scaling & fleets
 
 ships scale visually with zoom. tactical view shows individual weapons; strategic view bundles ships into fleets. unassigned ships orbit their origin body; fleets take selection priority on zoomed-out layers.
@@ -145,3 +183,4 @@ shipyards build spaceframes; other structures increase mining, research, trade c
 - complex civilian economy with incentives and subsidies
 - lagrange-point structures
 - float vs grid discussion for movement precision
+- population growth, migration, and military interaction mechanics
