@@ -130,7 +130,7 @@ fn draw_orbit_lines(
         };
 
         let (should_draw, color) = match glyph {
-            'p' if viewport.zoom >= PLANET_ORBIT_MIN_ZOOM => (
+            'p' | 'g' if viewport.zoom >= PLANET_ORBIT_MIN_ZOOM => (
                 true,
                 sdl2::pixels::Color::RGBA(colors::LGRAY.r, colors::LGRAY.g, colors::LGRAY.b, 20),
             ),
@@ -232,7 +232,7 @@ fn draw_entities(
                     if let Some(name) = world.get_entity_name(entity_id) {
                         let text = name.to_lowercase();
 
-                        const STAR_LABEL_FONT_SIZE_WORLD: f64 = 0.6;
+                        const STAR_LABEL_FONT_SIZE_WORLD: f64 = 1.2;
                         let char_width_world = STAR_LABEL_FONT_SIZE_WORLD;
                         let text_width_world = text.chars().count() as f64 * char_width_world;
 
