@@ -7,12 +7,14 @@ use crate::colors;
 use crate::event_handling::ControlState;
 use crate::initialization::{INITIAL_WINDOW_HEIGHT, INITIAL_WINDOW_WIDTH};
 use crate::location::PointF64;
+use crate::world::types::EntityType;
 use crate::world::{EntityId, World};
+use std::collections::HashMap;
 
 use super::{SpriteSheetRenderer, TILE_PIXEL_WIDTH};
 
-const PLANET_ORBIT_MIN_ZOOM: f64 = 0.8;
-const MOON_ORBIT_MIN_ZOOM: f64 = 2.0;
+const PLANET_ORBIT_MIN_ZOOM: f64 = 0.4;
+const MOON_ORBIT_MIN_ZOOM: f64 = 1.0;
 
 struct ViewportRenderContext {
     view_world_origin_x: f64,
@@ -93,20 +95,59 @@ fn draw_star_lanes(canvas: &mut Canvas<Window>, world: &World, ctx: &ViewportRen
         colors::LGRAY.r,
         colors::LGRAY.g,
         colors::LGRAY.b,
-        30, // subtle alpha
+        80, // more visible alpha
     ));
     for &(a, b) in world.iter_lanes() {
-        if let (Some(pos_a), Some(pos_b)) = (world.get_location(a), world.get_location(b)) {
-            let ax = (pos_a.x as f64 + 0.5 - ctx.view_world_origin_x)
-                * ctx.world_tile_actual_pixel_size_on_screen;
-            let ay = (pos_a.y as f64 + 0.5 - ctx.view_world_origin_y)
-                * ctx.world_tile_actual_pixel_size_on_screen;
-            let bx = (pos_b.x as f64 + 0.5 - ctx.view_world_origin_x)
-                * ctx.world_tile_actual_pixel_size_on_screen;
-            let by = (pos_b.y as f64 + 0.5 - ctx.view_world_origin_y)
-                * ctx.world_tile_actual_pixel_size_on_screen;
-            let p1 = sdl2::rect::Point::new(ax.round() as i32, ay.round() as i32);
-            let p2 = sdl2::rect::Point::new(bx.round() as i32, by.round() as i32);
+        if let (Some(pos_a_f64), Some(pos_b_f64)) =
+            (world.get_location_f64(a), world.get_location_f64(b))
+        {
+            // center points of stars
+            let pos_a = PointF64 {
+                x: pos_a_f64.x + 0.5,
+                y: pos_a_f64.y + 0.5,
+            };
+            let pos_b = PointF64 {
+                x: pos_b_f64.x + 0.5,
+                y: pos_b_f64.y + 0.5,
+            };
+
+            let radius_a = world.get_system_radius(a);
+            let radius_b = world.get_system_radius(b);
+
+            let dx = pos_b.x - pos_a.x;
+            let dy = pos_b.y - pos_a.y;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            if dist < radius_a + radius_b {
+                // systems are overlapping, don't draw a lane to avoid weirdness.
+                continue;
+            }
+
+            let unit_dx = dx / dist;
+            let unit_dy = dy / dist;
+
+            let start_x = pos_a.x + unit_dx * radius_a;
+            let start_y = pos_a.y + unit_dy * radius_a;
+
+            let end_x = pos_b.x - unit_dx * radius_b;
+            let end_y = pos_b.y - unit_dy * radius_b;
+
+            // now convert to screen coords
+            let screen_start_x =
+                (start_x - ctx.view_world_origin_x) * ctx.world_tile_actual_pixel_size_on_screen;
+            let screen_start_y =
+                (start_y - ctx.view_world_origin_y) * ctx.world_tile_actual_pixel_size_on_screen;
+            let screen_end_x =
+                (end_x - ctx.view_world_origin_x) * ctx.world_tile_actual_pixel_size_on_screen;
+            let screen_end_y =
+                (end_y - ctx.view_world_origin_y) * ctx.world_tile_actual_pixel_size_on_screen;
+
+            let p1 = sdl2::rect::Point::new(
+                screen_start_x.round() as i32,
+                screen_start_y.round() as i32,
+            );
+            let p2 =
+                sdl2::rect::Point::new(screen_end_x.round() as i32, screen_end_y.round() as i32);
             let _ = canvas.draw_line(p1, p2);
         }
     }
@@ -118,25 +159,36 @@ fn draw_orbit_lines(
     world: &World,
     viewport: &Viewport,
     ctx: &ViewportRenderContext,
+    entity_types: &HashMap<EntityId, EntityType>,
 ) {
     let old_blend_mode = canvas.blend_mode();
     canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
 
     for (entity_id, orbital_info) in world.iter_orbitals() {
-        let glyph = world.get_render_glyph(entity_id);
+        let entity_type = match entity_types.get(&entity_id) {
+            Some(t) => t,
+            None => continue,
+        };
         let anchor_pos = match world.get_location(orbital_info.anchor) {
             Some(pos) => pos,
             None => continue,
         };
 
-        let (should_draw, color) = match glyph {
-            'p' | 'g' if viewport.zoom >= PLANET_ORBIT_MIN_ZOOM => (
+        let (should_draw, color) = match entity_type {
+            EntityType::Planet | EntityType::GasGiant if viewport.zoom >= PLANET_ORBIT_MIN_ZOOM => {
+                (
+                    true,
+                    sdl2::pixels::Color::RGBA(
+                        colors::LBLUE.r,
+                        colors::LBLUE.g,
+                        colors::LBLUE.b,
+                        120,
+                    ),
+                )
+            }
+            EntityType::Moon if viewport.zoom >= MOON_ORBIT_MIN_ZOOM => (
                 true,
-                sdl2::pixels::Color::RGBA(colors::LGRAY.r, colors::LGRAY.g, colors::LGRAY.b, 20),
-            ),
-            'm' if viewport.zoom >= MOON_ORBIT_MIN_ZOOM => (
-                true,
-                sdl2::pixels::Color::RGBA(colors::DGRAY.r, colors::DGRAY.g, colors::DGRAY.b, 15),
+                sdl2::pixels::Color::RGBA(colors::LGRAY.r, colors::LGRAY.g, colors::LGRAY.b, 80),
             ),
             _ => (false, sdl2::pixels::Color::BLACK), // don't draw
         };
@@ -169,6 +221,7 @@ fn draw_entities(
     viewport: &Viewport,
     ctx: &ViewportRenderContext,
     selection: &[EntityId],
+    entity_types: &HashMap<EntityId, EntityType>,
 ) {
     let selection_set: std::collections::HashSet<EntityId> = selection.iter().cloned().collect();
 
@@ -228,33 +281,35 @@ fn draw_entities(
                     });
 
                 const STAR_LABEL_MIN_ZOOM: f64 = 0.7;
-                if glyph == '*' && viewport.zoom > STAR_LABEL_MIN_ZOOM {
-                    if let Some(name) = world.get_entity_name(entity_id) {
-                        let text = name.to_lowercase();
+                if let Some(EntityType::Star) = entity_types.get(&entity_id) {
+                    if viewport.zoom > STAR_LABEL_MIN_ZOOM {
+                        if let Some(name) = world.get_entity_name(entity_id) {
+                            let text = name.to_lowercase();
 
-                        const STAR_LABEL_FONT_SIZE_WORLD: f64 = 1.2;
-                        let char_width_world = STAR_LABEL_FONT_SIZE_WORLD;
-                        let text_width_world = text.chars().count() as f64 * char_width_world;
+                            const STAR_LABEL_FONT_SIZE_WORLD: f64 = 1.2;
+                            let char_width_world = STAR_LABEL_FONT_SIZE_WORLD;
+                            let text_width_world = text.chars().count() as f64 * char_width_world;
 
-                        let label_pos = PointF64 {
-                            x: (entity_world_x_f64 + 0.5) - (text_width_world / 2.0),
-                            y: entity_world_y_f64 + 1.1,
-                        };
+                            let label_pos = PointF64 {
+                                x: (entity_world_x_f64 + 0.5) - (text_width_world / 2.0),
+                                y: entity_world_y_f64 + 1.1,
+                            };
 
-                        render_text_in_world(
-                            canvas,
-                            renderer,
-                            &text,
-                            label_pos,
-                            STAR_LABEL_FONT_SIZE_WORLD,
-                            sdl2::pixels::Color::RGBA(
-                                colors::LGRAY.r,
-                                colors::LGRAY.g,
-                                colors::LGRAY.b,
-                                220,
-                            ),
-                            ctx,
-                        );
+                            render_text_in_world(
+                                canvas,
+                                renderer,
+                                &text,
+                                label_pos,
+                                STAR_LABEL_FONT_SIZE_WORLD,
+                                sdl2::pixels::Color::RGBA(
+                                    colors::LGRAY.r,
+                                    colors::LGRAY.g,
+                                    colors::LGRAY.b,
+                                    220,
+                                ),
+                                ctx,
+                            );
+                        }
                     }
                 }
             }
@@ -269,6 +324,7 @@ pub fn render_world_in_viewport(
     viewport: &Viewport,
     controls: &ControlState,
     selection: &[EntityId],
+    entity_types: &HashMap<EntityId, EntityType>,
 ) {
     let world_tile_actual_pixel_size_on_screen =
         (TILE_PIXEL_WIDTH as f64 * viewport.zoom).max(0.001);
@@ -296,8 +352,16 @@ pub fn render_world_in_viewport(
     };
 
     draw_star_lanes(canvas, world, &ctx);
-    draw_orbit_lines(canvas, world, viewport, &ctx);
-    draw_entities(canvas, renderer, world, viewport, &ctx, selection);
+    draw_orbit_lines(canvas, world, viewport, &ctx, entity_types);
+    draw_entities(
+        canvas,
+        renderer,
+        world,
+        viewport,
+        &ctx,
+        selection,
+        entity_types,
+    );
     draw_move_orders(canvas, world, selection, &ctx);
 
     if controls.debug_enabled {

@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 use sdl2::pixels::Color;
 
-pub const BASE: Color = Color::RGB(36, 39, 58);
+pub const BASE: Color = Color::RGB(20, 22, 30);
 pub const BLUE: Color = Color::RGB(138, 173, 244);
 pub const WHITE: Color = Color::RGB(202, 211, 245);
 pub const BLACK: Color = Color::RGB(21, 19, 15);

@@ -13,7 +13,7 @@ pub mod spawning;
 pub mod types;
 
 pub use resources::ResourceSystem;
-use types::CelestialBodyData;
+use types::{CelestialBodyData, EntityType};
 
 // Entity identifiers for all game objects.
 pub type EntityId = u32;
@@ -153,6 +153,8 @@ pub struct World {
     pub(crate) next_entity_id: EntityId,
     /// ordered list of all entity IDs
     pub entities: Vec<EntityId>,
+    /// entity types
+    pub(crate) entity_types: HashMap<EntityId, EntityType>,
     /// glyphs to use when rendering each entity
     pub(crate) render_glyphs: HashMap<EntityId, char>,
     /// colors to use when rendering each entity
@@ -247,7 +249,7 @@ impl World {
         self.locations.update(dt_seconds);
         self.resources.update(
             dt_seconds,
-            &self.render_glyphs,
+            &self.entity_types,
             &self.buildings,
             &mut self.celestial_data,
         );
@@ -378,6 +380,44 @@ impl World {
         }
     }
 
+    /// calculates the maximum radius of a star system, considering planets and their moons.
+    pub fn get_system_radius(&self, star_id: EntityId) -> f64 {
+        let mut max_radius = 0.0;
+
+        // find all direct children of the star (planets/gas giants)
+        for (orbiter_id, orbital_info) in self.locations.iter_orbitals() {
+            if orbital_info.anchor == star_id {
+                // this is a planet or gas giant orbiting the star.
+                let mut planet_system_radius = orbital_info.radius;
+
+                // now find moons of this planet.
+                let mut max_moon_radius = 0.0;
+                for (_moon_id, moon_orbital_info) in self.locations.iter_orbitals() {
+                    if moon_orbital_info.anchor == orbiter_id {
+                        // this is a moon of the current planet.
+                        if moon_orbital_info.radius > max_moon_radius {
+                            max_moon_radius = moon_orbital_info.radius;
+                        }
+                    }
+                }
+
+                planet_system_radius += max_moon_radius;
+
+                if planet_system_radius > max_radius {
+                    max_radius = planet_system_radius;
+                }
+            }
+        }
+
+        // add a small buffer to the radius so lanes don't end exactly on the orbit.
+        // if no orbitals, give it a small default radius.
+        if max_radius == 0.0 {
+            2.0 // default radius for stars with no planets.
+        } else {
+            max_radius * 1.2 // 20% buffer
+        }
+    }
+
     pub fn iter_orbitals(&self) -> impl Iterator<Item = (EntityId, OrbitalInfo)> + '_ {
         self.locations.iter_orbitals()
     }
@@ -385,6 +425,11 @@ impl World {
     /// return the current universal position of an entity.
     pub fn get_location(&self, entity: EntityId) -> Option<Point> {
         self.locations.get_location(entity)
+    }
+
+    /// return the current universal f64 position of an entity.
+    pub fn get_location_f64(&self, entity: EntityId) -> Option<PointF64> {
+        self.locations.get_location_f64(entity)
     }
 
     /// iterate over all entity IDs in creation order.
@@ -395,6 +440,11 @@ impl World {
     /// get the human-readable name of an entity, if any.
     pub fn get_entity_name(&self, entity: EntityId) -> Option<String> {
         self.entity_names.get(&entity).cloned()
+    }
+
+    /// get the type of an entity.
+    pub fn get_entity_type(&self, entity: EntityId) -> Option<EntityType> {
+        self.entity_types.get(&entity).copied()
     }
 
     /// get the glyph used for rendering this entity.
@@ -464,9 +514,15 @@ impl World {
             };
 
         let star_ids: Vec<EntityId> = self
-            .render_glyphs
+            .entity_types
             .iter()
-            .filter_map(|(&id, &glyph)| if glyph == '*' { Some(id) } else { None })
+            .filter_map(|(&id, &entity_type)| {
+                if entity_type == EntityType::Star {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
             .collect();
 
         if star_ids.len() < 2 {
