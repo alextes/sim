@@ -122,6 +122,9 @@ impl Tileset {
         char_rects.insert('y', make_tile_rect(9, 7));
         char_rects.insert('z', make_tile_rect(10, 7));
 
+        // special characters
+        char_rects.insert('█', make_tile_rect(2, 11));
+
         Tileset { char_rects }
     }
 
