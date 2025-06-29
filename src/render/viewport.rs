@@ -50,7 +50,7 @@ fn draw_move_orders(
             }
         };
 
-        let pos_a = match world.get_location(id) {
+        let pos_a = match world.get_location_f64(id) {
             Some(pos) => pos,
             None => {
                 error!("selected entity {} has move order but no position", id);
@@ -59,10 +59,8 @@ fn draw_move_orders(
         };
 
         // draw line
-        let ax = (pos_a.x as f64 + 0.5 - ctx.view_world_origin_x)
-            * ctx.world_tile_actual_pixel_size_on_screen;
-        let ay = (pos_a.y as f64 + 0.5 - ctx.view_world_origin_y)
-            * ctx.world_tile_actual_pixel_size_on_screen;
+        let ax = (pos_a.x - ctx.view_world_origin_x) * ctx.world_tile_actual_pixel_size_on_screen;
+        let ay = (pos_a.y - ctx.view_world_origin_y) * ctx.world_tile_actual_pixel_size_on_screen;
         let bx =
             (destination.x - ctx.view_world_origin_x) * ctx.world_tile_actual_pixel_size_on_screen;
         let by =
@@ -177,7 +175,7 @@ fn draw_orbit_lines(
             None => continue,
         };
 
-        let anchor_pos = match world.get_location(orbital_info.anchor) {
+        let anchor_pos = match world.get_location_f64(orbital_info.anchor) {
             Some(pos) => pos,
             None => continue,
         };
@@ -202,9 +200,9 @@ fn draw_orbit_lines(
         };
 
         if should_draw {
-            let center_x = (anchor_pos.x as f64 + 0.5 - ctx.view_world_origin_x)
+            let center_x = (anchor_pos.x - ctx.view_world_origin_x)
                 * ctx.world_tile_actual_pixel_size_on_screen;
-            let center_y = (anchor_pos.y as f64 + 0.5 - ctx.view_world_origin_y)
+            let center_y = (anchor_pos.y - ctx.view_world_origin_y)
                 * ctx.world_tile_actual_pixel_size_on_screen;
 
             let radius_pixels = orbital_info.radius * ctx.world_tile_actual_pixel_size_on_screen;
@@ -222,9 +220,9 @@ fn draw_orbit_lines(
     canvas.set_blend_mode(old_blend_mode);
 }
 
-fn is_in_view(pos: crate::location::Point, ctx: &ViewportRenderContext) -> bool {
-    let entity_world_x_f64 = pos.x as f64;
-    let entity_world_y_f64 = pos.y as f64;
+fn is_in_view(pos: PointF64, ctx: &ViewportRenderContext) -> bool {
+    let entity_world_x_f64 = pos.x;
+    let entity_world_y_f64 = pos.y;
 
     entity_world_x_f64 + 1.0 > ctx.view_bbox_world_x_min
         && entity_world_x_f64 < ctx.view_bbox_world_x_max
@@ -243,19 +241,21 @@ fn draw_entity_sprite(
     let glyph = context.world.get_render_glyph(entity_id);
     let src_rect_in_tileset = context.renderer.tileset.get_rect(glyph);
 
-    let mut dest_rect_on_screen = Rect::new(
-        dest_x,
-        dest_y,
-        context.ctx.tile_on_screen_render_w,
-        context.ctx.tile_on_screen_render_h,
-    );
+    let entity_render_size_world = context.world.get_render_size(entity_id);
+    let on_screen_pixel_size = (entity_render_size_world
+        * context.ctx.world_tile_actual_pixel_size_on_screen)
+        .round()
+        .max(2.0) as u32;
+
+    let mut dest_rect_on_screen =
+        Rect::new(dest_x, dest_y, on_screen_pixel_size, on_screen_pixel_size);
+    dest_rect_on_screen.center_on(sdl2::rect::Point::new(dest_x, dest_y));
 
     if let Some(EntityType::Star) = entity_type {
         if context.viewport.zoom < STAR_MAP_ZOOM_THRESHOLD {
             const STAR_MAP_MODE_PIXEL_SIZE: u32 = 8;
             dest_rect_on_screen.set_width(STAR_MAP_MODE_PIXEL_SIZE);
             dest_rect_on_screen.set_height(STAR_MAP_MODE_PIXEL_SIZE);
-            dest_rect_on_screen.center_on(sdl2::rect::Point::new(dest_x, dest_y));
         }
     }
 
@@ -297,11 +297,11 @@ fn draw_star_label(
     world: &World,
     viewport: &Viewport,
     entity_id: EntityId,
-    pos: crate::location::Point,
+    pos: PointF64,
     ctx: &ViewportRenderContext,
 ) {
-    let entity_world_x_f64 = pos.x as f64;
-    let entity_world_y_f64 = pos.y as f64;
+    let entity_world_x_f64 = pos.x;
+    let entity_world_y_f64 = pos.y;
 
     if viewport.zoom < STAR_MAP_ZOOM_THRESHOLD {
         if let Some(name) = world.get_entity_name(entity_id) {
@@ -315,8 +315,8 @@ fn draw_star_label(
             let system_radius_world = world.get_system_radius(entity_id);
 
             let label_pos = PointF64 {
-                x: (entity_world_x_f64 + 0.5) - (text_width_world / 2.0),
-                y: entity_world_y_f64 + 0.5 + system_radius_world,
+                x: entity_world_x_f64 - (text_width_world / 2.0),
+                y: entity_world_y_f64 + system_radius_world,
             };
 
             render_text_in_world(
@@ -340,7 +340,7 @@ fn draw_star_label(
                 let text_width_world = text.chars().count() as f64 * char_width_world;
 
                 let label_pos = PointF64 {
-                    x: (entity_world_x_f64 + 0.5) - (text_width_world / 2.0),
+                    x: entity_world_x_f64 - (text_width_world / 2.0),
                     y: entity_world_y_f64 + 1.1,
                 };
 
@@ -373,21 +373,71 @@ fn draw_entities(
 ) {
     let selection_set: std::collections::HashSet<EntityId> = selection.iter().cloned().collect();
 
+    let mut clusters: Vec<(PointF64, Vec<EntityId>)> = Vec::new();
+    let mut processed_entities = std::collections::HashSet::new();
+
+    const CLUSTER_RADIUS_WORLD: f64 = 2.0;
+
+    for entity_id in world.iter_entities() {
+        if processed_entities.contains(&entity_id) {
+            continue;
+        }
+
+        let entity_type = world.get_entity_type(entity_id);
+        if !matches!(entity_type, Some(EntityType::Ship)) {
+            continue;
+        }
+
+        if let Some(pos) = world.get_location_f64(entity_id) {
+            let mut current_cluster_center = pos;
+            let mut cluster_members = vec![entity_id];
+            processed_entities.insert(entity_id);
+
+            for other_id in world.iter_entities() {
+                if processed_entities.contains(&other_id) {
+                    continue;
+                }
+                if let Some(other_pos) = world.get_location_f64(other_id) {
+                    let distance =
+                        ((pos.x - other_pos.x).powi(2) + (pos.y - other_pos.y).powi(2)).sqrt();
+                    if distance < CLUSTER_RADIUS_WORLD {
+                        cluster_members.push(other_id);
+                        processed_entities.insert(other_id);
+                        // update center
+                        current_cluster_center.x = (current_cluster_center.x
+                            * (cluster_members.len() - 1) as f64
+                            + other_pos.x)
+                            / cluster_members.len() as f64;
+                        current_cluster_center.y = (current_cluster_center.y
+                            * (cluster_members.len() - 1) as f64
+                            + other_pos.y)
+                            / cluster_members.len() as f64;
+                    }
+                }
+            }
+            clusters.push((current_cluster_center, cluster_members));
+        }
+    }
+
+    // draw non-clustered entities
     for entity_id in world.iter_entities() {
         let entity_type = world.get_entity_type(entity_id);
+        if matches!(entity_type, Some(EntityType::Ship)) {
+            continue;
+        }
 
         if viewport.zoom < STAR_MAP_ZOOM_THRESHOLD && !matches!(entity_type, Some(EntityType::Star))
         {
             continue;
         }
 
-        if let Some(pos) = world.get_location(entity_id) {
+        if let Some(pos) = world.get_location_f64(entity_id) {
             if !is_in_view(pos, ctx) {
                 continue;
             }
 
-            let entity_world_x_f64 = pos.x as f64;
-            let entity_world_y_f64 = pos.y as f64;
+            let entity_world_x_f64 = pos.x;
+            let entity_world_y_f64 = pos.y;
 
             let screen_pixel_x_float = (entity_world_x_f64 - ctx.view_world_origin_x)
                 * ctx.world_tile_actual_pixel_size_on_screen;
@@ -415,6 +465,62 @@ fn draw_entities(
             if let Some(EntityType::Star) = entity_type {
                 draw_star_label(canvas, renderer, world, viewport, entity_id, pos, ctx);
             }
+        }
+    }
+
+    // draw clusters
+    for (center, members) in clusters {
+        if !is_in_view(center, ctx) {
+            continue;
+        }
+        let entity_world_x_f64 = center.x;
+        let entity_world_y_f64 = center.y;
+
+        let screen_pixel_x_float = (entity_world_x_f64 - ctx.view_world_origin_x)
+            * ctx.world_tile_actual_pixel_size_on_screen;
+        let screen_pixel_y_float = (entity_world_y_f64 - ctx.view_world_origin_y)
+            * ctx.world_tile_actual_pixel_size_on_screen;
+
+        let dest_x = screen_pixel_x_float.round() as i32;
+        let dest_y = screen_pixel_y_float.round() as i32;
+
+        let mut draw_sprite_ctx = DrawSpriteContext {
+            canvas,
+            renderer,
+            world,
+            viewport,
+            ctx,
+        };
+
+        // For now, just render the first ship in the cluster
+        let representative_id = members[0];
+        let dest_rect_on_screen = draw_entity_sprite(
+            &mut draw_sprite_ctx,
+            representative_id,
+            world.get_entity_type(representative_id),
+            dest_x,
+            dest_y,
+        );
+
+        if members.iter().any(|id| selection_set.contains(id)) {
+            draw_selection_outline(canvas, &dest_rect_on_screen);
+        }
+
+        if members.len() > 1 {
+            let text = format!("{}", members.len());
+            let label_pos = PointF64 {
+                x: center.x + 0.5,
+                y: center.y + 0.5,
+            };
+            render_text_in_world(
+                canvas,
+                renderer,
+                &text,
+                label_pos,
+                0.8, // font size in world units
+                colors::WHITE,
+                ctx,
+            );
         }
     }
 }

@@ -1,10 +1,43 @@
 use crate::command::Command;
+use crate::location::PointF64;
 use crate::ships::ShipType;
 use crate::world::components::CivilianShipState;
 use crate::world::resources;
 use crate::world::types::Storable;
 use crate::world::World;
 use rand::Rng;
+
+fn predict_orbital_intercept(world: &World, ship_id: u32, target_id: u32) -> Option<PointF64> {
+    let ship_pos = world.get_location_f64(ship_id)?;
+    let ship_speed = world.ships.get(&ship_id)?.speed;
+
+    let orbital_params = match world.get_orbital_parameters(target_id) {
+        Some(params) => params,
+        None => return world.get_location_f64(target_id),
+    };
+
+    let anchor_pos = world.get_location_f64(orbital_params.anchor)?;
+    let mut target_pos = world.get_location_f64(target_id)?;
+
+    const ITERATIONS: u8 = 5;
+    for _ in 0..ITERATIONS {
+        let dist =
+            ((ship_pos.x - target_pos.x).powi(2) + (ship_pos.y - target_pos.y).powi(2)).sqrt();
+        if ship_speed <= 1e-6 {
+            return Some(target_pos);
+        }
+        let time_to_intercept = dist / ship_speed;
+
+        let future_angle =
+            orbital_params.angle + orbital_params.angular_velocity * time_to_intercept;
+        target_pos = PointF64 {
+            x: anchor_pos.x + orbital_params.radius * future_angle.cos(),
+            y: anchor_pos.y + orbital_params.radius * future_angle.sin(),
+        };
+    }
+
+    Some(target_pos)
+}
 
 impl World {
     pub(super) fn update_civilian_economy(&mut self, dt: f64) {
@@ -39,7 +72,7 @@ impl World {
 
                 // decision to build a mining ship
                 const MINING_SHIP_COST: f64 = 1000.0;
-                const MAX_MINING_SHIPS_PER_BODY: usize = 16;
+                const MAX_MINING_SHIPS_PER_BODY: usize = 64;
 
                 let existing_ships_for_base = self
                     .civilian_ai
@@ -77,6 +110,7 @@ impl World {
     pub(super) fn update_civilian_ships(&mut self, dt: f64) {
         let mut commands = Vec::new();
         let mut ai_state_changes = Vec::new();
+        let mut sales_info = Vec::new();
 
         let potential_mining_targets: Vec<u32> = self
             .celestial_data
@@ -123,15 +157,21 @@ impl World {
                             .collect();
 
                     if !in_range_targets.is_empty() {
-                        let (target, dest_pos) =
+                        let (target_id, _target_pos) =
                             in_range_targets[rand::rng().random_range(0..in_range_targets.len())];
 
-                        commands.push(Command::MoveShip {
-                            ship_id,
-                            destination: dest_pos,
-                        });
-                        ai_state_changes
-                            .push((ship_id, CivilianShipState::MovingToMine { target }));
+                        if let Some(intercept_pos) =
+                            predict_orbital_intercept(self, ship_id, target_id)
+                        {
+                            commands.push(Command::MoveShip {
+                                ship_id,
+                                destination: intercept_pos,
+                            });
+                            ai_state_changes.push((
+                                ship_id,
+                                CivilianShipState::MovingToMine { target: target_id },
+                            ));
+                        }
                     }
                 }
                 CivilianShipState::MovingToMine { target } => {
@@ -148,7 +188,9 @@ impl World {
                 CivilianShipState::Mining { target, mine_time } => {
                     if let Some(cargo) = self.cargo.get(&ship_id) {
                         if cargo.current_load >= cargo.capacity {
-                            if let Some(base_pos) = self.get_location_f64(home_base) {
+                            if let Some(base_pos) =
+                                predict_orbital_intercept(self, ship_id, home_base)
+                            {
                                 commands.push(Command::MoveShip {
                                     ship_id,
                                     destination: base_pos,
@@ -213,18 +255,24 @@ impl World {
                                 }
                                 base_data.credits += total_value;
                                 cargo.clear();
-                                tracing::info!(
-                                    "ship {} sold {:.2} credits worth of resources to {}",
-                                    ship_id,
-                                    total_value,
-                                    ai.home_base,
-                                );
+                                sales_info.push((*ship_id, total_value, ai.home_base));
                             }
                         }
                     }
                 }
                 _ => {}
             }
+        }
+
+        for (ship_id, total_value, home_base) in sales_info {
+            tracing::info!(
+                "ship {} sold {:.2} credits worth of resources to {}",
+                self.get_entity_name(ship_id)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                total_value,
+                self.get_entity_name(home_base)
+                    .unwrap_or_else(|| "unknown".to_string()),
+            );
         }
 
         for cmd in commands {

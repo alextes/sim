@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::location::OrbitalParameters;
 use crate::location::{LocationSystem, OrbitalInfo, Point};
 
 use crate::buildings::EntityBuildings;
@@ -233,6 +234,11 @@ impl World {
         self.locations.get_location_f64(entity)
     }
 
+    /// get the orbital parameters of an entity, if it has any.
+    pub fn get_orbital_parameters(&self, entity: EntityId) -> Option<OrbitalParameters> {
+        self.locations.get_orbital_parameters(entity)
+    }
+
     /// iterate over all entity IDs in creation order.
     pub fn iter_entities(&self) -> impl Iterator<Item = EntityId> + '_ {
         self.entities.iter().cloned()
@@ -246,6 +252,18 @@ impl World {
     /// get the type of an entity.
     pub fn get_entity_type(&self, entity: EntityId) -> Option<EntityType> {
         self.entity_types.get(&entity).copied()
+    }
+
+    /// get the size of an entity for rendering purposes.
+    pub fn get_render_size(&self, entity: EntityId) -> f64 {
+        match self.get_entity_type(entity) {
+            Some(EntityType::Star) => 3.0,
+            Some(EntityType::GasGiant) => 1.5,
+            Some(EntityType::Planet) => 1.0,
+            Some(EntityType::Moon) => 0.5,
+            Some(EntityType::Ship) => 0.4,
+            None => 1.0,
+        }
     }
 
     /// get the glyph used for rendering this entity.
