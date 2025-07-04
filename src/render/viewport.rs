@@ -25,7 +25,6 @@ struct ViewportRenderContext {
     view_bbox_world_y_min: f64,
     view_bbox_world_y_max: f64,
     tile_on_screen_render_w: u32,
-    tile_on_screen_render_h: u32,
 }
 
 struct DrawSpriteContext<'a, 'b, 'c, 'd, 'e, 'f> {
@@ -555,7 +554,6 @@ pub fn render_world_in_viewport(
         view_bbox_world_y_min: view_world_origin_y,
         view_bbox_world_y_max: view_world_origin_y + visible_world_height_in_tiles_float,
         tile_on_screen_render_w: world_tile_actual_pixel_size_on_screen.round().max(1.0) as u32,
-        tile_on_screen_render_h: world_tile_actual_pixel_size_on_screen.round().max(1.0) as u32,
     };
 
     draw_star_lanes(canvas, world, &ctx);

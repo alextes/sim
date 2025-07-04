@@ -4,6 +4,7 @@ use crate::buildings::{BuildingType, EntityBuildings};
 use crate::world::types::EntityType;
 use crate::world::types::{CelestialBodyData, Good, RawResource, Storable};
 use crate::world::EntityId;
+use crate::world::World;
 use crate::SIMULATION_DT;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -132,6 +133,37 @@ impl ResourceSystem {
                         .or_insert(0.0) += actual_production;
                 }
             }
+
+            // handle food production from farms
+            let farm_infra = buildings
+                .slots
+                .iter()
+                .filter(|s| s.is_some() && s.unwrap() == BuildingType::Farm)
+                .count() as f32;
+
+            if farm_infra > 0.0 {
+                // recipe: 1 organics -> 1 food
+                let organics_needed = 1.0 * farm_infra * production_multiplier;
+                let available_organics = celestial_data
+                    .stocks
+                    .get(&Storable::Raw(RawResource::Organics))
+                    .copied()
+                    .unwrap_or(0.0);
+                let actual_production = organics_needed.min(available_organics);
+
+                if actual_production > 0.0 {
+                    // consume organics
+                    *celestial_data
+                        .stocks
+                        .entry(Storable::Raw(RawResource::Organics))
+                        .or_insert(0.0) -= actual_production;
+                    // produce food
+                    *celestial_data
+                        .stocks
+                        .entry(Storable::Good(Good::Food))
+                        .or_insert(0.0) += actual_production;
+                }
+            }
         }
     }
 
@@ -176,9 +208,56 @@ impl ResourceSystem {
                 let production_rate = cracker_infra * 1.0; // assuming 1 fuel cell per second per cracker
                 *rates.entry(Storable::Good(Good::FuelCells)).or_insert(0.0) += production_rate;
             }
+
+            let farm_infra = buildings
+                .slots
+                .iter()
+                .filter(|s| matches!(s, Some(BuildingType::Farm)))
+                .count() as f32;
+
+            if farm_infra > 0.0 {
+                // simplified view, does not account for input availability
+                let production_rate = farm_infra * 1.0; // 1 food per second per farm
+                *rates.entry(Storable::Good(Good::Food)).or_insert(0.0) += production_rate;
+            }
         }
         rates
     }
+}
+
+/// returns the dynamic, local credit value for a single unit of a resource on a specific entity.
+pub fn get_local_price(world: &World, entity_id: EntityId, resource: Storable) -> f64 {
+    let base_price = get_resource_base_price(resource);
+
+    let celestial_data = match world.celestial_data.get(&entity_id) {
+        Some(data) => data,
+        None => return base_price, // not a celestial body, return base price
+    };
+
+    let (stockpile, monthly_demand) = match resource {
+        Storable::Raw(raw_resource) => (
+            celestial_data.stocks.get(&resource).copied().unwrap_or(0.0),
+            celestial_data
+                .demands
+                .get(&Storable::Raw(raw_resource))
+                .copied()
+                .unwrap_or(0.0),
+        ),
+        Storable::Good(_) => {
+            // for now, goods don't have demand, so they trade at base price
+            return base_price;
+        }
+    };
+
+    const BUFFER_MONTHS: f32 = 3.0;
+    // add a small epsilon to demand to avoid division by zero if demand is zero
+    let demand_for_ratio = monthly_demand + 1e-6;
+    let ratio = stockpile / (demand_for_ratio * BUFFER_MONTHS);
+
+    // price is inversely proportional to supply/demand ratio
+    let price_modifier = 1.0 / ratio.max(0.1); // prevent extreme multipliers
+
+    (base_price * price_modifier as f64).clamp(base_price * 0.25, base_price * 4.0)
 }
 
 /// returns the base credit value for a single unit of a resource.
@@ -197,6 +276,7 @@ pub fn get_resource_base_price(resource: Storable) -> f64 {
         },
         Storable::Good(good) => match good {
             Good::FuelCells => 2.0,
+            Good::Food => 2.5,
         },
     }
 }
@@ -235,9 +315,10 @@ mod tests {
         celestial_data_map.insert(
             entity_id,
             CelestialBodyData {
-                population: 1.0,
+                population: 1_000_000.0,
                 yields,
                 stocks: HashMap::new(),
+                demands: HashMap::new(),
                 credits: 0.0,
             },
         );

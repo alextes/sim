@@ -37,16 +37,17 @@ fn raw_resource_display_info(resource: &RawResource) -> (&'static str, Color) {
     }
 }
 
-fn good_display_info(good: &Good) -> (&'static str, Color) {
+fn get_good_display_name_and_color(good: &Good) -> (&'static str, Color) {
     match good {
         Good::FuelCells => ("fuel cells", colors::RED),
+        Good::Food => ("food", colors::GREEN),
     }
 }
 
 fn storable_display_info(storable: &Storable) -> (&'static str, Color) {
     match storable {
         Storable::Raw(r) => raw_resource_display_info(r),
-        Storable::Good(g) => good_display_info(g),
+        Storable::Good(g) => get_good_display_name_and_color(g),
     }
 }
 

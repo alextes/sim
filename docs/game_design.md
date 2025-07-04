@@ -28,44 +28,105 @@ asteroids appear in belts and clouds. most are low-yield but cheap to exploit.
 
 planets and moons can be settled with colony ships or conquered from rivals. players may also build orbital structures (shipyards, habitats, defense stations, solar collectors) at lagrange points and around gas giants. each structure provides unique bonuses and costs upkeep.
 
-## economy v1 – three-resource mercantilism
+## Galactic Economy
 
-1. resource spread  
-   • each celestial body holds exactly three resource types pulled from the pool (metals, volatiles, organics, rare exotics, crystals, microbes, isotopes, dark matter, etc.) and a yield grade.
-   • sol worlds skew toward metals + volatiles; the rival empire owns more organics + exotics, ensuring asymmetrical demand.
-   • monthly extraction = population × infrastructure × yield grade.
+this model aims to create a self-regulating civilian economy where supply, demand, and profitability guide autonomous economic activity. the goal is to make the economy feel alive and create interesting strategic decisions for the player.
 
-2. planetary supply & demand  
-   • supply index = stock / (population consumption × 3). if ≥1 the colony is self-sufficient; if <1 it becomes an importer.  
-   • demand index = 1 / supply index (capped). higher values raise local prices. prolonged shortages reduce happiness and production.
+### 1. Planetary Demand
 
-3. galactic exchange rate  
-   • every resource has a base credit value by rarity tier (common, uncommon, scarce, exotic).  
-   • exchange modifier = (buyer demand – seller supply) ×0.3  
-   • final price = base × (1 + modifier) clamped to 0.5-2.5× base. prices recalculate daily.
+- each populated celestial body (planets, moons) generates demand for a set of specific resources (e.g., 3-5 types).
+- the base demand for each resource is determined by the planet's population and its type/class (e.g., an industrial world demands more `metals`, an agricultural world more `organics`).
+- `demand volume (per month) = base rate × population × infrastructure modifiers`
+- unfulfilled demand can lead to penalties over time (e.g., reduced happiness, lower production output).
 
-4. trade ships  
-   • cargo hull sizes: 200, 500, 1000 t. bigger hulls need stronger drives and burn more fuel.  
-   • loading cost = quantity × local price + 5 % port fee (paid upfront).  
-   • routes may use rival transit lanes (safe but taxed) or open space (free but pirate-prone).  
-   • selling auto-auctions cargo on arrival (2 % harbour commission). profit = sale – purchase – transit costs – optional insurance.
+### 2. Dynamic Pricing & Profitability
 
-5. credit flow  
-   • imperial treasury income:  
-    – tariffs (4 % of cross-border sales, adjustable by policy)  
-    – corporate tax (15 % of private profit)  
-    – state-owned trade fleets (100 % profit)  
-   • treasury expenses: construction, research grants, military upkeep, subsidies.
+- the price of a resource on a planet is determined by its local supply relative to its demand.
+- a `supply/demand ratio` is calculated: `ratio = local stockpile / (monthly demand × buffermonths)`. a buffer (e.g., 3 months) prevents wild price swings.
+- `local price = base resource value × (1 / ratio)`. the price is clamped to a range (e.g., 0.25x to 4.0x base value).
+- as mining ships and traders sell resources to a planet, the stockpile increases, the s/d ratio goes up, and the price paid for that resource goes down. this naturally makes mining less profitable as supply saturates demand.
 
-6. strategic levers  
-   • broker licences: allow placing pre-orders, reducing price risk.  
-   • trade treaties: lower customs fees both ways.  
-   • subsidies: pay a monthly stipend to guarantee minimum imports.  
-   • embargo: block rival access to a resource.  
-   • convoy escorts: assign warships to routes to reduce pirate raids.
+### 3. Civilian Production (Mining)
 
-7. optional complications  
-   • price bubbles, black-market goods, dynamic tariffs, pirate king events.
+The civilian sector of a populated body will consider building a new mining ship if its treasury allows. the decision is based on a profitability calculation for potential mining ventures.
+
+`profitability score = (expected revenue - expected costs)`
+
+- **Resource Selection**: the ai scans for unexploited or under-exploited raw resources within its star system.
+- **Expected Revenue**:
+  - `revenue = price at home base × cargo size`
+  - the ai checks the _current_ local price. a high price signals high demand and high potential profit.
+- **Expected Costs**:
+  - `cost = fuel cost + ship upkeep (amortized)`
+  - **Fuel Cost**: calculated for a round trip. for simplicity, the travel distance is estimated as `system radius`.
+    - `fuel required = distance × fuel consumption rate`
+    - `fuel cost = fuel required × price of fuel at home base`
+  - the ai will also consider competition by checking how many other civilian ships are already targeting the same resource body. a simple modifier could be applied: `profitability score /= (1 + number of other miners)`.
+- **Decision**: if the highest `profitability score` for any available resource exceeds a certain threshold, and the treasury can afford the `mining_ship_cost`, the ai queues a new mining ship for construction.
+
+#### Mining Ship AI Lifecycle
+
+to create more realistic and stable behavior, individual mining ships will follow a simple lifecycle or state machine.
+
+- **seeking contract**: a new or idle ship scans its system for the most profitable resource to mine, using the `profitability score` calculation. the "contract" is a commitment to make at least three trips.
+  - if a profitable opportunity is found, the ship begins the contract.
+  - if no profitable opportunities are found anywhere in the system, a ship proceeds to the `sleeping` state.
+- **fulfilling contract**: the ship executes three full round trips: travel to the mining site, mine until the cargo is full, return to its home base, and sell the resources.
+- **contract renewal**: after the third trip, the ship re-evaluates the profitability of its current resource.
+  - if it's still profitable, it automatically renews for another three trips.
+  - if the price has dropped and it's no longer profitable, the ship returns to the `seeking contract` state to find a new, more lucrative resource to mine.
+- **sleeping**: if a ship cannot find any profitable contracts, it will travel to the nearest friendly spaceport (or its home base) and enter a "sleep" mode.
+  - during this time, it is docked and consumes no fuel and accrues no upkeep costs.
+  - after a set period (e.g., 90 days), it "wakes up" and re-enters the `seeking contract` state to check if market conditions have improved.
+
+### 4. Civilian Distribution (Trade)
+
+Civilian freighters are autonomous agents that respond to the price signals created by the dynamic pricing system.
+
+- **Trade Logic**: freighters will scan for profitable trade routes by comparing prices between different planets.
+- they will buy a resource where `local price` is low (i.e., `supply/demand ratio` is high) and transport it to a planet where `local price` is high (i.e., `supply/demand ratio` is low).
+- **Profit Calculation**: `profit = (sale price × quantity) - (purchase price × quantity) - fuel cost - tariffs`
+- this activity helps to naturally balance resource distribution throughout the empire and between empires.
+
+### 5. Fuel Production and Consumption
+
+- **Sub-light Fuel (`Fuel Cells`)**:
+  - standard fuel for in-system travel.
+  - produced at planets with `fuel cracker` buildings. these structures convert specific raw gas resources (e.g., `volatiles`) into `fuel cells`.
+  - `fuel production rate = building level × local gas stockpile modifier`
+  - mining ships and other civilian vessels consume fuel cells when executing move orders. if a ship runs out of fuel, it stops moving until refueled (a future mechanic could involve distress calls or fuel deliveries).
+- **Interstellar Fuel (`Warp Cores`)**:
+  - a distinct, more advanced fuel for ftl jumps.
+  - requires more advanced infrastructure and rarer resources (e.g., `rare exotics`, `dark matter`) to produce. (this aligns with the existing design).
+
+### 6. Mining Operations & Targets
+
+- **Mining Ships**: the primary mobile resource extractors for the civilian economy.
+- **Orbital Mining Bases**:
+  - static structures built in orbit of uncolonized bodies (barren planets, asteroids).
+  - more efficient extraction rate than a single mining ship and don't consume fuel, but require a significant upfront investment and have upkeep costs. they act as a mid-game way to exploit resource-rich but inhospitable worlds.
+  - freighters are required to transport resources from the mining base back to a populated world.
+- **Gas Mining Stations**:
+  - large, floating platforms built in the upper atmosphere of gas giants by `construction ships`.
+  - provide a very high-yield, continuous extraction of all available gas resources on that giant.
+  - have significant construction costs and monthly upkeep.
+  - once operational, they become the primary supplier for gas resources in a system. the economic model should be tuned so it is more profitable for civilian freighters to service the station than for individual mining ships to mine gas, creating a natural shift in the civilian economy's behavior.
+- **Targeting Rules**:
+  - mining ships will _not_ target populated planets or moons for mining. it's assumed on-planet mining is always superior, so they seek untapped resources on uninhabited bodies.
+
+### 7. Imperial Finance & Policy
+
+This layer represents the player's high-level interaction with the galactic economy.
+
+- **Credit Flow (Treasury Income)**:
+  - **Corporate Tax**: a percentage (e.g., 15%, adjustable by policy) of all profits generated by civilian mining and trade operations is paid to the imperial treasury.
+  - **Tariffs**: a tax (e.g., 4%, adjustable) on all goods traded with other empires. this applies to both imports and exports.
+  - **State-Owned Fleets**: the player can build their own freighters which generate 100% of their profit for the treasury, but require direct management.
+- **Strategic Levers (Economic Policy)**:
+  - **Trade Treaties**: diplomatic agreements to lower or eliminate tariffs with a specific empire, encouraging mutual trade.
+  - **Subsidies**: the player can pay a monthly stipend to a planet to artificially increase the price it pays for a specific resource, stimulating imports or local mining.
+  - **Embargoes**: block all trade of a specific resource, or all trade entirely, with a rival empire.
+  - **Convoy Escorts**: assign military ships to protect civilian freighters on dangerous routes, reducing losses to piracy.
 
 ## research
 
@@ -96,7 +157,7 @@ sample unlocks
 
 ### units
 
-frames: frigate, destroyer, cruiser, carrier, fighter, bomber, explorer, colony ship
+frames: frigate, destroyer, cruiser, carrier, fighter, bomber, explorer, colony ship, construction ship
 
 ### civilian ships
 

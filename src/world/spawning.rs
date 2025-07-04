@@ -64,10 +64,21 @@ pub fn spawn_planet(
         yields.insert(resource, rng.random_range(50.0..150.0));
     }
 
+    let mut demands = HashMap::new();
+    demands.insert(
+        crate::world::types::Storable::Raw(crate::world::types::RawResource::Metals),
+        10.0,
+    );
+    demands.insert(
+        crate::world::types::Storable::Good(crate::world::types::Good::Food),
+        10.0,
+    );
+
     world.celestial_data.insert(
         id,
         CelestialBodyData {
             yields,
+            demands,
             ..Default::default()
         },
     );
@@ -106,10 +117,21 @@ pub fn spawn_moon(
         yields.insert(resource, rng.random_range(20.0..80.0));
     }
 
+    let mut demands = HashMap::new();
+    demands.insert(
+        crate::world::types::Storable::Raw(crate::world::types::RawResource::Metals),
+        4.0,
+    );
+    demands.insert(
+        crate::world::types::Storable::Good(crate::world::types::Good::Food),
+        4.0,
+    );
+
     world.celestial_data.insert(
         id,
         CelestialBodyData {
             yields,
+            demands,
             ..Default::default()
         },
     );
@@ -180,6 +202,7 @@ pub fn spawn_gas_giant(
             population: 0.0, // No population on gas giants
             yields,
             stocks: HashMap::new(),
+            demands: HashMap::new(),
         },
     );
     id

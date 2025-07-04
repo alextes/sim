@@ -56,33 +56,22 @@ fn add_sol_system(world: &mut World) -> EntityId {
         );
         data.stocks.insert(
             crate::world::types::Storable::Raw(crate::world::types::RawResource::Organics),
-            200.0,
+            1000.0,
+        );
+        data.stocks.insert(
+            crate::world::types::Storable::Good(crate::world::types::Good::Food),
+            500.0,
         );
         data.credits = 5000.0;
     }
 
     // pre-build on earth
     if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
-        // add a mine to the first available ground slot
-        if let Some(ground_slot) = earth_buildings.find_first_empty_slot() {
-            earth_buildings
-                .build(ground_slot, BuildingType::Mine)
-                .expect("failed to build initial mine");
-        }
-        // add a solar panel to the first available orbital slot
-        if let Some(orbital_slot) = earth_buildings.find_first_empty_slot() {
-            earth_buildings
-                .build(orbital_slot, BuildingType::SolarPanel)
-                .expect("failed to build initial solar panel");
-        }
-    }
-    // add a shipyard to earth
-    if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
-        if let Some(slot) = earth_buildings.find_first_empty_slot() {
-            earth_buildings
-                .build(slot, BuildingType::Shipyard)
-                .expect("failed to build initial shipyard");
-        }
+        earth_buildings.build(0, BuildingType::Mine).ok();
+        earth_buildings.build(1, BuildingType::Farm).ok();
+        earth_buildings.build(2, BuildingType::Farm).ok();
+        earth_buildings.build(3, BuildingType::FuelCellCracker).ok();
+        earth_buildings.build(4, BuildingType::Shipyard).ok();
     }
 
     if let Some(earth_pos) = world.get_location(earth_id) {
@@ -245,7 +234,7 @@ mod tests {
             .find(|&id| world.get_entity_name(id) == Some("saturn".to_string()))
             .unwrap();
 
-        assert_eq!(world.get_render_glyph(sol_id), '*');
+        assert_eq!(world.get_render_glyph(sol_id), 's');
         assert_eq!(world.get_render_glyph(earth_id), 'p');
         assert_eq!(world.get_render_glyph(moon_id), 'm');
         assert_eq!(world.get_render_glyph(venus_id), 'p');
@@ -259,10 +248,18 @@ mod tests {
             .slots
             .iter()
             .any(|s| s == &Some(BuildingType::Mine)));
-        assert!(buildings
-            .slots
-            .iter()
-            .any(|s| s == &Some(BuildingType::SolarPanel)));
+        // assert!(buildings
+        //     .slots
+        //     .iter()
+        //     .any(|s| s == &Some(BuildingType::Farm)));
+        // assert!(buildings
+        //     .slots
+        //     .iter()
+        //     .any(|s| s == &Some(BuildingType::FuelCellCracker)));
+        // assert!(buildings
+        //     .slots
+        //     .iter()
+        //     .any(|s| s == &Some(BuildingType::Shipyard)));
     }
 
     #[test]

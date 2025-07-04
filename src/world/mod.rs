@@ -153,6 +153,18 @@ impl World {
         self.update_ship_movement(dt);
         self.update_civilian_economy(dt);
         self.update_civilian_ships(dt);
+        self.process_ship_mining(dt);
+        let sales_info = self.process_ship_sales();
+        for (ship_id, total_value, home_base) in sales_info {
+            tracing::info!(
+                "ship {} sold {:.2} credits worth of resources to {}",
+                self.get_entity_name(ship_id)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                total_value,
+                self.get_entity_name(home_base)
+                    .unwrap_or_else(|| "unknown".to_string()),
+            );
+        }
     }
 
     /// calculates the maximum radius of a star system, considering planets and their moons.

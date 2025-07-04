@@ -11,6 +11,7 @@ pub enum BuildingType {
     Mine,
     Shipyard,
     FuelCellCracker,
+    Farm,
 }
 
 impl BuildingType {
@@ -29,11 +30,26 @@ impl BuildingType {
                 costs.insert(Storable::Raw(RawResource::Metals), 200.0);
             }
             BuildingType::FuelCellCracker => {
-                costs.insert(Storable::Raw(RawResource::Metals), 150.0);
+                costs.insert(Storable::Raw(RawResource::Metals), 100.0);
                 costs.insert(Storable::Raw(RawResource::Crystals), 75.0);
+            }
+            BuildingType::Farm => {
+                costs.insert(Storable::Raw(RawResource::Metals), 20.0);
+                costs.insert(Storable::Raw(RawResource::Organics), 50.0);
             }
         }
         costs
+    }
+
+    /// Helper to get a display name for a building type.
+    pub fn building_name(building: BuildingType) -> &'static str {
+        match building {
+            BuildingType::Mine => "mine",
+            BuildingType::FuelCellCracker => "fuel cell cracker",
+            BuildingType::Farm => "farm",
+            BuildingType::Shipyard => "shipyard",
+            BuildingType::SolarPanel => "solar panel",
+        }
     }
 }
 
@@ -76,33 +92,30 @@ impl EntityBuildings {
 
     /// Helper to get a display name for a building type.
     pub fn building_name(building: BuildingType) -> &'static str {
-        match building {
-            BuildingType::SolarPanel => "solar panel",
-            BuildingType::Mine => "mine",
-            BuildingType::Shipyard => "shipyard",
-            BuildingType::FuelCellCracker => "fuel cell cracker",
-        }
+        BuildingType::building_name(building)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::types::{RawResource, Storable};
 
     #[test]
     fn test_building_name() {
-        assert_eq!(
-            EntityBuildings::building_name(BuildingType::SolarPanel),
-            "solar panel"
-        );
         assert_eq!(EntityBuildings::building_name(BuildingType::Mine), "mine");
+        assert_eq!(
+            EntityBuildings::building_name(BuildingType::FuelCellCracker),
+            "fuel cell cracker"
+        );
+        assert_eq!(EntityBuildings::building_name(BuildingType::Farm), "farm");
         assert_eq!(
             EntityBuildings::building_name(BuildingType::Shipyard),
             "shipyard"
         );
         assert_eq!(
-            EntityBuildings::building_name(BuildingType::FuelCellCracker),
-            "fuel cell cracker"
+            EntityBuildings::building_name(BuildingType::SolarPanel),
+            "solar panel"
         );
     }
 

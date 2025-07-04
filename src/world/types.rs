@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use strum::EnumIter;
 
 /// the types of resources that can be extracted from celestial bodies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -22,6 +23,7 @@ pub enum RawResource {
 pub enum Good {
     /// synthetic fuel for standard ship drives.
     FuelCells,
+    Food,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -55,16 +57,18 @@ pub const GAS_GIANT_RESOURCES: &[RawResource] = &[
 ];
 
 /// data specific to celestial bodies, such as population and resource yields.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct CelestialBodyData {
+    /// credits held by the civilian economy on this body.
+    pub credits: f64,
     /// the population of the celestial body, which acts as a multiplier for resource extraction.
     pub population: f32,
     /// a map of resource types to their yield grades. the yield grade is a multiplier for resource extraction.
     pub yields: HashMap<RawResource, f32>,
     /// a map of storable types to their current stock on the celestial body.
     pub stocks: HashMap<Storable, f32>,
-    /// credits held by the civilian economy on this body.
-    pub credits: f64,
+    /// a map of raw resource types to their monthly demand on the celestial body.
+    pub demands: HashMap<Storable, f32>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -127,3 +131,14 @@ pub const MOON_COLORS: [Color; 3] = [
         b: 169,
     }, // dark gray
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+pub enum BuildingType {
+    // ground
+    Mine,
+    FuelCellCracker,
+    Farm,
+    Shipyard,
+    // orbital
+    SolarPanel,
+}
