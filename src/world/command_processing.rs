@@ -1,3 +1,4 @@
+use crate::buildings::EntityBuildings;
 use crate::command::Command;
 use crate::location::Point;
 use crate::location::PointF64;
@@ -56,51 +57,52 @@ impl World {
                     }
                 }
             }
-            Command::BuildBuilding {
+            Command::Build {
                 entity_id,
                 building_type,
+                amount,
             } => {
-                let costs = building_type.cost();
-                let mut can_afford = true;
-
-                if let Some(celestial_data) = self.celestial_data.get_mut(&entity_id) {
-                    for (resource, cost) in &costs {
-                        let stock = celestial_data.stocks.entry(*resource).or_insert(0.0);
-                        if *stock < *cost {
-                            can_afford = false;
-                            tracing::warn!(
-                                "cannot build {:?}, not enough {:?} (need {}, have {})",
-                                building_type,
-                                resource,
-                                cost,
-                                stock
-                            );
-                            break;
-                        }
-                    }
-
-                    if can_afford {
-                        if let Some(buildings) = self.buildings.get_mut(&entity_id) {
-                            if let Some(slot) = buildings.find_first_empty_slot() {
-                                if buildings.build(slot, building_type).is_ok() {
-                                    // Deduct costs only after successfully building
-                                    for (resource, cost) in &costs {
-                                        if let Some(stock) = celestial_data.stocks.get_mut(resource)
-                                        {
-                                            *stock -= *cost;
-                                        }
-                                    }
-                                    tracing::info!(
-                                        "built {:?} on entity {}",
-                                        building_type,
-                                        entity_id
-                                    );
-                                }
+                let costs = EntityBuildings::get_build_costs(building_type, amount);
+                let can_afford = {
+                    if let Some(cd) = self.celestial_data.get(&entity_id) {
+                        costs.iter().all(|(resource, &cost)| {
+                            let stock = cd.stocks.get(resource).copied().unwrap_or(0.0);
+                            if stock < cost {
+                                tracing::warn!(
+                                    "entity {} cannot afford to build {:?} x{}: not enough {:?} (needs {}, has {})",
+                                    self.get_entity_name(entity_id).unwrap_or_default(),
+                                    building_type,
+                                    amount,
+                                    resource,
+                                    cost,
+                                    stock
+                                );
+                                false
+                            } else {
+                                true
                             }
+                        })
+                    } else {
+                        false
+                    }
+                };
+
+                if can_afford {
+                    if let Some(cd) = self.celestial_data.get_mut(&entity_id) {
+                        for (resource, cost) in costs {
+                            *cd.stocks.entry(resource).or_insert(0.0) -= cost;
                         }
                     }
-                } else {
-                    tracing::warn!("tried to build on an entity with no celestial data");
+
+                    if let Some(buildings) = self.buildings.get_mut(&entity_id) {
+                        buildings.queue_build(building_type, amount);
+                        tracing::info!(
+                            "queued build of {:?} x{} on entity {}",
+                            building_type,
+                            amount,
+                            self.get_entity_name(entity_id).unwrap_or_default()
+                        );
+                    }
                 }
             }
         }

@@ -1,30 +1,100 @@
 #![allow(dead_code)] // TODO remove later
 
-use crate::world::types::{RawResource, Storable};
+use crate::world::types::{BuildingType, RawResource, Storable};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
-/// Types of buildings that can be constructed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BuildingType {
-    SolarPanel,
-    Mine,
-    Shipyard,
-    FuelCellCracker,
-    Farm,
+/// Represents the buildings on an entity.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EntityBuildings {
+    /// A map from building type to the number of units of that infrastructure.
+    pub infra: HashMap<BuildingType, u32>,
+    /// A queue of buildings to be constructed.
+    pub build_queue: VecDeque<(BuildingType, u32)>,
+    /// Progress on the current construction item.
+    pub construction_progress: f32,
+    /// The name of the entity that owns these buildings.
+    pub entity_name: String,
 }
 
-impl BuildingType {
-    /// Returns the resource cost to build a given building type.
-    pub fn cost(&self) -> HashMap<Storable, f32> {
+impl EntityBuildings {
+    /// Creates a new, empty set of buildings.
+    pub fn new(entity_name: &str) -> Self {
+        Self {
+            infra: HashMap::new(),
+            build_queue: VecDeque::new(),
+            construction_progress: 0.0,
+            entity_name: entity_name.to_string(),
+        }
+    }
+
+    /// Queues a number of units of a given building/infra type to be built.
+    pub fn queue_build(&mut self, building: BuildingType, count: u32) {
+        self.build_queue.push_back((building, count));
+    }
+
+    /// Gets the count of a specific building/infra type.
+    pub fn get_count(&self, building: BuildingType) -> u32 {
+        self.infra.get(&building).copied().unwrap_or(0)
+    }
+
+    /// Processes the construction queue for a given time step.
+    pub fn process_construction(&mut self, dt: f32) {
+        if self.build_queue.is_empty() {
+            return;
+        }
+
+        let construction_rate = self.get_count(BuildingType::ConstructionFactory) as f32;
+        if construction_rate == 0.0 {
+            return; // No construction capacity
+        }
+
+        self.construction_progress += construction_rate * dt;
+
+        while self.construction_progress >= 1.0 {
+            self.construction_progress -= 1.0;
+
+            if let Some((building, count)) = self.build_queue.front_mut() {
+                *self.infra.entry(*building).or_insert(0) += 1;
+                *count -= 1;
+                tracing::debug!(
+                    "entity {} finished constructing 1 unit of {:?}, {} remaining in queue",
+                    self.entity_name,
+                    *building,
+                    *count
+                );
+            }
+
+            if let Some((_, count)) = self.build_queue.front() {
+                if *count == 0 {
+                    self.build_queue.pop_front();
+                }
+            } else {
+                break; // Queue is empty
+            }
+        }
+    }
+
+    /// Returns the total cost to build a number of units of a building type.
+    pub fn get_build_costs(b_type: BuildingType, count: u32) -> HashMap<Storable, f32> {
         let mut costs = HashMap::new();
-        match self {
+        let base_costs = EntityBuildings::get_build_cost(b_type);
+        for (resource, cost) in base_costs {
+            costs.insert(resource, cost * count as f32);
+        }
+        costs
+    }
+
+    /// Returns the base cost for a single unit of a building type.
+    pub fn get_build_cost(b_type: BuildingType) -> HashMap<Storable, f32> {
+        let mut costs = HashMap::new();
+        match b_type {
+            BuildingType::SolarPanel => {
+                costs.insert(Storable::Raw(RawResource::Metals), 10.0);
+                costs.insert(Storable::Raw(RawResource::Crystals), 20.0);
+            }
             BuildingType::Mine => {
                 costs.insert(Storable::Raw(RawResource::Metals), 50.0);
-            }
-            BuildingType::SolarPanel => {
-                costs.insert(Storable::Raw(RawResource::Metals), 20.0);
-                costs.insert(Storable::Raw(RawResource::Crystals), 10.0);
             }
             BuildingType::Shipyard => {
                 costs.insert(Storable::Raw(RawResource::Metals), 200.0);
@@ -37,6 +107,9 @@ impl BuildingType {
                 costs.insert(Storable::Raw(RawResource::Metals), 20.0);
                 costs.insert(Storable::Raw(RawResource::Organics), 50.0);
             }
+            BuildingType::ConstructionFactory => {
+                costs.insert(Storable::Raw(RawResource::Metals), 150.0);
+            }
         }
         costs
     }
@@ -48,58 +121,16 @@ impl BuildingType {
             BuildingType::FuelCellCracker => "fuel cell cracker",
             BuildingType::Farm => "farm",
             BuildingType::Shipyard => "shipyard",
+            BuildingType::ConstructionFactory => "construction factory",
             BuildingType::SolarPanel => "solar panel",
         }
-    }
-}
-
-// Constants for slot counts
-pub const PLANET_SLOTS: usize = 4;
-pub const MOON_SLOTS: usize = 2;
-pub const GAS_GIANT_SLOTS: usize = 8;
-
-/// Represents the building slots available on an entity.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EntityBuildings {
-    pub slots: Vec<Option<BuildingType>>,
-}
-
-impl EntityBuildings {
-    /// Creates a new set of building slots, specifying the number of slots.
-    pub fn new(num_slots: usize) -> Self {
-        Self {
-            slots: vec![None; num_slots],
-        }
-    }
-
-    /// Finds the index of the first empty slot.
-    pub fn find_first_empty_slot(&self) -> Option<usize> {
-        self.slots.iter().position(|&slot| slot.is_none())
-    }
-
-    /// Attempts to place a building in the specified slot.
-    /// Returns Ok(()) on success, or an error message string on failure.
-    pub fn build(&mut self, slot_index: usize, building: BuildingType) -> Result<(), &'static str> {
-        if slot_index >= self.slots.len() {
-            return Err("invalid slot index.");
-        }
-        if self.slots[slot_index].is_some() {
-            return Err("slot is already occupied.");
-        }
-        self.slots[slot_index] = Some(building);
-        Ok(())
-    }
-
-    /// Helper to get a display name for a building type.
-    pub fn building_name(building: BuildingType) -> &'static str {
-        BuildingType::building_name(building)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::types::{RawResource, Storable};
+    use crate::world::types::{BuildingType, RawResource, Storable};
 
     #[test]
     fn test_building_name() {
@@ -114,6 +145,10 @@ mod tests {
             "shipyard"
         );
         assert_eq!(
+            EntityBuildings::building_name(BuildingType::ConstructionFactory),
+            "construction factory"
+        );
+        assert_eq!(
             EntityBuildings::building_name(BuildingType::SolarPanel),
             "solar panel"
         );
@@ -121,54 +156,61 @@ mod tests {
 
     #[test]
     fn test_new_entity_buildings() {
-        let p_buildings = EntityBuildings::new(PLANET_SLOTS);
-        assert_eq!(p_buildings.slots.len(), PLANET_SLOTS);
-        assert!(p_buildings.slots.iter().all(|s| s.is_none()));
-
-        let m_buildings = EntityBuildings::new(MOON_SLOTS);
-        assert_eq!(m_buildings.slots.len(), MOON_SLOTS);
-
-        let no_buildings = EntityBuildings::new(0);
-        assert_eq!(no_buildings.slots.len(), 0);
+        let eb = EntityBuildings::new("test");
+        assert!(eb.infra.is_empty());
+        assert!(eb.build_queue.is_empty());
     }
 
     #[test]
-    fn test_find_first_empty_slot() {
-        let mut buildings = EntityBuildings::new(PLANET_SLOTS);
-        assert_eq!(buildings.find_first_empty_slot(), Some(0));
+    fn test_queue_and_get_count() {
+        let mut buildings = EntityBuildings::new("test");
+        assert_eq!(buildings.get_count(BuildingType::Mine), 0);
 
-        buildings.slots[0] = Some(BuildingType::Mine);
-        assert_eq!(buildings.find_first_empty_slot(), Some(1));
+        buildings.queue_build(BuildingType::Mine, 1);
+        assert_eq!(buildings.build_queue.len(), 1);
 
-        // fill all slots
-        for i in 0..PLANET_SLOTS {
-            buildings.slots[i] = Some(BuildingType::Mine);
-        }
-        assert_eq!(buildings.find_first_empty_slot(), None);
+        buildings.queue_build(BuildingType::Mine, 3);
+        assert_eq!(buildings.build_queue.len(), 2);
+
+        assert_eq!(buildings.get_count(BuildingType::Farm), 0);
     }
 
     #[test]
-    fn test_build() {
-        let mut buildings = EntityBuildings::new(PLANET_SLOTS);
+    fn test_construction_queue() {
+        let mut buildings = EntityBuildings::new("test");
+        buildings.infra.insert(BuildingType::ConstructionFactory, 1);
 
-        // valid: mine
-        assert_eq!(buildings.build(0, BuildingType::Mine), Ok(()));
-        assert_eq!(buildings.slots[0], Some(BuildingType::Mine));
+        buildings.queue_build(BuildingType::Mine, 2);
+        assert_eq!(buildings.build_queue.len(), 1);
 
-        // valid: solar on orbital
-        assert_eq!(buildings.build(1, BuildingType::SolarPanel), Ok(()));
-        assert_eq!(buildings.slots[1], Some(BuildingType::SolarPanel));
+        // Process construction for 0.5s, not enough to build one unit
+        buildings.process_construction(0.5);
+        assert_eq!(buildings.get_count(BuildingType::Mine), 0);
+        assert_eq!(buildings.build_queue.front().unwrap().1, 2);
 
-        // invalid: slot occupied
+        // Process construction for another 0.5s, enough to build one unit
+        buildings.process_construction(0.5);
+        assert_eq!(buildings.get_count(BuildingType::Mine), 1);
+        assert_eq!(buildings.build_queue.front().unwrap().1, 1);
+
+        // Process construction for 1.0s, enough to build the second unit
+        buildings.process_construction(1.0);
+        assert_eq!(buildings.get_count(BuildingType::Mine), 2);
+        assert!(buildings.build_queue.is_empty());
+    }
+
+    #[test]
+    fn test_get_build_cost() {
+        let costs = EntityBuildings::get_build_cost(BuildingType::Mine);
+        assert_eq!(costs.len(), 1);
+        assert_eq!(costs.get(&Storable::Raw(RawResource::Metals)), Some(&50.0));
+
+        let costs = EntityBuildings::get_build_cost(BuildingType::Farm);
+        assert_eq!(costs.len(), 2);
+        assert_eq!(costs.get(&Storable::Raw(RawResource::Metals)), Some(&20.0));
         assert_eq!(
-            buildings.build(0, BuildingType::Mine),
-            Err("slot is already occupied.")
-        );
-
-        // invalid: index out of bounds
-        assert_eq!(
-            buildings.build(PLANET_SLOTS, BuildingType::Mine),
-            Err("invalid slot index.")
+            costs.get(&Storable::Raw(RawResource::Organics)),
+            Some(&50.0)
         );
     }
 }

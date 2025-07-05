@@ -42,9 +42,23 @@ pub enum GameState {
     MainMenu,
     Playing,
     GameMenu,
-    BuildMenu,
+    BuildMenu { mode: BuildMenuMode },
     ShipyardMenu,
     ShipyardMenuError { message: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BuildMenuMode {
+    Main,
+    SelectBuilding,
+    EnterQuantity {
+        building: world::types::BuildingType,
+        quantity_string: String,
+    },
+    ConfirmQuote {
+        building: world::types::BuildingType,
+        amount: u32,
+    },
 }
 
 pub fn main() {

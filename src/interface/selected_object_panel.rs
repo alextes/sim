@@ -1,4 +1,4 @@
-use crate::buildings::{BuildingType, EntityBuildings};
+use crate::buildings::EntityBuildings;
 use crate::colors;
 use crate::render::{tileset, SpriteSheetRenderer};
 use crate::world::types::{Good, RawResource, Storable};
@@ -13,15 +13,6 @@ use super::{render_text_at, PANEL_BACKGROUND_COLOR, PANEL_BORDER_COLOR, PANEL_TE
 // Constants specific to this panel
 const PANEL_WIDTH_TILES: u8 = 25; // Fixed width
 const PANEL_MAX_HEIGHT_TILES: u8 = 12; // Max height, includes padding and border
-
-// Helper function to format slot display
-fn format_slot(index: usize, slot: Option<BuildingType>) -> String {
-    let building_name = match slot {
-        Some(bt) => EntityBuildings::building_name(bt),
-        None => "empty",
-    };
-    format!("slot {}: {}", index + 1, building_name)
-}
 
 fn raw_resource_display_info(resource: &RawResource) -> (&'static str, Color) {
     match resource {
@@ -112,14 +103,18 @@ pub fn render_selected_object_panel(
             }
 
             if let Some(buildings) = world.buildings.get(&id) {
-                if !buildings.slots.is_empty() {
-                    lines.push(("buildings:".to_string(), PANEL_TEXT_COLOR));
-                    for (i, slot) in buildings.slots.iter().enumerate() {
+                lines.push(("".to_string(), colors::WHITE));
+                lines.push(("infrastructure".to_string(), colors::WHITE));
+                if !buildings.infra.is_empty() {
+                    for (building_type, count) in &buildings.infra {
+                        let name = EntityBuildings::building_name(*building_type);
                         lines.push((
-                            format_slot(i, *slot),
+                            format!("  - {name}: {count}"),
                             colors::GRAY, // Example color for generic slots
                         ));
                     }
+                } else {
+                    lines.push(("  (none)".to_string(), colors::DGRAY));
                 }
             }
         }

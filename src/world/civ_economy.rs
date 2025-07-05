@@ -3,8 +3,11 @@ use crate::location::PointF64;
 use crate::ships::ShipType;
 use crate::world::components::CivilianShipState;
 use crate::world::resources;
+use crate::world::types::Storable;
 use crate::world::{EntityId, World};
 use rand::Rng;
+
+pub type ShipSaleInfo = (EntityId, f64, EntityId, Vec<(Storable, f32)>);
 
 fn predict_orbital_intercept(world: &World, ship_id: u32, target_id: u32) -> Option<PointF64> {
     let ship_pos = world.get_location_f64(ship_id)?;
@@ -73,13 +76,8 @@ impl World {
                 // refinery demand
                 if let Some(buildings) = self.buildings.get(&entity_id) {
                     let cracker_infra = buildings
-                        .slots
-                        .iter()
-                        .filter(|s| {
-                            s.is_some()
-                                && s.unwrap() == crate::buildings::BuildingType::FuelCellCracker
-                        })
-                        .count() as f32;
+                        .get_count(crate::world::types::BuildingType::FuelCellCracker)
+                        as f32;
 
                     if cracker_infra > 0.0 {
                         let demand_per_cracker = 10.0; // demand 10 units per month per cracker
@@ -102,10 +100,8 @@ impl World {
                     && existing_ships_for_base < MAX_MINING_SHIPS_PER_BODY
                 {
                     if let Some(buildings) = self.buildings.get(&entity_id) {
-                        let has_shipyard = buildings
-                            .slots
-                            .iter()
-                            .any(|s| s == &Some(crate::buildings::BuildingType::Shipyard));
+                        let has_shipyard =
+                            buildings.get_count(crate::world::types::BuildingType::Shipyard) > 0;
 
                         if has_shipyard {
                             data.credits -= MINING_SHIP_COST;
@@ -130,11 +126,10 @@ impl World {
         let mut commands_to_issue = Vec::new();
         let mut state_changes_to_apply = Vec::new();
 
-        let potential_mining_targets: Vec<u32> = self
+        let potential_mining_targets: Vec<(u32, crate::world::types::RawResource)> = self
             .celestial_data
             .iter()
-            .filter(|(_, data)| !data.yields.is_empty())
-            .map(|(id, _)| *id)
+            .flat_map(|(id, data)| data.yields.keys().map(move |resource| (*id, *resource)))
             .collect();
 
         if potential_mining_targets.is_empty() {
@@ -169,7 +164,7 @@ impl World {
         &self,
         ship_id: EntityId,
         ai: &crate::world::components::CivilianShipAI,
-        potential_mining_targets: &[u32],
+        potential_mining_targets: &[(u32, crate::world::types::RawResource)],
         dt: f64,
     ) -> (Option<CivilianShipState>, Option<Command>) {
         let home_base = ai.home_base;
@@ -186,33 +181,37 @@ impl World {
                     .map(|star_id| self.get_system_radius(star_id).powi(2))
                     .unwrap_or(100.0f64.powi(2));
 
-                let in_range_targets: Vec<u32> = potential_mining_targets
-                    .iter()
-                    .filter_map(|&target_id| {
-                        if target_id == home_base {
-                            return None;
-                        }
-                        self.get_location_f64(target_id)
-                            .map(|target_pos| (target_id, target_pos))
-                    })
-                    .filter(|(_, target_pos)| {
-                        let dist_sq = (ship_pos.x - target_pos.x).powi(2)
-                            + (ship_pos.y - target_pos.y).powi(2);
-                        dist_sq <= max_range_sq
-                    })
-                    .map(|(id, _)| id)
-                    .collect();
+                let in_range_targets: Vec<(u32, crate::world::types::RawResource)> =
+                    potential_mining_targets
+                        .iter()
+                        .filter_map(|&(target_id, resource)| {
+                            if target_id == home_base {
+                                return None;
+                            }
+                            self.get_location_f64(target_id)
+                                .map(|target_pos| (target_id, resource, target_pos))
+                        })
+                        .filter(|(_, _, target_pos)| {
+                            let dist_sq = (ship_pos.x - target_pos.x).powi(2)
+                                + (ship_pos.y - target_pos.y).powi(2);
+                            dist_sq <= max_range_sq
+                        })
+                        .map(|(id, resource, _)| (id, resource))
+                        .collect();
 
                 if !in_range_targets.is_empty() {
-                    let target_id =
-                        in_range_targets[rand::rng().random_range(0..in_range_targets.len())];
+                    let &(target_id, resource) =
+                        &in_range_targets[rand::rng().random_range(0..in_range_targets.len())];
                     if let Some(intercept_pos) = predict_orbital_intercept(self, ship_id, target_id)
                     {
                         let command = Command::MoveShip {
                             ship_id,
                             destination: intercept_pos,
                         };
-                        let new_state = CivilianShipState::MovingToMine { target: target_id };
+                        let new_state = CivilianShipState::MovingToMine {
+                            target: target_id,
+                            resource,
+                        };
                         (Some(new_state), Some(command))
                     } else {
                         (None, None)
@@ -221,12 +220,13 @@ impl World {
                     (None, None)
                 }
             }
-            CivilianShipState::MovingToMine { target } => {
+            CivilianShipState::MovingToMine { target, resource } => {
                 if !self.move_orders.contains_key(&ship_id) {
                     (
                         Some(CivilianShipState::Mining {
                             target: *target,
-                            mine_time: 0.0,
+                            resource: *resource,
+                            mine_time: 0,
                         }),
                         None,
                     )
@@ -234,7 +234,11 @@ impl World {
                     (None, None)
                 }
             }
-            CivilianShipState::Mining { target, mine_time } => {
+            CivilianShipState::Mining {
+                target,
+                resource,
+                mine_time,
+            } => {
                 if let Some(cargo) = self.cargo.get(&ship_id) {
                     if cargo.current_load >= cargo.capacity {
                         if let Some(base_pos) = predict_orbital_intercept(self, ship_id, home_base)
@@ -251,7 +255,8 @@ impl World {
                         (
                             Some(CivilianShipState::Mining {
                                 target: *target,
-                                mine_time: mine_time + dt,
+                                resource: *resource,
+                                mine_time: mine_time + (dt * 1000.0) as u64,
                             }),
                             None,
                         )
@@ -271,30 +276,32 @@ impl World {
     }
 
     pub(super) fn process_ship_mining(&mut self, dt: f64) {
-        let mining_updates: Vec<(EntityId, EntityId)> = self
+        let mining_updates: Vec<(EntityId, EntityId, crate::world::types::RawResource)> = self
             .civilian_ai
             .iter()
             .filter_map(|(&ship_id, ai)| match ai.state {
-                CivilianShipState::Mining { target, .. } => Some((ship_id, target)),
+                CivilianShipState::Mining {
+                    target, resource, ..
+                } => Some((ship_id, target, resource)),
                 _ => None,
             })
             .collect();
 
-        for (ship_id, target) in mining_updates {
+        for (ship_id, target, resource) in mining_updates {
             if let (Some(cargo), Some(target_data)) = (
                 self.cargo.get_mut(&ship_id),
                 self.celestial_data.get(&target),
             ) {
-                for (resource, yield_rate) in &target_data.yields {
+                if let Some(yield_rate) = target_data.yields.get(&resource) {
                     const MINING_RATE: f32 = 1.0; // units per second
                     let mined_amount = yield_rate * MINING_RATE * dt as f32;
-                    cargo.add(crate::world::types::Storable::Raw(*resource), mined_amount);
+                    cargo.add(crate::world::types::Storable::Raw(resource), mined_amount);
                 }
             }
         }
     }
 
-    pub(super) fn process_ship_sales(&mut self) -> Vec<(EntityId, f64, EntityId)> {
+    pub(super) fn process_ship_sales(&mut self) -> Vec<ShipSaleInfo> {
         let sales_updates: Vec<(EntityId, EntityId)> = self
             .civilian_ai
             .iter()
@@ -310,7 +317,7 @@ impl World {
             })
             .collect();
 
-        let mut sales_info = Vec::new();
+        let mut sales_info: Vec<ShipSaleInfo> = Vec::new();
         let mut sales_to_process = Vec::new();
 
         for (ship_id, home_base_id) in sales_updates {
@@ -337,13 +344,12 @@ impl World {
 
             if let Some(base_data) = self.celestial_data.get_mut(&home_base_id) {
                 let mut total_value = 0.0;
-                for ((storable, amount), price) in drained_cargo.into_iter().zip(prices.into_iter())
-                {
-                    *base_data.stocks.entry(storable).or_insert(0.0) += amount;
-                    total_value += amount as f64 * price;
+                for ((storable, amount), price) in drained_cargo.iter().zip(prices.iter()) {
+                    *base_data.stocks.entry(*storable).or_insert(0.0) += *amount;
+                    total_value += *amount as f64 * *price;
                 }
                 base_data.credits += total_value;
-                sales_info.push((ship_id, total_value, home_base_id));
+                sales_info.push((ship_id, total_value, home_base_id, drained_cargo));
             }
         }
 

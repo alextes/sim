@@ -1,8 +1,8 @@
 #![allow(dead_code)] // TODO remove later
 
-use crate::buildings::{BuildingType, EntityBuildings};
+use crate::buildings::EntityBuildings;
 use crate::world::types::EntityType;
-use crate::world::types::{CelestialBodyData, Good, RawResource, Storable};
+use crate::world::types::{BuildingType, CelestialBodyData, Good, RawResource, Storable};
 use crate::world::EntityId;
 use crate::world::World;
 use crate::SIMULATION_DT;
@@ -64,11 +64,7 @@ impl ResourceSystem {
             };
 
             // handle raw resource extraction from mines
-            let mine_infra = buildings
-                .slots
-                .iter()
-                .filter(|s| s.is_some() && s.unwrap() == BuildingType::Mine)
-                .count() as f32;
+            let mine_infra = buildings.get_count(BuildingType::Mine) as f32;
 
             if mine_infra > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
@@ -85,11 +81,7 @@ impl ResourceSystem {
             }
 
             // handle manufactured goods production
-            let cracker_infra = buildings
-                .slots
-                .iter()
-                .filter(|s| s.is_some() && s.unwrap() == BuildingType::FuelCellCracker)
-                .count() as f32;
+            let cracker_infra = buildings.get_count(BuildingType::FuelCellCracker) as f32;
 
             if cracker_infra > 0.0 {
                 // recipe: 1 volatile + 0.1 metals -> 1 fuel cell
@@ -135,11 +127,7 @@ impl ResourceSystem {
             }
 
             // handle food production from farms
-            let farm_infra = buildings
-                .slots
-                .iter()
-                .filter(|s| s.is_some() && s.unwrap() == BuildingType::Farm)
-                .count() as f32;
+            let farm_infra = buildings.get_count(BuildingType::Farm) as f32;
 
             if farm_infra > 0.0 {
                 // recipe: 1 organics -> 1 food
@@ -183,11 +171,7 @@ impl ResourceSystem {
                 None => continue,
             };
 
-            let mine_infra = buildings
-                .slots
-                .iter()
-                .filter(|s| matches!(s, Some(BuildingType::Mine)))
-                .count() as f32;
+            let mine_infra = buildings.get_count(BuildingType::Mine) as f32;
 
             if mine_infra > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
@@ -197,11 +181,7 @@ impl ResourceSystem {
                 }
             }
 
-            let cracker_infra = buildings
-                .slots
-                .iter()
-                .filter(|s| matches!(s, Some(BuildingType::FuelCellCracker)))
-                .count() as f32;
+            let cracker_infra = buildings.get_count(BuildingType::FuelCellCracker) as f32;
 
             if cracker_infra > 0.0 {
                 // this is a simplified view. it does not account for input resource availability.
@@ -209,11 +189,7 @@ impl ResourceSystem {
                 *rates.entry(Storable::Good(Good::FuelCells)).or_insert(0.0) += production_rate;
             }
 
-            let farm_infra = buildings
-                .slots
-                .iter()
-                .filter(|s| matches!(s, Some(BuildingType::Farm)))
-                .count() as f32;
+            let farm_infra = buildings.get_count(BuildingType::Farm) as f32;
 
             if farm_infra > 0.0 {
                 // simplified view, does not account for input availability
@@ -284,26 +260,22 @@ pub fn get_resource_base_price(resource: Storable) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buildings::{BuildingType, EntityBuildings, PLANET_SLOTS};
-    use crate::world::types::{CelestialBodyData, RawResource, Storable};
+    use crate::buildings::EntityBuildings;
+    use crate::world::types::{BuildingType, CelestialBodyData, EntityType, RawResource, Storable};
     use std::collections::HashMap;
 
     fn create_test_data(
-        mines: usize,
+        mines: u32,
     ) -> (
         HashMap<EntityId, EntityType>,
         HashMap<EntityId, EntityBuildings>,
         HashMap<EntityId, CelestialBodyData>,
     ) {
         let mut buildings_map = HashMap::new();
-        let mut buildings_data = EntityBuildings::new(PLANET_SLOTS);
+        let mut buildings_data = EntityBuildings::new("test");
         let entity_id = 1;
 
-        for i in 0..mines {
-            if i < PLANET_SLOTS {
-                buildings_data.build(i, BuildingType::Mine).unwrap();
-            }
-        }
+        buildings_data.infra.insert(BuildingType::Mine, mines);
         buildings_map.insert(entity_id, buildings_data);
 
         let mut celestial_data_map = HashMap::new();

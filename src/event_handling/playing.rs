@@ -1,9 +1,9 @@
 use std::sync::MutexGuard;
 
 use super::ControlState;
-use crate::buildings::BuildingType;
 use crate::input; // Import the new input module
 use crate::render::Viewport;
+use crate::world::types::BuildingType;
 use crate::world::types::EntityType;
 use crate::world::{EntityId, World};
 use crate::GameState;
@@ -73,12 +73,13 @@ fn handle_keydown(
             cycle_entity_focus(world, controls, is_shift_pressed);
         }
         Keycode::B => {
-            if controls.selection.len() == 1 {
-                let selected_id = controls.selection[0];
+            if let Some(&selected_id) = controls.selection.first() {
                 if world.is_player_controlled(selected_id)
                     && world.buildings.contains_key(&selected_id)
                 {
-                    **game_state_guard = GameState::BuildMenu;
+                    **game_state_guard = GameState::BuildMenu {
+                        mode: crate::BuildMenuMode::Main,
+                    };
                 }
             }
         }
@@ -87,7 +88,7 @@ fn handle_keydown(
                 let selected_id = controls.selection[0];
                 if world.is_player_controlled(selected_id) {
                     if let Some(buildings) = world.buildings.get(&selected_id) {
-                        let has_shipyard = buildings.slots.contains(&Some(BuildingType::Shipyard));
+                        let has_shipyard = buildings.get_count(BuildingType::Shipyard) > 0;
                         if has_shipyard {
                             **game_state_guard = GameState::ShipyardMenu;
                         }

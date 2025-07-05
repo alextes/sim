@@ -1,8 +1,8 @@
 use rand::Rng;
 use std::f64::consts::TAU;
 
-use crate::buildings::BuildingType;
 use crate::location::Point;
+use crate::world::types::BuildingType;
 use crate::world::{EntityId, World};
 
 const NUM_STARS: usize = 64;
@@ -67,11 +67,15 @@ fn add_sol_system(world: &mut World) -> EntityId {
 
     // pre-build on earth
     if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
-        earth_buildings.build(0, BuildingType::Mine).ok();
-        earth_buildings.build(1, BuildingType::Farm).ok();
-        earth_buildings.build(2, BuildingType::Farm).ok();
-        earth_buildings.build(3, BuildingType::FuelCellCracker).ok();
-        earth_buildings.build(4, BuildingType::Shipyard).ok();
+        earth_buildings.infra.insert(BuildingType::Mine, 1);
+        earth_buildings.infra.insert(BuildingType::Farm, 2);
+        earth_buildings
+            .infra
+            .insert(BuildingType::FuelCellCracker, 1);
+        earth_buildings.infra.insert(BuildingType::Shipyard, 1);
+        earth_buildings
+            .infra
+            .insert(BuildingType::ConstructionFactory, 1);
     }
 
     if let Some(earth_pos) = world.get_location(earth_id) {
@@ -244,22 +248,10 @@ mod tests {
 
         // Check earth has buildings
         let buildings = world.buildings.get(&earth_id).unwrap();
-        assert!(buildings
-            .slots
-            .iter()
-            .any(|s| s == &Some(BuildingType::Mine)));
-        // assert!(buildings
-        //     .slots
-        //     .iter()
-        //     .any(|s| s == &Some(BuildingType::Farm)));
-        // assert!(buildings
-        //     .slots
-        //     .iter()
-        //     .any(|s| s == &Some(BuildingType::FuelCellCracker)));
-        // assert!(buildings
-        //     .slots
-        //     .iter()
-        //     .any(|s| s == &Some(BuildingType::Shipyard)));
+        assert!(buildings.get_count(BuildingType::Mine) > 0);
+        assert!(buildings.get_count(BuildingType::Farm) > 0);
+        assert!(buildings.get_count(BuildingType::FuelCellCracker) > 0);
+        assert!(buildings.get_count(BuildingType::Shipyard) > 0);
     }
 
     #[test]

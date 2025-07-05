@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use strum::EnumIter;
 
 /// the types of resources that can be extracted from celestial bodies.
@@ -30,6 +31,27 @@ pub enum Good {
 pub enum Storable {
     Raw(RawResource),
     Good(Good),
+}
+
+impl fmt::Display for RawResource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl fmt::Display for Good {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl fmt::Display for Storable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Storable::Raw(r) => write!(f, "{r}"),
+            Storable::Good(g) => write!(f, "{g}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -132,13 +154,14 @@ pub const MOON_COLORS: [Color; 3] = [
     }, // dark gray
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
 pub enum BuildingType {
     // ground
     Mine,
     FuelCellCracker,
     Farm,
     Shipyard,
+    ConstructionFactory,
     // orbital
     SolarPanel,
 }

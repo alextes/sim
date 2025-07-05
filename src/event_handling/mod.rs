@@ -90,7 +90,7 @@ pub fn handle_events(
                     *state_guard = GameState::Playing;
                     controls.paused = false;
                 }
-                GameState::BuildMenu => {
+                GameState::BuildMenu { .. } => {
                     *state_guard = GameState::Playing;
                 }
                 GameState::ShipyardMenu => {
@@ -137,13 +137,12 @@ pub fn handle_events(
                     return Signal::Quit;
                 }
             }
-            GameState::BuildMenu => {
+            GameState::BuildMenu { .. } => {
                 build_menu::handle_build_menu_input(
                     &event,
-                    &current_state_clone,
                     world,
-                    &controls.selection,
                     &mut state_guard,
+                    controls.selection.first().cloned(),
                 );
             }
             GameState::ShipyardMenu | GameState::ShipyardMenuError { .. } => {

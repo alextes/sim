@@ -24,6 +24,7 @@ pub mod spawning;
 pub mod types;
 
 pub use resources::ResourceSystem;
+use tracing::debug;
 
 // Entity identifiers for all game objects.
 pub type EntityId = u32;
@@ -154,15 +155,22 @@ impl World {
         self.update_civilian_economy(dt);
         self.update_civilian_ships(dt);
         self.process_ship_mining(dt);
+        self.process_construction(dt);
         let sales_info = self.process_ship_sales();
-        for (ship_id, total_value, home_base) in sales_info {
-            tracing::info!(
-                "ship {} sold {:.2} credits worth of resources to {}",
+        for (ship_id, total_value, home_base, cargo) in sales_info {
+            let cargo_desc = cargo
+                .iter()
+                .map(|(s, a)| format!("{a:.2} {s}"))
+                .collect::<Vec<String>>()
+                .join(", ");
+            debug!(
+                "ship {} sold {:.2} credits worth of resources to {}: {}",
                 self.get_entity_name(ship_id)
                     .unwrap_or_else(|| "unknown".to_string()),
                 total_value,
                 self.get_entity_name(home_base)
                     .unwrap_or_else(|| "unknown".to_string()),
+                cargo_desc,
             );
         }
     }
@@ -202,6 +210,12 @@ impl World {
             2.0 // default radius for stars with no planets.
         } else {
             max_radius * 1.2 // 20% buffer
+        }
+    }
+
+    fn process_construction(&mut self, dt: f64) {
+        for (_, buildings) in self.buildings.iter_mut() {
+            buildings.process_construction(dt as f32);
         }
     }
 

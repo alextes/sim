@@ -1,3 +1,4 @@
+use crate::world::types::RawResource;
 use crate::world::types::Storable;
 use crate::world::EntityId;
 use serde::{Deserialize, Serialize};
@@ -47,10 +48,18 @@ pub struct CivilianShipAI {
     pub home_base: EntityId,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// state for a civilian ship's ai.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CivilianShipState {
     Idle,
-    MovingToMine { target: EntityId },
-    Mining { target: EntityId, mine_time: f64 },
+    MovingToMine {
+        target: u32,
+        resource: RawResource,
+    },
+    Mining {
+        target: u32,
+        resource: RawResource,
+        mine_time: u64, // Using u64 to store time as integer milliseconds
+    },
     ReturningToSell,
 }

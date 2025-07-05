@@ -115,13 +115,14 @@ pub fn render_game_frame(ctx: &mut RenderContext) {
             render_game_scene(ctx);
             interface::game_menu::render_game_menu(ctx.canvas, ctx.sprite_renderer);
         }
-        GameState::BuildMenu => {
+        GameState::BuildMenu { ref mode } => {
             render_game_scene(ctx);
             interface::build::render_build_menu(
                 ctx.canvas,
                 ctx.sprite_renderer,
                 ctx.world,
-                ctx.selection.first().cloned(),
+                ctx.controls.selection.first().cloned(),
+                mode,
             );
         }
         GameState::ShipyardMenu => {

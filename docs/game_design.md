@@ -10,15 +10,15 @@ sim is a top-down 2d space empire builder. the player begins in the sol system a
 
 ### planets
 
-planets come in greenhouse, barren, volcanic, oceanic and other classes. each has a size grade (tiny, small, medium, large, giant) that defines the number of building slots. every planet is assigned three resources from the global pool (see economy) plus a yield grade (poor, average, rich, ultra). building slot counts and resource yields together shape planetary specialization.
+planets come in greenhouse, barren, volcanic, oceanic and other classes. each has a size grade (tiny, small, medium, large, giant) that influences its potential for development. every planet is assigned three resources from the global pool (see economy) plus a yield grade (poor, average, rich, ultra). planetary development potential and resource yields together shape planetary specialization.
 
 #### gas giants
 
-gas giants mostly supply volatile and exotic gases and hold more slots for orbital infrastructure.
+gas giants mostly supply volatile and exotic gases and are ideal for large-scale orbital infrastructure.
 
 ### moons
 
-moons are small bodies orbiting planets. they have fewer slots but cheaper build costs.
+moons are small bodies orbiting planets. they have limited space but may offer cheaper build costs.
 
 ### asteroids & belts
 
@@ -152,6 +152,37 @@ sample unlocks
 – sensor sweeps: +10 % pirate detection  
 – tariff harmonization: +2 % treasury income  
 – asteroid smelters: upgrade common ore → rare alloy
+
+## construction & infrastructure
+
+instead of a fixed number of building slots, planets have a flexible infrastructure system. players can build multiple units of different infrastructure types, such as mines, farms, and factories.
+
+### construction queue
+
+when a player wants to build new infrastructure, they add a project to the planet's **construction queue**. each project specifies the type of infrastructure and the number of units to build.
+
+### construction capacity
+
+the speed at which the construction queue is processed depends on the planet's **construction capacity**. this capacity is provided by `construction factory` infrastructure. the more construction factories a planet has, the faster it can build everything else.
+
+`construction points per second = number of construction factories`
+
+each unit of infrastructure requires a certain number of construction points to be completed.
+
+### upfront costs
+
+the full resource cost for a construction project is paid **upfront** when the project is added to the queue. this prevents construction from being halted by resource shortages or unexpected price spikes later on. if the player cannot afford the cost, the project cannot be queued.
+
+### build menu
+
+the process of building is managed through a dedicated build menu:
+
+1.  **open menu**: the player selects a player-controlled planet and opens the build menu (e.g., by pressing 'b').
+2.  **view queue**: the menu displays the planet's name, type, and its current construction queue.
+3.  **add to queue**: the player can choose to add a new project.
+4.  **select type**: a list of available infrastructure types is shown. the player selects one.
+5.  **enter quantity**: the player inputs the desired number of units to build.
+6.  **confirm quote**: the game displays a quote with the total resource cost and the currently available resources. the player can then confirm ('y') to pay the cost and add the project to the queue, or cancel ('n').
 
 ## military
 
