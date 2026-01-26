@@ -130,27 +130,27 @@ This layer represents the player's high-level interaction with the galactic econ
 
 ## research
 
-knowledge points (kp) are produced by laboratory districts:  
+knowledge points (kp) are produced by laboratory districts:
 kp/day = labs × researchers × efficiency modifiers.
 
-research tree pillars  
-– industry (mining & refining)  
-– logistics (drives, cargo-handling, sensors)  
+research tree pillars
+– industry (mining & refining)
+– logistics (drives, cargo-handling, sensors)
 – commerce (markets, tariffs, finance)
 
 queue up to three techs: first slot gets 100 % kp, second 50 %, third 25 %.
 
-speed-ups  
-• research grants (+25 % kp, costs credits)  
-• breakthroughs (random, instantly add 20 % progress)  
+speed-ups
+• research grants (+25 % kp, costs credits)
+• breakthroughs (random, instantly add 20 % progress)
 • captured data cores (skip prerequisites)
 
-sample unlocks  
-– improved drills: +20 % extraction yield  
-– automated cranes: –30 % loading time  
-– futures contracts: buy resources on margin  
-– sensor sweeps: +10 % pirate detection  
-– tariff harmonization: +2 % treasury income  
+sample unlocks
+– improved drills: +20 % extraction yield
+– automated cranes: –30 % loading time
+– futures contracts: buy resources on margin
+– sensor sweeps: +10 % pirate detection
+– tariff harmonization: +2 % treasury income
 – asteroid smelters: upgrade common ore → rare alloy
 
 ## construction & infrastructure
