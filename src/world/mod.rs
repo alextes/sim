@@ -8,14 +8,15 @@ use crate::command::Command;
 use crate::location::PointF64;
 use std::collections::VecDeque;
 
-use crate::world::components::{Cargo, CivilianShipAI};
+use crate::ships::ShipType;
+use crate::world::components::{Cargo, CivilianShipAI, MiningRoute};
 use crate::world::types::{
     CelestialBodyData, Color, EntityType, MOON_COLORS, PLANET_COLORS, STAR_COLORS,
 };
 
 mod civ_economy;
 mod command_processing;
-mod components;
+pub mod components;
 mod lanes;
 mod movement;
 mod population;
@@ -32,6 +33,7 @@ pub type EntityId = u32;
 #[derive(Debug, Clone, Copy)]
 pub struct ShipInfo {
     pub speed: f64,
+    pub ship_type: ShipType,
 }
 
 #[derive(Debug, Default)]
@@ -71,6 +73,10 @@ pub struct World {
     pub cargo: HashMap<EntityId, Cargo>,
     /// ai state for civilian ships.
     pub civilian_ai: HashMap<EntityId, CivilianShipAI>,
+    /// optional user-defined mining routes per ship
+    pub mining_routes: HashMap<EntityId, MiningRoute>,
+    /// master switch for autonomous civilian ai behavior
+    pub enable_civilian_ai: bool,
 }
 
 impl World {
@@ -152,8 +158,13 @@ impl World {
         );
         self.update_population(dt);
         self.update_ship_movement(dt);
-        self.update_civilian_economy(dt);
-        self.update_civilian_ships(dt);
+        if self.enable_civilian_ai {
+            self.update_civilian_economy(dt);
+            self.update_civilian_ships(dt);
+        } else {
+            // even when ai is disabled, allow manual mining routes to operate using the same mechanics
+            self.update_civilian_ships(dt);
+        }
         self.process_ship_mining(dt);
         self.process_construction(dt);
         let sales_info = self.process_ship_sales();
@@ -315,6 +326,55 @@ impl World {
     /// iterate over lane pairs
     pub fn iter_lanes(&self) -> impl Iterator<Item = &(EntityId, EntityId)> {
         self.lanes.iter()
+    }
+
+    /// set or clear a mining route for a ship. also updates the ship's ai home_base to the sell body when set.
+    pub fn set_mining_route(&mut self, ship_id: EntityId, route: Option<MiningRoute>) {
+        match route {
+            Some(r) => {
+                self.mining_routes.insert(ship_id, r);
+                if let Some(ai) = self.civilian_ai.get_mut(&ship_id) {
+                    ai.home_base = r.sell_body;
+                    ai.state = crate::world::components::CivilianShipState::Idle;
+                }
+            }
+            None => {
+                self.mining_routes.remove(&ship_id);
+            }
+        }
+    }
+
+    /// compute a naive most-profitable mining route by scanning all bodies with yields and all bodies as buyers.
+    pub fn compute_best_mining_route(&self) -> Option<MiningRoute> {
+        let mut best: Option<(f64, MiningRoute)> = None;
+        for (&source_id, data) in &self.celestial_data {
+            if data.yields.is_empty() {
+                continue;
+            }
+            for &sell_id in self.celestial_data.keys() {
+                if sell_id == source_id {
+                    continue;
+                }
+                for (&raw, &grade) in &data.yields {
+                    let price = crate::world::resources::get_local_price(
+                        self,
+                        sell_id,
+                        crate::world::types::Storable::Raw(raw),
+                    );
+                    let score = (grade as f64) * price;
+                    let candidate = MiningRoute {
+                        target_body: source_id,
+                        resource: raw,
+                        sell_body: sell_id,
+                    };
+                    match best {
+                        Some((best_score, _)) if score <= best_score => {}
+                        _ => best = Some((score, candidate)),
+                    }
+                }
+            }
+        }
+        best.map(|(_, r)| r)
     }
 }
 
