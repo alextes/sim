@@ -4,6 +4,13 @@ use crate::world::EntityId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MiningRoute {
+    pub target_body: EntityId,
+    pub resource: RawResource,
+    pub sell_body: EntityId,
+}
+
 /// Holds resources for an entity, like a ship.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cargo {

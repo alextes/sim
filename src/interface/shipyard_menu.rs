@@ -10,6 +10,7 @@ pub fn render_shipyard_menu(canvas: &mut Canvas<Window>, renderer: &SpriteSheetR
         ("build ship?".to_string(), colors::WHITE),
         ("".to_string(), colors::BLACK),
         ("(1) frigate".to_string(), colors::WHITE),
+        ("(2) mining ship".to_string(), colors::WHITE),
         ("".to_string(), colors::BLACK),
         ("(esc) close menu".to_string(), colors::WHITE),
     ];

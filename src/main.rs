@@ -42,9 +42,17 @@ pub enum GameState {
     MainMenu,
     Playing,
     GameMenu,
-    BuildMenu { mode: BuildMenuMode },
+    BuildMenu {
+        mode: BuildMenuMode,
+    },
     ShipyardMenu,
-    ShipyardMenuError { message: String },
+    ShipyardMenuError {
+        message: String,
+    },
+    MiningRouteMenu {
+        ship_id: world::EntityId,
+        mode: MiningRouteMenuMode,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,6 +66,18 @@ pub enum BuildMenuMode {
     ConfirmQuote {
         building: world::types::BuildingType,
         amount: u32,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MiningRouteMenuMode {
+    SelectTarget,
+    SelectResource {
+        target_id: world::EntityId,
+    },
+    SelectSell {
+        target_id: world::EntityId,
+        resource: world::types::RawResource,
     },
 }
 

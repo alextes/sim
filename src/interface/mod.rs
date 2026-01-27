@@ -10,6 +10,7 @@ pub mod debug_overlay;
 pub mod game_menu;
 pub mod intro;
 pub mod main_menu;
+pub mod mining_route_menu;
 pub mod selected_object_panel;
 pub mod shipyard_menu;
 pub mod sim_speed_panel;

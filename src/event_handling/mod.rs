@@ -9,6 +9,7 @@ use crate::GameState;
 
 mod build_menu;
 mod main_menu;
+mod mining_route_menu;
 mod playing;
 mod shipyard_menu;
 
@@ -99,6 +100,9 @@ pub fn handle_events(
                 GameState::ShipyardMenuError { .. } => {
                     *state_guard = GameState::Playing;
                 }
+                GameState::MiningRouteMenu { .. } => {
+                    *state_guard = GameState::Playing;
+                }
                 GameState::Intro => {}
             }
             continue; // skip further processing for this Escape event
@@ -147,6 +151,15 @@ pub fn handle_events(
             }
             GameState::ShipyardMenu | GameState::ShipyardMenuError { .. } => {
                 shipyard_menu::handle_shipyard_menu_input(
+                    &event,
+                    &current_state_clone,
+                    world,
+                    &controls.selection,
+                    &mut state_guard,
+                );
+            }
+            GameState::MiningRouteMenu { .. } => {
+                mining_route_menu::handle_mining_route_menu_input(
                     &event,
                     &current_state_clone,
                     world,

@@ -155,7 +155,13 @@ pub fn spawn_frigate(world: &mut World, name: String, position: Point) -> Entity
     world
         .locations
         .add_mobile(id, (position.x as f64, position.y as f64).into());
-    world.ships.insert(id, ShipInfo { speed: 5.0 }); // Default speed
+    world.ships.insert(
+        id,
+        ShipInfo {
+            speed: 5.0,
+            ship_type: crate::ships::ShipType::Frigate,
+        },
+    );
     world.set_player_controlled(id);
     id
 }
@@ -236,6 +242,7 @@ pub fn spawn_mining_ship(
         id,
         ShipInfo {
             speed: 2.0, // slower than frigates
+            ship_type: crate::ships::ShipType::MiningShip,
         },
     );
     world.cargo.insert(id, Cargo::new(100.0));
@@ -246,6 +253,7 @@ pub fn spawn_mining_ship(
             home_base: home_base_id,
         },
     );
+    // default: no route; respect global ai flag in world.update
 
     // note: not calling set_player_controlled
 

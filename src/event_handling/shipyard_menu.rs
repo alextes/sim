@@ -31,6 +31,13 @@ pub fn handle_shipyard_menu_input(
                     });
                     **game_state_guard = GameState::Playing;
                 }
+                if *keycode == Keycode::Num2 {
+                    world.add_command(crate::command::Command::BuildShip {
+                        shipyard_entity_id: selected_id,
+                        ship_type: ShipType::MiningShip,
+                    });
+                    **game_state_guard = GameState::Playing;
+                }
             }
         }
         GameState::ShipyardMenuError { .. } => {

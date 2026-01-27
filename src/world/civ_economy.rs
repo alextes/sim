@@ -1,7 +1,7 @@
 use crate::command::Command;
 use crate::location::PointF64;
 use crate::ships::ShipType;
-use crate::world::components::CivilianShipState;
+use crate::world::components::{CivilianShipState, MiningRoute};
 use crate::world::resources;
 use crate::world::types::Storable;
 use crate::world::{EntityId, World};
@@ -137,8 +137,15 @@ impl World {
         }
 
         for (&ship_id, ai) in &self.civilian_ai {
-            let (new_state, command) =
-                self.decide_civilian_ship_action(ship_id, ai, &potential_mining_targets, dt);
+            let route: Option<&MiningRoute> = self.mining_routes.get(&ship_id);
+            let (new_state, command) = self.decide_civilian_ship_action(
+                ship_id,
+                ai,
+                &potential_mining_targets,
+                dt,
+                self.enable_civilian_ai,
+                route,
+            );
             if let Some(state) = new_state {
                 state_changes_to_apply.push((ship_id, state));
             }
@@ -166,6 +173,8 @@ impl World {
         ai: &crate::world::components::CivilianShipAI,
         potential_mining_targets: &[(u32, crate::world::types::RawResource)],
         dt: f64,
+        enable_random_ai: bool,
+        route: Option<&MiningRoute>,
     ) -> (Option<CivilianShipState>, Option<Command>) {
         let home_base = ai.home_base;
 
@@ -176,32 +185,9 @@ impl World {
                     None => return (None, None),
                 };
 
-                let max_range_sq = self
-                    .find_star_for_entity(home_base)
-                    .map(|star_id| self.get_system_radius(star_id).powi(2))
-                    .unwrap_or(100.0f64.powi(2));
-
-                let in_range_targets: Vec<(u32, crate::world::types::RawResource)> =
-                    potential_mining_targets
-                        .iter()
-                        .filter_map(|&(target_id, resource)| {
-                            if target_id == home_base {
-                                return None;
-                            }
-                            self.get_location_f64(target_id)
-                                .map(|target_pos| (target_id, resource, target_pos))
-                        })
-                        .filter(|(_, _, target_pos)| {
-                            let dist_sq = (ship_pos.x - target_pos.x).powi(2)
-                                + (ship_pos.y - target_pos.y).powi(2);
-                            dist_sq <= max_range_sq
-                        })
-                        .map(|(id, resource, _)| (id, resource))
-                        .collect();
-
-                if !in_range_targets.is_empty() {
-                    let &(target_id, resource) =
-                        &in_range_targets[rand::rng().random_range(0..in_range_targets.len())];
+                if let Some(route) = route {
+                    let target_id = route.target_body;
+                    let resource = route.resource;
                     if let Some(intercept_pos) = predict_orbital_intercept(self, ship_id, target_id)
                     {
                         let command = Command::MoveShip {
@@ -213,6 +199,51 @@ impl World {
                             resource,
                         };
                         (Some(new_state), Some(command))
+                    } else {
+                        (None, None)
+                    }
+                } else if enable_random_ai {
+                    let max_range_sq = self
+                        .find_star_for_entity(home_base)
+                        .map(|star_id| self.get_system_radius(star_id).powi(2))
+                        .unwrap_or(100.0f64.powi(2));
+
+                    let in_range_targets: Vec<(u32, crate::world::types::RawResource)> =
+                        potential_mining_targets
+                            .iter()
+                            .filter_map(|&(target_id, resource)| {
+                                if target_id == home_base {
+                                    return None;
+                                }
+                                self.get_location_f64(target_id)
+                                    .map(|target_pos| (target_id, resource, target_pos))
+                            })
+                            .filter(|(_, _, target_pos)| {
+                                let dist_sq = (ship_pos.x - target_pos.x).powi(2)
+                                    + (ship_pos.y - target_pos.y).powi(2);
+                                dist_sq <= max_range_sq
+                            })
+                            .map(|(id, resource, _)| (id, resource))
+                            .collect();
+
+                    if !in_range_targets.is_empty() {
+                        let &(target_id, resource) =
+                            &in_range_targets[rand::rng().random_range(0..in_range_targets.len())];
+                        if let Some(intercept_pos) =
+                            predict_orbital_intercept(self, ship_id, target_id)
+                        {
+                            let command = Command::MoveShip {
+                                ship_id,
+                                destination: intercept_pos,
+                            };
+                            let new_state = CivilianShipState::MovingToMine {
+                                target: target_id,
+                                resource,
+                            };
+                            (Some(new_state), Some(command))
+                        } else {
+                            (None, None)
+                        }
                     } else {
                         (None, None)
                     }

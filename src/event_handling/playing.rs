@@ -96,6 +96,20 @@ fn handle_keydown(
                 }
             }
         }
+        Keycode::R => {
+            // open mining route menu if a mining ship is selected
+            if controls.selection.len() == 1 {
+                let ship_id = controls.selection[0];
+                if let Some(info) = world.ships.get(&ship_id) {
+                    if info.ship_type == crate::ships::ShipType::MiningShip {
+                        **game_state_guard = GameState::MiningRouteMenu {
+                            ship_id,
+                            mode: crate::MiningRouteMenuMode::SelectTarget,
+                        };
+                    }
+                }
+            }
+        }
         Keycode::Backquote => {
             controls.sim_speed = match controls.sim_speed {
                 1 => 2,
