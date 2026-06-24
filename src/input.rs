@@ -163,7 +163,6 @@ fn handle_escape(game_state: &mut GameState, controls: &mut ControlState) {
         | GameState::ShipyardMenu
         | GameState::ShipyardMenuError { .. }
         | GameState::MiningRouteMenu { .. } => *game_state = GameState::Playing,
-        GameState::Intro => {}
     }
 }
 

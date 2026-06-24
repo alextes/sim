@@ -32,7 +32,6 @@ pub fn build_ui(
     }
 
     match state {
-        GameState::Intro => intro_screen(ctx),
         GameState::MainMenu => main_menu(ctx, game_state, controls),
         GameState::Playing => {}
         GameState::GameMenu => game_menu(ctx, game_state, controls),
@@ -49,7 +48,7 @@ pub fn build_ui(
 
 /// the in-game states draw the world (and hud) behind any modal.
 fn shows_world(state: &GameState) -> bool {
-    !matches!(state, GameState::Intro | GameState::MainMenu)
+    !matches!(state, GameState::MainMenu)
 }
 
 fn hud_panels(
@@ -168,27 +167,46 @@ fn single_selection(ui: &mut egui::Ui, world: &World, controls: &ControlState, i
     }
 }
 
-fn intro_screen(ctx: &egui::Context) {
-    egui::Area::new("intro".into())
+fn main_menu(ctx: &egui::Context, game_state: &mut GameState, controls: &mut ControlState) {
+    egui::Area::new("main_menu".into())
         .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
         .show(ctx, |ui| {
+            let button_fill = Color32::from_rgb(30, 32, 40);
+            let button_hover = Color32::from_rgb(43, 46, 56);
+            let button_active = Color32::from_rgb(55, 58, 70);
+            let button_text = Color32::from_rgb(210, 216, 225);
+            let button_size = Vec2::new(180.0, 44.0);
+
+            ui.spacing_mut().item_spacing = Vec2::new(0.0, 12.0);
+            ui.visuals_mut().widgets.inactive.bg_fill = button_fill;
+            ui.visuals_mut().widgets.hovered.bg_fill = button_hover;
+            ui.visuals_mut().widgets.active.bg_fill = button_active;
+            ui.visuals_mut().widgets.inactive.fg_stroke.color = button_text;
+            ui.visuals_mut().widgets.hovered.fg_stroke.color = button_text;
+            ui.visuals_mut().widgets.active.fg_stroke.color = button_text;
+            ui.visuals_mut().widgets.inactive.bg_stroke =
+                egui::Stroke::new(1.0, Color32::from_rgb(72, 76, 90));
+            ui.visuals_mut().widgets.hovered.bg_stroke =
+                egui::Stroke::new(1.0, Color32::from_rgb(100, 108, 128));
+            ui.visuals_mut().widgets.active.bg_stroke =
+                egui::Stroke::new(1.0, Color32::from_rgb(118, 128, 148));
+
             ui.vertical_centered(|ui| {
-                ui.heading("sim");
-                ui.label("loading...");
+                if ui
+                    .add_sized(button_size, egui::Button::new("play"))
+                    .clicked()
+                {
+                    *game_state = GameState::Playing;
+                    controls.paused = false;
+                }
+                if ui
+                    .add_sized(button_size, egui::Button::new("quit"))
+                    .clicked()
+                {
+                    controls.quit_requested = true;
+                }
             });
         });
-}
-
-fn main_menu(ctx: &egui::Context, game_state: &mut GameState, controls: &mut ControlState) {
-    centered_window(ctx, "sim", |ui| {
-        if ui.button("play").clicked() {
-            *game_state = GameState::Playing;
-            controls.paused = false;
-        }
-        if ui.button("quit").clicked() {
-            controls.quit_requested = true;
-        }
-    });
 }
 
 fn game_menu(ctx: &egui::Context, game_state: &mut GameState, controls: &mut ControlState) {

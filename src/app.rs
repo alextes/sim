@@ -31,7 +31,6 @@ const ONE_SECOND: Duration = Duration::from_secs(1);
 /// the different interaction modes the game can be in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GameState {
-    Intro,
     MainMenu,
     Playing,
     GameMenu,
@@ -90,7 +89,6 @@ pub struct App {
     viewport: Viewport,
     game_state: GameState,
     background: BackgroundLayer,
-    intro_start: Instant,
 }
 
 impl App {
@@ -120,9 +118,8 @@ impl App {
             clock,
             controls,
             viewport: Viewport::default(),
-            game_state: GameState::Intro,
+            game_state: GameState::MainMenu,
             background,
-            intro_start: Instant::now(),
         }
     }
 
@@ -146,9 +143,9 @@ impl App {
             return;
         };
 
-        // the galaxy is only drawn in the in-game states; intro/main-menu show
-        // a bare background (their menus return as egui in stage 3).
-        let show_world = !matches!(game_state, GameState::Intro | GameState::MainMenu);
+        // the galaxy is only drawn in the in-game states; the main menu shows
+        // a bare background.
+        let show_world = !matches!(game_state, GameState::MainMenu);
         if show_world {
             world_renderer.prepare(WorldPrepareContext {
                 device: &gfx.device,
@@ -303,12 +300,6 @@ impl ApplicationHandler for App {
         }
 
         let now = Instant::now();
-
-        if self.game_state == GameState::Intro
-            && self.intro_start.elapsed() >= Duration::from_millis(100)
-        {
-            self.game_state = GameState::MainMenu;
-        }
 
         // when paused, prevent simulation backlog from accumulating.
         if self.controls.paused {
