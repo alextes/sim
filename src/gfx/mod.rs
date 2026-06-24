@@ -1,19 +1,20 @@
-//! wgpu device/surface state. replaces the old sdl canvas setup.
+//! wgpu window, device, and surface state.
 //!
 //! holds the window plus the gpu resources needed to acquire and present a
 //! frame. frame orchestration (world pass + egui pass) lives in `app::redraw`,
 //! which needs game + egui state alongside these resources.
 
-pub mod atlas;
-pub mod line_batch;
-pub mod sprite_batch;
+mod atlas;
+mod line_batch;
+mod sprite_batch;
+mod world_renderer;
 
 use std::sync::Arc;
 
+use tracing::warn;
 use winit::window::Window;
 
-use line_batch::LineBatch;
-use sprite_batch::SpriteBatch;
+pub use world_renderer::{WorldPrepareContext, WorldRenderer};
 
 pub struct GpuState {
     pub window: Arc<Window>,
@@ -21,8 +22,6 @@ pub struct GpuState {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
-    pub sprite: SpriteBatch,
-    pub lines: LineBatch,
 }
 
 impl GpuState {
@@ -79,17 +78,37 @@ impl GpuState {
         };
         surface.configure(&device, &config);
 
-        let sprite = SpriteBatch::new(&device, &queue, config.format);
-        let lines = LineBatch::new(&device, config.format);
-
         Self {
             window,
             surface,
             device,
             queue,
             config,
-            sprite,
-            lines,
+        }
+    }
+
+    pub fn create_encoder(&self) -> wgpu::CommandEncoder {
+        self.device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame encoder"),
+            })
+    }
+
+    pub fn acquire_frame(&mut self) -> Option<wgpu::SurfaceTexture> {
+        match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => Some(texture),
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                self.reconfigure();
+                None
+            }
+            // transient states (window not yet front, minimized, gpu busy):
+            // skip this frame quietly; the render cadence will retry.
+            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => None,
+            other => {
+                warn!("surface unavailable: {other:?}");
+                None
+            }
         }
     }
 

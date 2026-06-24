@@ -1,7 +1,7 @@
 //! maps characters to tiles in the `res/taffer_9.png` atlas.
 //!
 //! ported from the old sdl `render::tileset`, but returns uv coordinates for
-//! the wgpu sprite batch instead of pixel `sdl2::rect::Rect`s. the atlas is a
+//! the wgpu sprite batch instead of the old pixel-rect renderer. the atlas is a
 //! 16x16 grid of 9px tiles (a code page 437 layout).
 
 use std::collections::HashMap;

@@ -4,7 +4,6 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tracing::warn;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
@@ -12,9 +11,9 @@ use winit::window::{Window, WindowId};
 
 use crate::background::BackgroundLayer;
 use crate::control_state::ControlState;
-use crate::egui_layer::EguiLayer;
+use crate::egui_layer::{EguiLayer, EguiPaintTarget};
 use crate::game_loop::GameLoop;
-use crate::gfx::GpuState;
+use crate::gfx::{GpuState, WorldPrepareContext, WorldRenderer};
 use crate::input;
 use crate::map_generation;
 use crate::palette;
@@ -82,6 +81,7 @@ pub enum MiningRouteMenuMode {
 pub struct App {
     // window + gpu are None until `resumed` runs.
     gfx: Option<GpuState>,
+    world_renderer: Option<WorldRenderer>,
     egui: Option<EguiLayer>,
 
     world: World,
@@ -114,6 +114,7 @@ impl App {
 
         Self {
             gfx: None,
+            world_renderer: None,
             egui: None,
             world,
             clock,
@@ -129,6 +130,7 @@ impl App {
     fn redraw(&mut self) {
         let App {
             gfx,
+            world_renderer,
             egui,
             world,
             controls,
@@ -138,7 +140,9 @@ impl App {
             background,
             ..
         } = self;
-        let (Some(gfx), Some(egui)) = (gfx.as_mut(), egui.as_mut()) else {
+        let (Some(gfx), Some(world_renderer), Some(egui)) =
+            (gfx.as_mut(), world_renderer.as_mut(), egui.as_mut())
+        else {
             return;
         };
 
@@ -146,38 +150,24 @@ impl App {
         // a bare background (their menus return as egui in stage 3).
         let show_world = !matches!(game_state, GameState::Intro | GameState::MainMenu);
         if show_world {
-            let screen = (gfx.config.width, gfx.config.height);
-            gfx.sprite
-                .prepare(&gfx.device, &gfx.queue, world, viewport, background, screen);
-            gfx.lines
-                .prepare(&gfx.device, &gfx.queue, world, viewport, controls, screen);
+            world_renderer.prepare(WorldPrepareContext {
+                device: &gfx.device,
+                queue: &gfx.queue,
+                world,
+                viewport,
+                background,
+                controls,
+                screen: (gfx.config.width, gfx.config.height),
+            });
         }
 
-        let output = match gfx.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(texture)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                gfx.reconfigure();
-                return;
-            }
-            // transient states (window not yet front, minimized, gpu busy):
-            // skip this frame quietly; the render cadence will retry.
-            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => {
-                return;
-            }
-            other => {
-                warn!("surface unavailable: {other:?}");
-                return;
-            }
+        let Some(output) = gfx.acquire_frame() else {
+            return;
         };
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = gfx
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("frame encoder"),
-            });
+        let mut encoder = gfx.create_encoder();
 
         // world pass: clear to the scene background, then draw the tile world.
         {
@@ -198,61 +188,21 @@ impl App {
                 multiview_mask: None,
             });
             if show_world {
-                gfx.sprite.draw(&mut world_pass);
-                gfx.lines.draw(&mut world_pass);
+                world_renderer.draw(&mut world_pass);
             }
         }
 
-        // egui pass.
-        let raw_input = egui.state.take_egui_input(&gfx.window);
-        let full_output = egui.ctx.run_ui(raw_input, |ui| {
-            ui::build_ui(ui.ctx(), world, controls, game_state, clock, viewport);
-        });
-        egui.state
-            .handle_platform_output(&gfx.window, full_output.platform_output);
-        let paint_jobs = egui
-            .ctx
-            .tessellate(full_output.shapes, full_output.pixels_per_point);
-        let screen_descriptor = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [gfx.config.width, gfx.config.height],
-            pixels_per_point: full_output.pixels_per_point,
-        };
-        for (id, image_delta) in &full_output.textures_delta.set {
-            egui.renderer
-                .update_texture(&gfx.device, &gfx.queue, *id, image_delta);
-        }
-        let user_buffers = egui.renderer.update_buffers(
-            &gfx.device,
-            &gfx.queue,
-            &mut encoder,
-            &paint_jobs,
-            &screen_descriptor,
+        let (user_buffers, repaint_now) = egui.paint(
+            EguiPaintTarget {
+                window: &gfx.window,
+                device: &gfx.device,
+                queue: &gfx.queue,
+                encoder: &mut encoder,
+                view: &view,
+                screen_size_in_pixels: [gfx.config.width, gfx.config.height],
+            },
+            |ctx| ui::build_ui(ctx, world, controls, game_state, clock, viewport),
         );
-        {
-            let mut egui_pass = encoder
-                .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("egui pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        depth_slice: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                    multiview_mask: None,
-                })
-                .forget_lifetime();
-            egui.renderer
-                .render(&mut egui_pass, &paint_jobs, &screen_descriptor);
-        }
-        for id in &full_output.textures_delta.free {
-            egui.renderer.free_texture(id);
-        }
 
         gfx.queue.submit(
             user_buffers
@@ -263,11 +213,7 @@ impl App {
         clock.fps_counter += 1;
 
         // honor egui's requested repaint cadence (e.g. button hover animations).
-        if full_output
-            .viewport_output
-            .values()
-            .any(|v| v.repaint_delay.is_zero())
-        {
+        if repaint_now {
             gfx.window.request_redraw();
         }
     }
@@ -299,12 +245,14 @@ impl ApplicationHandler for App {
         );
 
         let gfx = GpuState::new(window.clone());
+        let world_renderer = WorldRenderer::new(&gfx.device, &gfx.queue, gfx.config.format);
         let egui = EguiLayer::new(&gfx.device, &window, gfx.config.format);
 
         self.viewport.screen_pixel_width = gfx.config.width;
         self.viewport.screen_pixel_height = gfx.config.height;
 
         self.gfx = Some(gfx);
+        self.world_renderer = Some(world_renderer);
         self.egui = Some(egui);
         window.request_redraw();
     }
@@ -314,7 +262,7 @@ impl ApplicationHandler for App {
         // the game. tight borrow scope so the rest of the method can take `self`.
         let consumed = match (self.egui.as_mut(), self.gfx.as_ref()) {
             (Some(egui), Some(gfx)) => {
-                let response = egui.state.on_window_event(&gfx.window, &event);
+                let response = egui.on_window_event(&gfx.window, &event);
                 if response.repaint {
                     gfx.window.request_redraw();
                 }

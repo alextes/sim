@@ -331,7 +331,7 @@ fn apply_box_selection(controls: &mut ControlState, world: &World, entities: &[E
     }
 }
 
-/// a screen-space rectangle in physical pixels, replacing `sdl2::rect::Rect`.
+/// a screen-space rectangle in physical pixels.
 #[derive(Debug, Clone, Copy)]
 pub struct ScreenRect {
     pub x: i32,
