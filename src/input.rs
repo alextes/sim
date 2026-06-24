@@ -9,11 +9,13 @@ use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use crate::app::GameState;
+use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
 use crate::command::Command;
 use crate::control_state::ControlState;
 use crate::location::PointF64;
+use crate::ships::ShipType;
 use crate::viewport::Viewport;
+use crate::world::types::BuildingType;
 use crate::world::{EntityId, World};
 
 /// world distance panned per arrow-key press at zoom 1.0.
@@ -44,6 +46,17 @@ pub fn handle_window_event(
         _ => {}
     }
 
+    // escape transitions work in every state (menus, pause, quit).
+    if let WindowEvent::KeyboardInput { event: key, .. } = event {
+        if key.state == ElementState::Pressed
+            && !key.repeat
+            && matches!(key.physical_key, PhysicalKey::Code(KeyCode::Escape))
+        {
+            handle_escape(game_state, controls);
+            return;
+        }
+    }
+
     // the rest are gameplay bindings, only active while playing.
     if *game_state != GameState::Playing {
         return;
@@ -51,7 +64,7 @@ pub fn handle_window_event(
 
     match event {
         WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-            handle_keydown(event, viewport, world, controls);
+            handle_keydown(event, viewport, world, controls, game_state);
         }
         WindowEvent::MouseInput { state, button, .. } => {
             handle_mouse_button(*state, *button, viewport, world, controls);
@@ -97,6 +110,7 @@ fn handle_keydown(
     viewport: &mut Viewport,
     world: &World,
     controls: &mut ControlState,
+    game_state: &mut GameState,
 ) {
     let PhysicalKey::Code(code) = event.physical_key else {
         return;
@@ -111,11 +125,15 @@ fn handle_keydown(
         KeyCode::Equal | KeyCode::NumpadAdd => viewport.zoom_in(),
         KeyCode::Minus | KeyCode::NumpadSubtract => viewport.zoom_out(),
         KeyCode::Tab if !event.repeat => cycle_entity_focus(world, controls, controls.shift_down),
+        KeyCode::F4 if !event.repeat => controls.debug_enabled = !controls.debug_enabled,
         KeyCode::KeyF if !event.repeat => {
             if !controls.selection.is_empty() {
                 controls.track_mode = !controls.track_mode;
             }
         }
+        KeyCode::KeyB if !event.repeat => open_build_menu(world, controls, game_state),
+        KeyCode::KeyS if !event.repeat => open_shipyard_menu(world, controls, game_state),
+        KeyCode::KeyR if !event.repeat => open_mining_menu(world, controls, game_state),
         KeyCode::Space if !event.repeat => controls.paused = !controls.paused,
         KeyCode::Backquote if !event.repeat => {
             controls.sim_speed = match controls.sim_speed {
@@ -125,6 +143,69 @@ fn handle_keydown(
             };
         }
         _ => {}
+    }
+}
+
+/// escape: context-dependent menu/pause transition (ported from the old global
+/// escape handler).
+fn handle_escape(game_state: &mut GameState, controls: &mut ControlState) {
+    match game_state {
+        GameState::MainMenu => controls.quit_requested = true,
+        GameState::Playing => {
+            *game_state = GameState::GameMenu;
+            controls.paused = true;
+        }
+        GameState::GameMenu => {
+            *game_state = GameState::Playing;
+            controls.paused = false;
+        }
+        GameState::BuildMenu { .. }
+        | GameState::ShipyardMenu
+        | GameState::ShipyardMenuError { .. }
+        | GameState::MiningRouteMenu { .. } => *game_state = GameState::Playing,
+        GameState::Intro => {}
+    }
+}
+
+/// (b) open the build menu if the selection is a player-controlled body.
+fn open_build_menu(world: &World, controls: &ControlState, game_state: &mut GameState) {
+    if let Some(&id) = controls.selection.first() {
+        if world.is_player_controlled(id) && world.buildings.contains_key(&id) {
+            *game_state = GameState::BuildMenu {
+                mode: BuildMenuMode::Main,
+            };
+        }
+    }
+}
+
+/// (s) open the shipyard menu if a single player-controlled body has a shipyard.
+fn open_shipyard_menu(world: &World, controls: &ControlState, game_state: &mut GameState) {
+    if controls.selection.len() != 1 {
+        return;
+    }
+    let id = controls.selection[0];
+    if world.is_player_controlled(id) {
+        if let Some(buildings) = world.buildings.get(&id) {
+            if buildings.get_count(BuildingType::Shipyard) > 0 {
+                *game_state = GameState::ShipyardMenu;
+            }
+        }
+    }
+}
+
+/// (r) open the mining-route menu if a single mining ship is selected.
+fn open_mining_menu(world: &World, controls: &ControlState, game_state: &mut GameState) {
+    if controls.selection.len() != 1 {
+        return;
+    }
+    let id = controls.selection[0];
+    if let Some(info) = world.ships.get(&id) {
+        if info.ship_type == ShipType::MiningShip {
+            *game_state = GameState::MiningRouteMenu {
+                ship_id: id,
+                mode: MiningRouteMenuMode::SelectTarget,
+            };
+        }
     }
 }
 
@@ -210,6 +291,8 @@ fn cycle_entity_focus(world: &World, controls: &mut ControlState, reverse: bool)
 }
 
 /// a screen-space rectangle in physical pixels, replacing `sdl2::rect::Rect`.
+/// used by box-select, which lands with the overlay follow-up.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct ScreenRect {
     pub x: i32,
@@ -218,6 +301,7 @@ pub struct ScreenRect {
     pub h: u32,
 }
 
+#[allow(dead_code)]
 impl ScreenRect {
     /// build the axis-aligned rect spanning two corner points.
     pub fn from_corners(a: (i32, i32), b: (i32, i32)) -> Self {
@@ -263,6 +347,8 @@ pub fn get_entity_id_at_screen_coords(
 }
 
 /// all entities whose on-screen tile overlaps the given screen rectangle.
+/// used by box-select, which lands with the overlay follow-up.
+#[allow(dead_code)]
 pub fn get_entities_in_screen_rect(
     rect: ScreenRect,
     viewport: &Viewport,

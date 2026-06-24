@@ -19,7 +19,12 @@ pub struct ControlState {
     /// last known cursor position in physical pixels. winit, unlike sdl, has no
     /// "current mouse position" query, so we track it on every `CursorMoved`.
     pub last_mouse_pos: Option<(i32, i32)>,
+    /// box-select drag origin; used once the overlay/box-select follow-up lands.
+    #[allow(dead_code)]
     pub selection_box_start: Option<(i32, i32)>,
+    /// set by the ui / escape handling to request app exit; the event loop reads
+    /// it (egui and the input handler can't call `event_loop.exit()` directly).
+    pub quit_requested: bool,
 }
 
 impl ControlState {
@@ -36,6 +41,7 @@ impl ControlState {
             shift_down: false,
             last_mouse_pos: None,
             selection_box_start: None,
+            quit_requested: false,
         }
     }
 }

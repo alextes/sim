@@ -59,6 +59,8 @@ impl Viewport {
         }
     }
 
+    // used by box-select / overlays (overlay follow-up).
+    #[allow(dead_code)]
     pub fn world_to_screen_coords(&self, world_pos: Point) -> (i32, i32) {
         let world_tile_actual_pixel_size_on_screen = self.world_tile_pixel_size_on_screen();
 

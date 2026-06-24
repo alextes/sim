@@ -1,8 +1,3 @@
-// temporary for the sdl->wgpu migration: deleting the old rendering/ui/input
-// consumers leaves a batch of sim methods dormant until stage 2/3 rewire them.
-// remove this once the egui ui is rebuilt (stage 3).
-#![allow(dead_code)]
-
 mod app;
 mod background;
 mod buildings;

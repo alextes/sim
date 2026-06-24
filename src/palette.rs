@@ -4,6 +4,9 @@
 //! add an `[f32; 4]` conversion alongside these.
 //!
 //! colors were originally taken from the lee v2 dwarf fortress color set.
+//!
+//! this is a palette library; not every color is used at all times.
+#![allow(dead_code)]
 use egui::Color32;
 
 pub const BASE: Color32 = Color32::from_rgb(20, 22, 30);

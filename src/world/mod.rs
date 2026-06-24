@@ -323,7 +323,8 @@ impl World {
         self.player_controlled.contains(&entity)
     }
 
-    /// iterate over lane pairs
+    /// iterate over lane pairs (consumed by the star-lane overlay follow-up).
+    #[allow(dead_code)]
     pub fn iter_lanes(&self) -> impl Iterator<Item = &(EntityId, EntityId)> {
         self.lanes.iter()
     }

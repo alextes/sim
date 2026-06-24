@@ -40,6 +40,9 @@ pub enum GameState {
         mode: BuildMenuMode,
     },
     ShipyardMenu,
+    // designed error state; the render path exists but the failure trigger is
+    // not re-wired yet.
+    #[allow(dead_code)]
     ShipyardMenuError {
         message: String,
     },
@@ -347,6 +350,12 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // the ui / escape handler requests exit via this flag.
+        if self.controls.quit_requested {
+            event_loop.exit();
+            return;
+        }
+
         let now = Instant::now();
 
         if self.game_state == GameState::Intro
