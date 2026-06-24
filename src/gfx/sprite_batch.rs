@@ -13,7 +13,13 @@ use crate::gfx::atlas::Atlas;
 use crate::palette;
 use crate::tileset::Tileset;
 use crate::viewport::{Viewport, TILE_PIXEL_WIDTH};
+use crate::world::types::EntityType;
 use crate::world::World;
+
+/// only label stars once tiles are at least this zoomed in.
+const STAR_LABEL_MIN_ZOOM: f64 = 0.7;
+/// star label glyph size, in world tiles.
+const STAR_LABEL_WORLD_SIZE: f64 = 1.2;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -296,6 +302,44 @@ impl SpriteBatch {
                 uv_size,
                 tint,
             });
+
+            // label stars with their name below the glyph when zoomed in.
+            if viewport.zoom > STAR_LABEL_MIN_ZOOM
+                && world.get_entity_type(entity) == Some(EntityType::Star)
+            {
+                if let Some(name) = world.get_entity_name(entity) {
+                    let text = name.to_lowercase();
+                    let glyph_px = (STAR_LABEL_WORLD_SIZE * scale) as f32;
+                    let text_width = text.chars().count() as f32 * glyph_px;
+                    let label_x = center_x as f32 - text_width / 2.0;
+                    let label_y = center_y as f32 + size_px as f32 / 2.0 + 2.0;
+                    let tint = [
+                        palette::LGRAY.r() as f32 / 255.0,
+                        palette::LGRAY.g() as f32 / 255.0,
+                        palette::LGRAY.b() as f32 / 255.0,
+                        0.86,
+                    ];
+                    self.push_text(&text, label_x, label_y, glyph_px, tint);
+                }
+            }
+        }
+    }
+
+    /// emit one glyph instance per character, left to right from (x, y).
+    fn push_text(&mut self, text: &str, x: f32, y: f32, glyph_px: f32, tint: [f32; 4]) {
+        let mut cursor_x = x;
+        for ch in text.chars() {
+            if ch != ' ' {
+                let (uv_min, uv_size) = self.tileset.uv(ch);
+                self.instances.push(Instance {
+                    dest: [cursor_x, y],
+                    size: [glyph_px, glyph_px],
+                    uv_min,
+                    uv_size,
+                    tint,
+                });
+            }
+            cursor_x += glyph_px;
         }
     }
 
