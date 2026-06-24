@@ -1,56 +1,212 @@
 //! winit input handling and screen->world entity picking.
 //!
-//! replaces the old sdl `event_handling` + `input` modules. stage 1 only tracks
-//! the cursor and logs events; the per-state game bindings come back in later
-//! stages. the picking helpers are ported and ready for stage 2/3 wiring.
+//! replaces the old sdl `event_handling` + `input` modules. stage 2 wires the
+//! camera (pan/zoom) and single-click selection so the rendered world is
+//! navigable. the menu-opening keys (b/s/r), box-select, and overlays return in
+//! stage 3 alongside the egui ui.
 
-use tracing::debug;
-use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
-use winit::keyboard::PhysicalKey;
+use winit::dpi::PhysicalPosition;
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::app::GameState;
+use crate::command::Command;
 use crate::control_state::ControlState;
 use crate::location::PointF64;
 use crate::viewport::Viewport;
 use crate::world::{EntityId, World};
 
+/// world distance panned per arrow-key press at zoom 1.0.
+const KEY_PAN_AT_ZOOM_1: f64 = 0.25;
+/// mouse-wheel zoom step.
+const WHEEL_ZOOM_FACTOR: f64 = 1.2;
+
 /// handle one winit window event that egui did not consume.
-///
-/// stage 1: track the cursor position (winit has no current-position query) and
-/// log input so we can confirm routing works. real game bindings return later.
 pub fn handle_window_event(
     event: &WindowEvent,
-    _viewport: &mut Viewport,
-    _world: &mut World,
+    viewport: &mut Viewport,
+    world: &mut World,
     controls: &mut ControlState,
-    _game_state: &mut GameState,
+    game_state: &mut GameState,
 ) {
+    // cursor position and modifier state are tracked regardless of game state.
     match event {
-        WindowEvent::CursorMoved { position, .. } => {
-            controls.last_mouse_pos = Some((position.x as i32, position.y as i32));
+        WindowEvent::ModifiersChanged(modifiers) => {
+            let state = modifiers.state();
+            controls.ctrl_down = state.control_key() || state.super_key();
+            controls.shift_down = state.shift_key();
+            return;
         }
-        WindowEvent::KeyboardInput { event, .. } => {
-            if event.state == ElementState::Pressed {
-                if let PhysicalKey::Code(code) = event.physical_key {
-                    debug!(?code, "key pressed");
-                }
-            }
+        WindowEvent::CursorMoved { position, .. } => {
+            handle_cursor_moved(*position, viewport, controls);
+            return;
+        }
+        _ => {}
+    }
+
+    // the rest are gameplay bindings, only active while playing.
+    if *game_state != GameState::Playing {
+        return;
+    }
+
+    match event {
+        WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+            handle_keydown(event, viewport, world, controls);
         }
         WindowEvent::MouseInput { state, button, .. } => {
-            if *state == ElementState::Pressed {
-                let pos = controls.last_mouse_pos;
-                debug!(?button, ?pos, "mouse pressed");
-            }
+            handle_mouse_button(*state, *button, viewport, world, controls);
         }
         WindowEvent::MouseWheel { delta, .. } => {
             let scroll = match delta {
                 MouseScrollDelta::LineDelta(_, y) => *y as f64,
                 MouseScrollDelta::PixelDelta(p) => p.y,
             };
-            debug!(scroll, "mouse wheel");
+            if let Some(pos) = controls.last_mouse_pos {
+                if scroll > 0.0 {
+                    viewport.zoom_at(WHEEL_ZOOM_FACTOR, pos);
+                } else if scroll < 0.0 {
+                    viewport.zoom_at(1.0 / WHEEL_ZOOM_FACTOR, pos);
+                }
+            }
         }
         _ => {}
     }
+}
+
+fn handle_cursor_moved(
+    position: PhysicalPosition<f64>,
+    viewport: &mut Viewport,
+    controls: &mut ControlState,
+) {
+    let new = (position.x as i32, position.y as i32);
+    let prev = controls.last_mouse_pos;
+    controls.last_mouse_pos = Some(new);
+
+    // middle-drag or ctrl+left-drag pans the camera.
+    if controls.middle_mouse_dragging || controls.ctrl_left_mouse_dragging {
+        if let Some((px, py)) = prev {
+            let scale = viewport.world_tile_pixel_size_on_screen();
+            viewport.anchor.x -= (new.0 - px) as f64 / scale;
+            viewport.anchor.y -= (new.1 - py) as f64 / scale;
+        }
+    }
+}
+
+fn handle_keydown(
+    event: &KeyEvent,
+    viewport: &mut Viewport,
+    world: &World,
+    controls: &mut ControlState,
+) {
+    let PhysicalKey::Code(code) = event.physical_key else {
+        return;
+    };
+    let pan = KEY_PAN_AT_ZOOM_1 / viewport.zoom.max(0.01);
+
+    match code {
+        KeyCode::ArrowUp => viewport.anchor.y -= pan,
+        KeyCode::ArrowDown => viewport.anchor.y += pan,
+        KeyCode::ArrowLeft => viewport.anchor.x -= pan,
+        KeyCode::ArrowRight => viewport.anchor.x += pan,
+        KeyCode::Equal | KeyCode::NumpadAdd => viewport.zoom_in(),
+        KeyCode::Minus | KeyCode::NumpadSubtract => viewport.zoom_out(),
+        KeyCode::Tab if !event.repeat => cycle_entity_focus(world, controls, controls.shift_down),
+        KeyCode::KeyF if !event.repeat => {
+            if !controls.selection.is_empty() {
+                controls.track_mode = !controls.track_mode;
+            }
+        }
+        KeyCode::Space if !event.repeat => controls.paused = !controls.paused,
+        KeyCode::Backquote if !event.repeat => {
+            controls.sim_speed = match controls.sim_speed {
+                1 => 2,
+                2 => 3,
+                _ => 1,
+            };
+        }
+        _ => {}
+    }
+}
+
+fn handle_mouse_button(
+    state: ElementState,
+    button: MouseButton,
+    viewport: &mut Viewport,
+    world: &mut World,
+    controls: &mut ControlState,
+) {
+    let Some((x, y)) = controls.last_mouse_pos else {
+        return;
+    };
+
+    match (state, button) {
+        (ElementState::Pressed, MouseButton::Left) => {
+            if controls.ctrl_down {
+                controls.ctrl_left_mouse_dragging = true;
+            } else {
+                match get_entity_id_at_screen_coords(x, y, viewport, world) {
+                    Some(id) => controls.selection = vec![id],
+                    None => {
+                        controls.selection.clear();
+                        controls.track_mode = false;
+                    }
+                }
+            }
+        }
+        (ElementState::Released, MouseButton::Left) => {
+            controls.ctrl_left_mouse_dragging = false;
+        }
+        (ElementState::Pressed, MouseButton::Middle) => controls.middle_mouse_dragging = true,
+        (ElementState::Released, MouseButton::Middle) => controls.middle_mouse_dragging = false,
+        (ElementState::Pressed, MouseButton::Right) => {
+            // move-order the selected ships to the clicked cell center.
+            let precise = viewport.screen_to_world_coords(x, y);
+            let destination = PointF64 {
+                x: precise.x.floor() + 0.5,
+                y: precise.y.floor() + 0.5,
+            };
+            let ships: Vec<EntityId> = controls
+                .selection
+                .iter()
+                .copied()
+                .filter(|id| world.ships.contains_key(id))
+                .collect();
+            for ship_id in ships {
+                world.add_command(Command::MoveShip {
+                    ship_id,
+                    destination,
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
+/// cycle the single selection forward (or backward with shift) through entities.
+fn cycle_entity_focus(world: &World, controls: &mut ControlState, reverse: bool) {
+    if world.entities.is_empty() {
+        controls.selection.clear();
+        return;
+    }
+    let count = world.entities.len();
+    let current = controls
+        .selection
+        .first()
+        .and_then(|id| world.entities.iter().position(|e| e == id));
+
+    let next = if reverse {
+        match current {
+            Some(0) => count - 1,
+            Some(i) => i - 1,
+            None => count - 1,
+        }
+    } else {
+        match current {
+            Some(i) => (i + 1) % count,
+            None => 0,
+        }
+    };
+    controls.selection = vec![world.entities[next]];
 }
 
 /// a screen-space rectangle in physical pixels, replacing `sdl2::rect::Rect`.

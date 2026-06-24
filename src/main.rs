@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 mod app;
+mod background;
 mod buildings;
 mod command;
 mod control_state;
@@ -16,6 +17,7 @@ mod map_generation;
 mod palette;
 mod ships;
 mod sim_clock;
+mod tileset;
 mod ui;
 mod viewport;
 mod world;

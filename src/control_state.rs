@@ -15,6 +15,7 @@ pub struct ControlState {
     pub middle_mouse_dragging: bool,
     pub ctrl_left_mouse_dragging: bool,
     pub ctrl_down: bool,
+    pub shift_down: bool,
     /// last known cursor position in physical pixels. winit, unlike sdl, has no
     /// "current mouse position" query, so we track it on every `CursorMoved`.
     pub last_mouse_pos: Option<(i32, i32)>,
@@ -32,6 +33,7 @@ impl ControlState {
             middle_mouse_dragging: false,
             ctrl_left_mouse_dragging: false,
             ctrl_down: false,
+            shift_down: false,
             last_mouse_pos: None,
             selection_box_start: None,
         }

@@ -23,6 +23,20 @@ pub fn build_ui(
         ui.label(format!("fps: {}", clock.fps_per_second));
         ui.label(format!("entities: {}", world.entities.len()));
         ui.label(format!("zoom: {:.2}", viewport.zoom));
+        ui.label(format!("speed: {}x", controls.sim_speed));
+        ui.label(format!(
+            "track: {}",
+            if controls.track_mode { "on" } else { "off" }
+        ));
+
+        let selection = match controls.selection.first() {
+            Some(&id) => {
+                let name = world.get_entity_name(id).unwrap_or_else(|| "?".to_string());
+                format!("{} ({}) +{} more", name, id, controls.selection.len() - 1)
+            }
+            None => "none".to_string(),
+        };
+        ui.label(format!("selected: {selection}"));
 
         ui.separator();
 

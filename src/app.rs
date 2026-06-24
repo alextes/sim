@@ -10,6 +10,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::{Window, WindowId};
 
+use crate::background::BackgroundLayer;
 use crate::control_state::ControlState;
 use crate::egui_layer::EguiLayer;
 use crate::game_loop::GameLoop;
@@ -85,6 +86,7 @@ pub struct App {
     controls: ControlState,
     viewport: Viewport,
     game_state: GameState,
+    background: BackgroundLayer,
     intro_start: Instant,
 }
 
@@ -93,6 +95,7 @@ impl App {
         let mut world = World::default();
         let mut rng = rand::rng();
         map_generation::populate_initial_galaxy(&mut world, &mut rng);
+        let background = BackgroundLayer::new(&mut rng);
 
         let selection = if world.entities.is_empty() {
             vec![]
@@ -114,6 +117,7 @@ impl App {
             controls,
             viewport: Viewport::default(),
             game_state: GameState::Intro,
+            background,
             intro_start: Instant::now(),
         }
     }
@@ -128,11 +132,26 @@ impl App {
             game_state,
             clock,
             viewport,
+            background,
             ..
         } = self;
         let (Some(gfx), Some(egui)) = (gfx.as_mut(), egui.as_mut()) else {
             return;
         };
+
+        // the galaxy is only drawn in the in-game states; intro/main-menu show
+        // a bare background (their menus return as egui in stage 3).
+        let show_world = !matches!(game_state, GameState::Intro | GameState::MainMenu);
+        if show_world {
+            gfx.sprite.prepare(
+                &gfx.device,
+                &gfx.queue,
+                world,
+                viewport,
+                background,
+                (gfx.config.width, gfx.config.height),
+            );
+        }
 
         let output = match gfx.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture)
@@ -160,10 +179,9 @@ impl App {
                 label: Some("frame encoder"),
             });
 
-        // world pass: stage 1 just clears to the scene background color. the
-        // gpu sprite batch (stage 2) draws here before the egui pass.
+        // world pass: clear to the scene background, then draw the tile world.
         {
-            let _world_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut world_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("world pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -179,6 +197,9 @@ impl App {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            if show_world {
+                gfx.sprite.draw(&mut world_pass);
+            }
         }
 
         // egui pass.

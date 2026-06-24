@@ -9,6 +9,7 @@ bytemuck = { version = "1", features = ["derive"] }
 egui = "0.34.3"
 egui-wgpu = "0.34.3"
 egui-winit = "0.34.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
 pollster = "0.4"
 rand = "0.9"
 sdl2 = { version = "0.37", features = ["image"] }

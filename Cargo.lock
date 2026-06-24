@@ -2251,6 +2251,7 @@ dependencies = [
  "egui",
  "egui-wgpu",
  "egui-winit",
+ "image",
  "pollster",
  "rand",
  "sdl2",

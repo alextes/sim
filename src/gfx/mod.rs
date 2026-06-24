@@ -4,9 +4,14 @@
 //! frame. frame orchestration (world pass + egui pass) lives in `app::redraw`,
 //! which needs game + egui state alongside these resources.
 
+pub mod atlas;
+pub mod sprite_batch;
+
 use std::sync::Arc;
 
 use winit::window::Window;
+
+use sprite_batch::SpriteBatch;
 
 pub struct GpuState {
     pub window: Arc<Window>,
@@ -14,6 +19,7 @@ pub struct GpuState {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
+    pub sprite: SpriteBatch,
 }
 
 impl GpuState {
@@ -70,12 +76,15 @@ impl GpuState {
         };
         surface.configure(&device, &config);
 
+        let sprite = SpriteBatch::new(&device, &queue, config.format);
+
         Self {
             window,
             surface,
             device,
             queue,
             config,
+            sprite,
         }
     }
 
