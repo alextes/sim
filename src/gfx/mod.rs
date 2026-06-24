@@ -5,12 +5,14 @@
 //! which needs game + egui state alongside these resources.
 
 pub mod atlas;
+pub mod line_batch;
 pub mod sprite_batch;
 
 use std::sync::Arc;
 
 use winit::window::Window;
 
+use line_batch::LineBatch;
 use sprite_batch::SpriteBatch;
 
 pub struct GpuState {
@@ -20,6 +22,7 @@ pub struct GpuState {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub sprite: SpriteBatch,
+    pub lines: LineBatch,
 }
 
 impl GpuState {
@@ -77,6 +80,7 @@ impl GpuState {
         surface.configure(&device, &config);
 
         let sprite = SpriteBatch::new(&device, &queue, config.format);
+        let lines = LineBatch::new(&device, config.format);
 
         Self {
             window,
@@ -85,6 +89,7 @@ impl GpuState {
             queue,
             config,
             sprite,
+            lines,
         }
     }
 

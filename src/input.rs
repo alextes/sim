@@ -15,7 +15,7 @@ use crate::control_state::ControlState;
 use crate::location::PointF64;
 use crate::ships::ShipType;
 use crate::viewport::Viewport;
-use crate::world::types::BuildingType;
+use crate::world::types::{BuildingType, EntityType};
 use crate::world::{EntityId, World};
 
 /// world distance panned per arrow-key press at zoom 1.0.
@@ -228,14 +228,24 @@ fn handle_mouse_button(
                 match get_entity_id_at_screen_coords(x, y, viewport, world) {
                     Some(id) => controls.selection = vec![id],
                     None => {
+                        // empty space: clear selection and begin a drag box.
                         controls.selection.clear();
                         controls.track_mode = false;
+                        controls.selection_box_start = Some((x, y));
                     }
                 }
             }
         }
         (ElementState::Released, MouseButton::Left) => {
             controls.ctrl_left_mouse_dragging = false;
+            if let Some(start) = controls.selection_box_start.take() {
+                let rect = ScreenRect::from_corners(start, (x, y));
+                // ignore tiny drags (those were really just empty-space clicks).
+                if rect.w > 2 && rect.h > 2 {
+                    let entities = get_entities_in_screen_rect(rect, viewport, world);
+                    apply_box_selection(controls, world, &entities);
+                }
+            }
         }
         (ElementState::Pressed, MouseButton::Middle) => controls.middle_mouse_dragging = true,
         (ElementState::Released, MouseButton::Middle) => controls.middle_mouse_dragging = false,
@@ -290,9 +300,38 @@ fn cycle_entity_focus(world: &World, controls: &mut ControlState, reverse: bool)
     controls.selection = vec![world.entities[next]];
 }
 
+/// resolve a box selection: prefer ships (select all), otherwise a single body
+/// by type priority star > gas giant > planet > moon (ported from the old sdl
+/// logic).
+fn apply_box_selection(controls: &mut ControlState, world: &World, entities: &[EntityId]) {
+    let of_type = |ty: EntityType| -> Vec<EntityId> {
+        entities
+            .iter()
+            .copied()
+            .filter(|id| world.get_entity_type(*id) == Some(ty))
+            .collect()
+    };
+
+    let ships = of_type(EntityType::Ship);
+    if !ships.is_empty() {
+        controls.selection = ships;
+        return;
+    }
+    for ty in [
+        EntityType::Star,
+        EntityType::GasGiant,
+        EntityType::Planet,
+        EntityType::Moon,
+    ] {
+        let bodies = of_type(ty);
+        if bodies.len() == 1 {
+            controls.selection = bodies;
+            return;
+        }
+    }
+}
+
 /// a screen-space rectangle in physical pixels, replacing `sdl2::rect::Rect`.
-/// used by box-select, which lands with the overlay follow-up.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct ScreenRect {
     pub x: i32,
@@ -301,7 +340,6 @@ pub struct ScreenRect {
     pub h: u32,
 }
 
-#[allow(dead_code)]
 impl ScreenRect {
     /// build the axis-aligned rect spanning two corner points.
     pub fn from_corners(a: (i32, i32), b: (i32, i32)) -> Self {
@@ -347,8 +385,6 @@ pub fn get_entity_id_at_screen_coords(
 }
 
 /// all entities whose on-screen tile overlaps the given screen rectangle.
-/// used by box-select, which lands with the overlay follow-up.
-#[allow(dead_code)]
 pub fn get_entities_in_screen_rect(
     rect: ScreenRect,
     viewport: &Viewport,

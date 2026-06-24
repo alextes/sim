@@ -146,14 +146,11 @@ impl App {
         // a bare background (their menus return as egui in stage 3).
         let show_world = !matches!(game_state, GameState::Intro | GameState::MainMenu);
         if show_world {
-            gfx.sprite.prepare(
-                &gfx.device,
-                &gfx.queue,
-                world,
-                viewport,
-                background,
-                (gfx.config.width, gfx.config.height),
-            );
+            let screen = (gfx.config.width, gfx.config.height);
+            gfx.sprite
+                .prepare(&gfx.device, &gfx.queue, world, viewport, background, screen);
+            gfx.lines
+                .prepare(&gfx.device, &gfx.queue, world, viewport, controls, screen);
         }
 
         let output = match gfx.surface.get_current_texture() {
@@ -202,6 +199,7 @@ impl App {
             });
             if show_world {
                 gfx.sprite.draw(&mut world_pass);
+                gfx.lines.draw(&mut world_pass);
             }
         }
 

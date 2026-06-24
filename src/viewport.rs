@@ -59,8 +59,15 @@ impl Viewport {
         }
     }
 
-    // used by box-select / overlays (overlay follow-up).
-    #[allow(dead_code)]
+    /// map a precise world position to screen pixels (f64). used by the line
+    /// overlay batch.
+    pub fn world_to_screen_px(&self, world_x: f64, world_y: f64) -> (f64, f64) {
+        let scale = self.world_tile_pixel_size_on_screen();
+        let origin_x = self.anchor.x - (self.screen_pixel_width as f64 / 2.0) / scale;
+        let origin_y = self.anchor.y - (self.screen_pixel_height as f64 / 2.0) / scale;
+        ((world_x - origin_x) * scale, (world_y - origin_y) * scale)
+    }
+
     pub fn world_to_screen_coords(&self, world_pos: Point) -> (i32, i32) {
         let world_tile_actual_pixel_size_on_screen = self.world_tile_pixel_size_on_screen();
 
