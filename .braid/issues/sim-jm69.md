@@ -1,5 +1,5 @@
 ---
-schema_version: 8
+schema_version: 9
 id: sim-jm69
 title: improve game testability for agent-driven development
 priority: P2
