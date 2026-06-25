@@ -1,6 +1,6 @@
 use crate::command::Command;
 use crate::location::PointF64;
-use crate::ships::ShipType;
+use crate::ships::{buildable_ship, ShipType};
 use crate::world::components::{CivilianShipState, MiningRoute};
 use crate::world::resources;
 use crate::world::types::Storable;
@@ -103,11 +103,14 @@ impl World {
                         let has_shipyard =
                             buildings.get_count(crate::world::types::BuildingType::Shipyard) > 0;
 
-                        if has_shipyard {
-                            data.credits -= MINING_SHIP_COST;
+                        let can_afford_ship_resources = buildable_ship(ShipType::MiningShip)
+                            .is_some_and(|buildable| buildable.can_afford(&data.stocks));
+
+                        if has_shipyard && can_afford_ship_resources {
                             self.add_command(Command::BuildShip {
                                 shipyard_entity_id: entity_id,
                                 ship_type: ShipType::MiningShip,
+                                civilian_credit_cost: Some(MINING_SHIP_COST),
                             });
                             tracing::info!(
                                 "entity {} is building a mining ship",
@@ -385,5 +388,35 @@ impl World {
         }
 
         sales_info
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::buildings::EntityBuildings;
+    use crate::location::Point;
+    use crate::world::types::{BuildingType, CelestialBodyData};
+
+    #[test]
+    fn civilian_ai_keeps_credits_when_shipyard_lacks_mining_ship_resources() {
+        let mut world = World::default();
+        let shipyard_id = world.spawn_star("shipyard".to_string(), Point { x: 0, y: 0 });
+        world.celestial_data.insert(
+            shipyard_id,
+            CelestialBodyData {
+                credits: 1000.0,
+                population: 1.0,
+                ..Default::default()
+            },
+        );
+        let mut buildings = EntityBuildings::new("shipyard");
+        buildings.infra.insert(BuildingType::Shipyard, 1);
+        world.buildings.insert(shipyard_id, buildings);
+
+        world.update_civilian_economy(0.0);
+
+        assert_eq!(world.celestial_data[&shipyard_id].credits, 1000.0);
+        assert!(world.command_queue.is_empty());
     }
 }

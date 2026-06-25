@@ -9,7 +9,7 @@ use crate::buildings::EntityBuildings;
 use crate::command::Command;
 use crate::control_state::ControlState;
 use crate::palette;
-use crate::ships::ShipType;
+use crate::ships::{buildable_ships, ShipBuildShortfall, ShipBuildable};
 use crate::world::components::MiningRoute;
 use crate::world::types::{BuildingType, RawResource};
 use crate::world::{EntityId, World};
@@ -203,10 +203,10 @@ pub fn shipyard_menu(
             return;
         };
         ui.label("build ship?");
-        for ship_type in [ShipType::Frigate, ShipType::MiningShip] {
-            let label = format!("{}  ({})", ship_name(ship_type), cost_summary(ship_type));
+        for buildable in buildable_ships() {
+            let label = format!("{}  ({})", buildable.name, cost_summary(*buildable));
             if ui.button(label).clicked() {
-                try_build_ship(world, game_state, shipyard_id, ship_type);
+                try_build_ship(world, game_state, shipyard_id, *buildable);
             }
         }
         if ui.button("close").clicked() {
@@ -215,24 +215,15 @@ pub fn shipyard_menu(
     });
 }
 
-fn ship_name(ship_type: ShipType) -> &'static str {
-    match ship_type {
-        ShipType::Frigate => "frigate",
-        ShipType::MiningShip => "mining ship",
-    }
-}
-
 /// a "80 metals, 30 crystals" summary of a ship's build cost.
-fn cost_summary(ship_type: ShipType) -> String {
-    let mut parts: Vec<(&'static str, f32)> = ship_type
-        .build_cost()
-        .into_iter()
-        .map(|(storable, cost)| (storable_display(storable).0, cost))
-        .collect();
-    parts.sort_by_key(|(label, _)| *label);
-    parts
+fn cost_summary(buildable: ShipBuildable) -> String {
+    buildable
+        .costs
         .iter()
-        .map(|(label, cost)| format!("{cost:.0} {label}"))
+        .map(|cost| {
+            let label = storable_display(cost.resource).0;
+            format!("{:.0} {label}", cost.quantity)
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -243,30 +234,33 @@ fn try_build_ship(
     world: &mut World,
     game_state: &mut GameState,
     shipyard_id: EntityId,
-    ship_type: ShipType,
+    buildable: ShipBuildable,
 ) {
-    let costs = ship_type.build_cost();
     let shortfall = {
-        let body = world.celestial_data.get(&shipyard_id);
-        costs.iter().find_map(|(&resource, &cost)| {
-            let have = body
-                .and_then(|d| d.stocks.get(&resource))
-                .copied()
-                .unwrap_or(0.0);
-            (have < cost).then_some((resource, cost, have))
-        })
+        match world.celestial_data.get(&shipyard_id) {
+            Some(body) => buildable.first_shortfall(&body.stocks),
+            None => buildable.costs.first().map(|cost| ShipBuildShortfall {
+                resource: cost.resource,
+                required: cost.quantity,
+                available: 0.0,
+            }),
+        }
     };
     match shortfall {
-        Some((resource, cost, have)) => {
-            let (label, _) = storable_display(resource);
+        Some(shortfall) => {
+            let (label, _) = storable_display(shortfall.resource);
             *game_state = GameState::ShipyardMenuError {
-                message: format!("not enough {label} (need {cost:.0}, have {have:.0})"),
+                message: format!(
+                    "not enough {label} (need {:.0}, have {:.0})",
+                    shortfall.required, shortfall.available
+                ),
             };
         }
         None => {
             world.add_command(Command::BuildShip {
                 shipyard_entity_id: shipyard_id,
-                ship_type,
+                ship_type: buildable.ship_type,
+                civilian_credit_cost: None,
             });
             *game_state = GameState::Playing;
         }

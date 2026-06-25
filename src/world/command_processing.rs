@@ -2,7 +2,7 @@ use crate::buildings::EntityBuildings;
 use crate::command::Command;
 use crate::location::Point;
 use crate::location::PointF64;
-use crate::ships::ShipType;
+use crate::ships::{buildable_ship, ShipType};
 use crate::world::World;
 use rand::Rng;
 
@@ -25,56 +25,97 @@ impl World {
             Command::BuildShip {
                 shipyard_entity_id,
                 ship_type,
+                civilian_credit_cost,
             } => {
-                let costs = ship_type.build_cost();
-                let can_afford = self
-                    .celestial_data
-                    .get(&shipyard_entity_id)
-                    .is_some_and(|cd| {
-                        costs
-                            .iter()
-                            .all(|(res, &cost)| cd.stocks.get(res).copied().unwrap_or(0.0) >= cost)
-                    });
-                if !can_afford {
+                let Some(buildable) = buildable_ship(ship_type) else {
                     tracing::warn!(
-                        "entity {} cannot afford ship {:?}",
+                        "entity {} cannot build unavailable ship {:?}",
                         self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
                         ship_type
                     );
-                } else if let Some(shipyard_loc) = self.locations.get_location(shipyard_entity_id) {
-                    // deduct the cost from the shipyard body's stocks.
-                    if let Some(cd) = self.celestial_data.get_mut(&shipyard_entity_id) {
-                        for (res, cost) in &costs {
-                            *cd.stocks.entry(*res).or_insert(0.0) -= cost;
-                        }
+                    return;
+                };
+
+                let Some(shipyard_data) = self.celestial_data.get(&shipyard_entity_id) else {
+                    tracing::warn!(
+                        "entity {} cannot build ship {:?}: missing shipyard stocks",
+                        self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
+                        ship_type
+                    );
+                    return;
+                };
+
+                let shortfall = buildable.first_shortfall(&shipyard_data.stocks);
+                if let Some(shortfall) = shortfall {
+                    tracing::warn!(
+                        "entity {} cannot afford ship {:?}: not enough {:?} (needs {}, has {})",
+                        self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
+                        ship_type,
+                        shortfall.resource,
+                        shortfall.required,
+                        shortfall.available
+                    );
+                    return;
+                }
+
+                let Some(shipyard_loc) = self.locations.get_location(shipyard_entity_id) else {
+                    return;
+                };
+
+                if let Some(credit_cost) = civilian_credit_cost {
+                    let credits = self
+                        .celestial_data
+                        .get(&shipyard_entity_id)
+                        .map(|cd| cd.credits)
+                        .unwrap_or(0.0);
+                    if credits < credit_cost {
+                        tracing::warn!(
+                            "entity {} cannot afford ship {:?}: not enough credits (needs {}, has {})",
+                            self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
+                            ship_type,
+                            credit_cost,
+                            credits
+                        );
+                        return;
                     }
-                    let mut rng = rand::rng();
-                    let spawn_offset_x = rng.random_range(-2.0..2.0);
-                    let spawn_offset_y = rng.random_range(-2.0..2.0);
-                    let spawn_pos = PointF64 {
-                        x: shipyard_loc.x as f64 + spawn_offset_x,
-                        y: shipyard_loc.y as f64 + spawn_offset_y,
-                    };
-                    match ship_type {
-                        ShipType::Frigate => {
-                            self.spawn_frigate(
-                                "new_frigate".to_string(),
-                                Point {
-                                    x: spawn_pos.x as i32,
-                                    y: spawn_pos.y as i32,
-                                },
-                            );
-                        }
-                        ShipType::MiningShip => {
-                            self.spawn_mining_ship(
-                                "mining_ship".to_string(),
-                                Point {
-                                    x: spawn_pos.x as i32,
-                                    y: spawn_pos.y as i32,
-                                },
-                                shipyard_entity_id, // home base
-                            );
-                        }
+                }
+
+                // deduct the cost from the shipyard body's stocks.
+                if let Some(cd) = self.celestial_data.get_mut(&shipyard_entity_id) {
+                    for cost in buildable.costs {
+                        *cd.stocks.entry(cost.resource).or_insert(0.0) -= cost.quantity;
+                    }
+                    if let Some(credit_cost) = civilian_credit_cost {
+                        cd.credits -= credit_cost;
+                    }
+                }
+
+                let mut rng = rand::rng();
+                let spawn_offset_x = rng.random_range(-2.0..2.0);
+                let spawn_offset_y = rng.random_range(-2.0..2.0);
+                let spawn_pos = PointF64 {
+                    x: shipyard_loc.x as f64 + spawn_offset_x,
+                    y: shipyard_loc.y as f64 + spawn_offset_y,
+                };
+                match ship_type {
+                    ShipType::Frigate => {
+                        self.spawn_frigate(
+                            "new_frigate".to_string(),
+                            Point {
+                                x: spawn_pos.x as i32,
+                                y: spawn_pos.y as i32,
+                            },
+                        );
+                    }
+                    ShipType::MiningShip => {
+                        self.spawn_mining_ship(
+                            "mining_ship".to_string(),
+                            Point {
+                                x: spawn_pos.x as i32,
+                                y: spawn_pos.y as i32,
+                            },
+                            shipyard_entity_id,
+                        );
                     }
                 }
             }
@@ -127,5 +168,69 @@ impl World {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::Command;
+    use crate::location::Point;
+    use crate::world::types::{CelestialBodyData, RawResource, Storable};
+    use std::collections::HashMap;
+
+    #[test]
+    fn rejected_ship_build_does_not_deduct_resources_or_spawn_ship() {
+        let mut world = World::default();
+        let shipyard_id = world.spawn_star("shipyard".to_string(), Point { x: 0, y: 0 });
+        world.celestial_data.insert(
+            shipyard_id,
+            CelestialBodyData {
+                stocks: HashMap::from([(Storable::Raw(RawResource::Metals), 80.0)]),
+                ..Default::default()
+            },
+        );
+
+        world.add_command(Command::BuildShip {
+            shipyard_entity_id: shipyard_id,
+            ship_type: ShipType::Frigate,
+            civilian_credit_cost: Some(1000.0),
+        });
+        world.process_commands();
+
+        let stocks = &world.celestial_data[&shipyard_id].stocks;
+        assert_eq!(stocks[&Storable::Raw(RawResource::Metals)], 80.0);
+        assert_eq!(world.celestial_data[&shipyard_id].credits, 0.0);
+        assert!(world.ships.is_empty());
+    }
+
+    #[test]
+    fn accepted_civilian_ship_build_deducts_resources_and_credits() {
+        let mut world = World::default();
+        let shipyard_id = world.spawn_star("shipyard".to_string(), Point { x: 0, y: 0 });
+        world.celestial_data.insert(
+            shipyard_id,
+            CelestialBodyData {
+                credits: 1000.0,
+                stocks: HashMap::from([
+                    (Storable::Raw(RawResource::Metals), 50.0),
+                    (Storable::Raw(RawResource::Crystals), 15.0),
+                ]),
+                ..Default::default()
+            },
+        );
+
+        world.add_command(Command::BuildShip {
+            shipyard_entity_id: shipyard_id,
+            ship_type: ShipType::MiningShip,
+            civilian_credit_cost: Some(1000.0),
+        });
+        world.process_commands();
+
+        let stocks = &world.celestial_data[&shipyard_id].stocks;
+        assert_eq!(stocks[&Storable::Raw(RawResource::Metals)], 0.0);
+        assert_eq!(stocks[&Storable::Raw(RawResource::Crystals)], 0.0);
+        assert_eq!(world.celestial_data[&shipyard_id].credits, 0.0);
+        assert_eq!(world.ships.len(), 1);
     }
 }

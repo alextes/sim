@@ -17,5 +17,6 @@ pub enum Command {
     BuildShip {
         shipyard_entity_id: EntityId,
         ship_type: ShipType,
+        civilian_credit_cost: Option<f64>,
     },
 }
