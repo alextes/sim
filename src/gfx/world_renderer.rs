@@ -54,7 +54,9 @@ impl WorldRenderer {
     }
 
     pub fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+        // lanes/orbits behind the tiles, then tiles, then overlays on top.
+        self.lines.draw_background(render_pass);
         self.sprite.draw(render_pass);
-        self.lines.draw(render_pass);
+        self.lines.draw_foreground(render_pass);
     }
 }

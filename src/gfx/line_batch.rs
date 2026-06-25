@@ -32,6 +32,9 @@ pub struct LineBatch {
     vertex_buffer: wgpu::Buffer,
     capacity_bytes: u64,
     verts: Vec<LineVertex>,
+    /// number of leading vertices that belong behind the tiles (lanes, orbits);
+    /// the rest are drawn on top.
+    background_verts: u32,
 }
 
 /// don't draw the debug grid when this many world tiles are visible per axis
@@ -135,6 +138,7 @@ impl LineBatch {
             vertex_buffer,
             capacity_bytes: initial_capacity,
             verts: Vec::new(),
+            background_verts: 0,
         }
     }
 
@@ -158,8 +162,11 @@ impl LineBatch {
         );
 
         self.verts.clear();
+        // behind the tiles: lanes and orbit rings.
         self.push_lanes(world, viewport);
         self.push_orbits(world, viewport);
+        self.background_verts = self.verts.len() as u32;
+        // on top of the tiles: grid, move orders, selection, drag box.
         if controls.debug_enabled {
             self.push_grid(viewport, screen_w, screen_h);
         }
@@ -300,15 +307,24 @@ impl LineBatch {
         }
     }
 
-    pub fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>) {
-        let count = self.verts.len() as u32;
-        if count == 0 {
+    /// draw the behind-the-tiles lines (lanes, orbits).
+    pub fn draw_background(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+        self.draw_range(render_pass, 0..self.background_verts);
+    }
+
+    /// draw the on-top lines (grid, move orders, selection, drag box).
+    pub fn draw_foreground(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+        self.draw_range(render_pass, self.background_verts..self.verts.len() as u32);
+    }
+
+    fn draw_range(&self, render_pass: &mut wgpu::RenderPass<'_>, range: std::ops::Range<u32>) {
+        if range.is_empty() {
             return;
         }
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.globals_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.draw(0..count, 0..1);
+        render_pass.draw(range, 0..1);
     }
 }
 
