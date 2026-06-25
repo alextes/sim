@@ -299,10 +299,10 @@ impl LineBatch {
 
     fn push_select_box(&mut self, controls: &ControlState) {
         if let (Some(start), Some(end)) = (controls.selection_box_start, controls.last_mouse_pos) {
-            let x = start.0.min(end.0) as f64;
-            let y = start.1.min(end.1) as f64;
-            let w = (start.0 - end.0).abs() as f64;
-            let h = (start.1 - end.1).abs() as f64;
+            let x = start.0.min(end.0);
+            let y = start.1.min(end.1);
+            let w = (start.0 - end.0).abs();
+            let h = (start.1 - end.1).abs();
             self.rect(x, y, w, h, rgba(palette::WHITE, 1.0));
         }
     }

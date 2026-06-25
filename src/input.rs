@@ -23,6 +23,19 @@ const KEY_PAN_AT_ZOOM_1: f64 = 0.25;
 /// mouse-wheel zoom step.
 const WHEEL_ZOOM_FACTOR: f64 = 1.2;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct InputOutcome {
+    pub request_redraw: bool,
+}
+
+impl InputOutcome {
+    fn redraw() -> Self {
+        Self {
+            request_redraw: true,
+        }
+    }
+}
+
 /// handle one winit window event that egui did not consume.
 pub fn handle_window_event(
     event: &WindowEvent,
@@ -30,18 +43,17 @@ pub fn handle_window_event(
     world: &mut World,
     controls: &mut ControlState,
     game_state: &mut GameState,
-) {
+) -> InputOutcome {
     // cursor position and modifier state are tracked regardless of game state.
     match event {
         WindowEvent::ModifiersChanged(modifiers) => {
             let state = modifiers.state();
             controls.ctrl_down = state.control_key() || state.super_key();
             controls.shift_down = state.shift_key();
-            return;
+            return InputOutcome::default();
         }
         WindowEvent::CursorMoved { position, .. } => {
-            handle_cursor_moved(*position, viewport, controls);
-            return;
+            return handle_cursor_moved(*position, viewport, controls);
         }
         _ => {}
     }
@@ -53,21 +65,22 @@ pub fn handle_window_event(
             && matches!(key.physical_key, PhysicalKey::Code(KeyCode::Escape))
         {
             handle_escape(game_state, controls);
-            return;
+            return InputOutcome::default();
         }
     }
 
     // the rest are gameplay bindings, only active while playing.
     if *game_state != GameState::Playing {
-        return;
+        return InputOutcome::default();
     }
 
     match event {
         WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-            handle_keydown(event, viewport, world, controls, game_state);
+            handle_keydown(event, viewport, world, controls, game_state)
         }
         WindowEvent::MouseInput { state, button, .. } => {
             handle_mouse_button(*state, *button, viewport, world, controls);
+            InputOutcome::default()
         }
         WindowEvent::MouseWheel { delta, .. } => {
             let scroll = match delta {
@@ -77,12 +90,15 @@ pub fn handle_window_event(
             if let Some(pos) = controls.last_mouse_pos {
                 if scroll > 0.0 {
                     viewport.zoom_at(WHEEL_ZOOM_FACTOR, pos);
+                    return InputOutcome::redraw();
                 } else if scroll < 0.0 {
                     viewport.zoom_at(1.0 / WHEEL_ZOOM_FACTOR, pos);
+                    return InputOutcome::redraw();
                 }
             }
+            InputOutcome::default()
         }
-        _ => {}
+        _ => InputOutcome::default(),
     }
 }
 
@@ -90,8 +106,8 @@ fn handle_cursor_moved(
     position: PhysicalPosition<f64>,
     viewport: &mut Viewport,
     controls: &mut ControlState,
-) {
-    let new = (position.x as i32, position.y as i32);
+) -> InputOutcome {
+    let new = (position.x, position.y);
     let prev = controls.last_mouse_pos;
     controls.last_mouse_pos = Some(new);
 
@@ -99,10 +115,12 @@ fn handle_cursor_moved(
     if controls.middle_mouse_dragging || controls.ctrl_left_mouse_dragging {
         if let Some((px, py)) = prev {
             let scale = viewport.world_tile_pixel_size_on_screen();
-            viewport.anchor.x -= (new.0 - px) as f64 / scale;
-            viewport.anchor.y -= (new.1 - py) as f64 / scale;
+            viewport.anchor.x -= (new.0 - px) / scale;
+            viewport.anchor.y -= (new.1 - py) / scale;
+            return InputOutcome::redraw();
         }
     }
+    InputOutcome::default()
 }
 
 fn handle_keydown(
@@ -111,38 +129,76 @@ fn handle_keydown(
     world: &World,
     controls: &mut ControlState,
     game_state: &mut GameState,
-) {
+) -> InputOutcome {
     let PhysicalKey::Code(code) = event.physical_key else {
-        return;
+        return InputOutcome::default();
     };
     let pan = KEY_PAN_AT_ZOOM_1 / viewport.zoom.max(0.01);
 
     match code {
-        KeyCode::ArrowUp => viewport.anchor.y -= pan,
-        KeyCode::ArrowDown => viewport.anchor.y += pan,
-        KeyCode::ArrowLeft => viewport.anchor.x -= pan,
-        KeyCode::ArrowRight => viewport.anchor.x += pan,
-        KeyCode::Equal | KeyCode::NumpadAdd => viewport.zoom_in(),
-        KeyCode::Minus | KeyCode::NumpadSubtract => viewport.zoom_out(),
-        KeyCode::Tab if !event.repeat => cycle_entity_focus(world, controls, controls.shift_down),
-        KeyCode::F4 if !event.repeat => controls.debug_enabled = !controls.debug_enabled,
+        KeyCode::ArrowUp => {
+            viewport.anchor.y -= pan;
+            InputOutcome::redraw()
+        }
+        KeyCode::ArrowDown => {
+            viewport.anchor.y += pan;
+            InputOutcome::redraw()
+        }
+        KeyCode::ArrowLeft => {
+            viewport.anchor.x -= pan;
+            InputOutcome::redraw()
+        }
+        KeyCode::ArrowRight => {
+            viewport.anchor.x += pan;
+            InputOutcome::redraw()
+        }
+        KeyCode::Equal | KeyCode::NumpadAdd => {
+            viewport.zoom_in();
+            InputOutcome::redraw()
+        }
+        KeyCode::Minus | KeyCode::NumpadSubtract => {
+            viewport.zoom_out();
+            InputOutcome::redraw()
+        }
+        KeyCode::Tab if !event.repeat => {
+            cycle_entity_focus(world, controls, controls.shift_down);
+            InputOutcome::default()
+        }
+        KeyCode::F4 if !event.repeat => {
+            controls.debug_enabled = !controls.debug_enabled;
+            InputOutcome::default()
+        }
         KeyCode::KeyF if !event.repeat => {
             if !controls.selection.is_empty() {
                 controls.track_mode = !controls.track_mode;
             }
+            InputOutcome::default()
         }
-        KeyCode::KeyB if !event.repeat => open_build_menu(world, controls, game_state),
-        KeyCode::KeyS if !event.repeat => open_shipyard_menu(world, controls, game_state),
-        KeyCode::KeyR if !event.repeat => open_mining_menu(world, controls, game_state),
-        KeyCode::Space if !event.repeat => controls.paused = !controls.paused,
+        KeyCode::KeyB if !event.repeat => {
+            open_build_menu(world, controls, game_state);
+            InputOutcome::default()
+        }
+        KeyCode::KeyS if !event.repeat => {
+            open_shipyard_menu(world, controls, game_state);
+            InputOutcome::default()
+        }
+        KeyCode::KeyR if !event.repeat => {
+            open_mining_menu(world, controls, game_state);
+            InputOutcome::default()
+        }
+        KeyCode::Space if !event.repeat => {
+            controls.paused = !controls.paused;
+            InputOutcome::default()
+        }
         KeyCode::Backquote if !event.repeat => {
             controls.sim_speed = match controls.sim_speed {
                 1 => 2,
                 2 => 3,
                 _ => 1,
             };
+            InputOutcome::default()
         }
-        _ => {}
+        _ => InputOutcome::default(),
     }
 }
 
@@ -240,7 +296,7 @@ fn handle_mouse_button(
             if let Some(start) = controls.selection_box_start.take() {
                 let rect = ScreenRect::from_corners(start, (x, y));
                 // ignore tiny drags (those were really just empty-space clicks).
-                if rect.w > 2 && rect.h > 2 {
+                if rect.w > 2.0 && rect.h > 2.0 {
                     let entities = get_entities_in_screen_rect(rect, viewport, world);
                     apply_box_selection(controls, world, &entities);
                 }
@@ -333,37 +389,37 @@ fn apply_box_selection(controls: &mut ControlState, world: &World, entities: &[E
 /// a screen-space rectangle in physical pixels.
 #[derive(Debug, Clone, Copy)]
 pub struct ScreenRect {
-    pub x: i32,
-    pub y: i32,
-    pub w: u32,
-    pub h: u32,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
 }
 
 impl ScreenRect {
     /// build the axis-aligned rect spanning two corner points.
-    pub fn from_corners(a: (i32, i32), b: (i32, i32)) -> Self {
+    pub fn from_corners(a: (f64, f64), b: (f64, f64)) -> Self {
         Self {
             x: a.0.min(b.0),
             y: a.1.min(b.1),
-            w: (a.0 - b.0).unsigned_abs(),
-            h: (a.1 - b.1).unsigned_abs(),
+            w: (a.0 - b.0).abs(),
+            h: (a.1 - b.1).abs(),
         }
     }
 
     /// true if the two rects overlap (touching edges do not count).
     pub fn intersects(&self, other: &ScreenRect) -> bool {
-        let ax2 = self.x + self.w as i32;
-        let ay2 = self.y + self.h as i32;
-        let bx2 = other.x + other.w as i32;
-        let by2 = other.y + other.h as i32;
+        let ax2 = self.x + self.w;
+        let ay2 = self.y + self.h;
+        let bx2 = other.x + other.w;
+        let by2 = other.y + other.h;
         self.x < bx2 && ax2 > other.x && self.y < by2 && ay2 > other.y
     }
 }
 
 /// the entity id at the given screen coordinates, if any.
 pub fn get_entity_id_at_screen_coords(
-    screen_x: i32,
-    screen_y: i32,
+    screen_x: f64,
+    screen_y: f64,
     viewport: &Viewport,
     world: &World,
 ) -> Option<EntityId> {
@@ -394,14 +450,15 @@ pub fn get_entities_in_screen_rect(
     let world_tile_size_on_screen = viewport.world_tile_pixel_size_on_screen();
 
     for entity_id in world.iter_entities() {
-        if let Some(pos) = world.get_location(entity_id) {
-            let screen_coords = viewport.world_to_screen_coords(pos);
+        if let Some(pos) = world.get_location_f64(entity_id) {
+            let screen_coords = viewport.world_to_screen_px(pos.x, pos.y);
+            let size = (world.get_render_size(entity_id) * world_tile_size_on_screen).max(2.0);
 
             let entity_rect = ScreenRect {
-                x: screen_coords.0,
-                y: screen_coords.1,
-                w: world_tile_size_on_screen.round() as u32,
-                h: world_tile_size_on_screen.round() as u32,
+                x: screen_coords.0 - size / 2.0,
+                y: screen_coords.1 - size / 2.0,
+                w: size,
+                h: size,
             };
 
             if rect.intersects(&entity_rect) {
@@ -436,35 +493,54 @@ mod tests {
         };
 
         // click on the center of the screen, which should be where the entity is
-        let result = get_entity_id_at_screen_coords(400, 300, &viewport, &world);
+        let result = get_entity_id_at_screen_coords(400.0, 300.0, &viewport, &world);
         assert_eq!(result, Some(entity_id));
 
         // click somewhere else
-        let result_none = get_entity_id_at_screen_coords(0, 0, &viewport, &world);
+        let result_none = get_entity_id_at_screen_coords(0.0, 0.0, &viewport, &world);
         assert_eq!(result_none, None);
     }
 
     #[test]
     fn test_screen_rect_intersects() {
         let a = ScreenRect {
-            x: 0,
-            y: 0,
-            w: 10,
-            h: 10,
+            x: 0.0,
+            y: 0.0,
+            w: 10.0,
+            h: 10.0,
         };
         let overlapping = ScreenRect {
-            x: 5,
-            y: 5,
-            w: 10,
-            h: 10,
+            x: 5.0,
+            y: 5.0,
+            w: 10.0,
+            h: 10.0,
         };
         let disjoint = ScreenRect {
-            x: 20,
-            y: 20,
-            w: 5,
-            h: 5,
+            x: 20.0,
+            y: 20.0,
+            w: 5.0,
+            h: 5.0,
         };
         assert!(a.intersects(&overlapping));
         assert!(!a.intersects(&disjoint));
+    }
+
+    #[test]
+    fn test_subpixel_drag_pans_camera() {
+        let mut viewport = Viewport::default();
+        let mut controls = ControlState::new(vec![]);
+        controls.middle_mouse_dragging = true;
+        controls.last_mouse_pos = Some((10.25, 20.25));
+
+        let outcome = handle_cursor_moved(
+            PhysicalPosition::new(10.75, 20.75),
+            &mut viewport,
+            &mut controls,
+        );
+
+        assert!(outcome.request_redraw);
+        assert!((viewport.anchor.x - -(0.5 / 9.0)).abs() < 1e-9);
+        assert!((viewport.anchor.y - -(0.5 / 9.0)).abs() < 1e-9);
+        assert_eq!(controls.last_mouse_pos, Some((10.75, 20.75)));
     }
 }

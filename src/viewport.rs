@@ -3,7 +3,7 @@
 //! ported from the old sdl `render::viewport` module. this is pure f64 math
 //! with no rendering dependency; the gpu sprite batch (stage 2) consumes it.
 
-use crate::location::{Point, PointF64};
+use crate::location::PointF64;
 
 /// size of a single world tile in screen pixels at zoom 1.0.
 pub const TILE_PIXEL_WIDTH: u32 = 9;
@@ -39,7 +39,7 @@ impl Viewport {
         (TILE_PIXEL_WIDTH as f64 * self.zoom).max(0.001)
     }
 
-    pub fn screen_to_world_coords(&self, screen_x: i32, screen_y: i32) -> PointF64 {
+    pub fn screen_to_world_coords(&self, screen_x: f64, screen_y: f64) -> PointF64 {
         let world_tile_actual_pixel_size_on_screen =
             (TILE_PIXEL_WIDTH as f64 * self.zoom).max(0.001);
 
@@ -48,10 +48,8 @@ impl Viewport {
         let view_world_origin_y = self.anchor.y
             - (self.screen_pixel_height as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
 
-        let world_x =
-            view_world_origin_x + (screen_x as f64 / world_tile_actual_pixel_size_on_screen);
-        let world_y =
-            view_world_origin_y + (screen_y as f64 / world_tile_actual_pixel_size_on_screen);
+        let world_x = view_world_origin_x + (screen_x / world_tile_actual_pixel_size_on_screen);
+        let world_y = view_world_origin_y + (screen_y / world_tile_actual_pixel_size_on_screen);
 
         PointF64 {
             x: world_x,
@@ -68,25 +66,8 @@ impl Viewport {
         ((world_x - origin_x) * scale, (world_y - origin_y) * scale)
     }
 
-    pub fn world_to_screen_coords(&self, world_pos: Point) -> (i32, i32) {
-        let world_tile_actual_pixel_size_on_screen = self.world_tile_pixel_size_on_screen();
-
-        let view_world_origin_x = self.anchor.x
-            - (self.screen_pixel_width as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
-        let view_world_origin_y = self.anchor.y
-            - (self.screen_pixel_height as f64 / 2.0) / world_tile_actual_pixel_size_on_screen;
-
-        let screen_x =
-            (world_pos.x as f64 - view_world_origin_x) * world_tile_actual_pixel_size_on_screen;
-        let screen_y =
-            (world_pos.y as f64 - view_world_origin_y) * world_tile_actual_pixel_size_on_screen;
-
-        (screen_x.round() as i32, screen_y.round() as i32)
-    }
-
-    pub fn center_on_entity(&mut self, x: i32, y: i32) {
-        self.anchor.x = x as f64;
-        self.anchor.y = y as f64;
+    pub fn center_on_world(&mut self, position: PointF64) {
+        self.anchor = position;
     }
 
     pub fn zoom_in(&mut self) {
@@ -99,7 +80,7 @@ impl Viewport {
         self.zoom = self.zoom.clamp(0.05, 10.0);
     }
 
-    pub fn zoom_at(&mut self, zoom_factor: f64, mouse_screen_pos: (i32, i32)) {
+    pub fn zoom_at(&mut self, zoom_factor: f64, mouse_screen_pos: (f64, f64)) {
         let world_pos_before_zoom =
             self.screen_to_world_coords(mouse_screen_pos.0, mouse_screen_pos.1);
 
@@ -107,10 +88,8 @@ impl Viewport {
         self.zoom = self.zoom.clamp(0.05, 10.0);
 
         let new_world_tile_pixel_size = (TILE_PIXEL_WIDTH as f64 * self.zoom).max(0.001);
-        let mouse_offset_from_center_x =
-            mouse_screen_pos.0 as f64 - self.screen_pixel_width as f64 / 2.0;
-        let mouse_offset_from_center_y =
-            mouse_screen_pos.1 as f64 - self.screen_pixel_height as f64 / 2.0;
+        let mouse_offset_from_center_x = mouse_screen_pos.0 - self.screen_pixel_width as f64 / 2.0;
+        let mouse_offset_from_center_y = mouse_screen_pos.1 - self.screen_pixel_height as f64 / 2.0;
 
         self.anchor.x =
             world_pos_before_zoom.x - mouse_offset_from_center_x / new_world_tile_pixel_size;
@@ -133,10 +112,10 @@ mod tests {
     }
 
     #[test]
-    fn test_center_on_entity() {
+    fn test_center_on_world() {
         let mut vp = Viewport::default();
-        vp.center_on_entity(10, 20);
-        assert_eq!(vp.anchor, PointF64 { x: 10.0, y: 20.0 });
+        vp.center_on_world(PointF64 { x: 10.25, y: 20.5 });
+        assert_eq!(vp.anchor, PointF64 { x: 10.25, y: 20.5 });
     }
 
     #[test]
@@ -162,28 +141,61 @@ mod tests {
         // case 1: no zoom, anchor at origin
         vp.zoom = 1.0;
         vp.anchor = PointF64 { x: 0.0, y: 0.0 };
-        let coords = vp.screen_to_world_coords(400, 300); // screen center
+        let coords = vp.screen_to_world_coords(400.0, 300.0); // screen center
         assert!((coords.x - 0.0).abs() < 1e-9);
         assert!((coords.y - 0.0).abs() < 1e-9);
 
         // case 2: zoomed in, anchor at origin
         vp.zoom = 2.0;
-        let coords = vp.screen_to_world_coords(400, 300); // screen center
+        let coords = vp.screen_to_world_coords(400.0, 300.0); // screen center
         assert!((coords.x - 0.0).abs() < 1e-9);
         assert!((coords.y - 0.0).abs() < 1e-9);
         // top-left screen should be top-left of smaller world view
         let tile_size = TILE_PIXEL_WIDTH as f64;
         let expected_x = 0.0 - (800.0 / 2.0) / (tile_size * 2.0);
         let expected_y = 0.0 - (600.0 / 2.0) / (tile_size * 2.0);
-        let coords_tl = vp.screen_to_world_coords(0, 0);
+        let coords_tl = vp.screen_to_world_coords(0.0, 0.0);
         assert!((coords_tl.x - expected_x).abs() < 1e-9);
         assert!((coords_tl.y - expected_y).abs() < 1e-9);
 
         // case 3: zoomed out, anchor offset
         vp.zoom = 0.5;
         vp.anchor = PointF64 { x: 100.0, y: -50.0 };
-        let coords_center = vp.screen_to_world_coords(400, 300); // screen center
+        let coords_center = vp.screen_to_world_coords(400.0, 300.0); // screen center
         assert!((coords_center.x - 100.0).abs() < 1e-9);
         assert!((coords_center.y - -50.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_fractional_anchor_preserves_fractional_screen_position() {
+        let vp = Viewport {
+            anchor: PointF64 { x: 0.25, y: -0.5 },
+            zoom: 1.0,
+            screen_pixel_width: 800,
+            screen_pixel_height: 600,
+        };
+
+        let (screen_x, screen_y) = vp.world_to_screen_px(0.0, 0.0);
+
+        assert!((screen_x - 397.75).abs() < 1e-9);
+        assert!((screen_y - 304.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_zoom_at_keeps_cursor_world_position_stable() {
+        let mut vp = Viewport {
+            anchor: PointF64 { x: 12.5, y: -7.25 },
+            zoom: 1.0,
+            screen_pixel_width: 800,
+            screen_pixel_height: 600,
+        };
+        let cursor = (123.4, 456.7);
+        let before = vp.screen_to_world_coords(cursor.0, cursor.1);
+
+        vp.zoom_at(1.2, cursor);
+
+        let after = vp.screen_to_world_coords(cursor.0, cursor.1);
+        assert!((after.x - before.x).abs() < 1e-9);
+        assert!((after.y - before.y).abs() < 1e-9);
     }
 }

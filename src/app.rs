@@ -24,8 +24,8 @@ use crate::world::{self, World};
 
 /// fixed simulation timestep (100hz).
 pub const SIMULATION_DT: Duration = Duration::from_millis(10);
-/// render interval (10hz).
-pub const RENDER_DT: Duration = Duration::from_millis(100);
+/// render interval (about 60hz).
+pub const RENDER_DT: Duration = Duration::from_nanos(16_666_667);
 const ONE_SECOND: Duration = Duration::from_secs(1);
 
 /// the different interaction modes the game can be in.
@@ -278,13 +278,18 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => self.redraw(),
             other => {
                 if !consumed {
-                    input::handle_window_event(
+                    let outcome = input::handle_window_event(
                         other,
                         &mut self.viewport,
                         &mut self.world,
                         &mut self.controls,
                         &mut self.game_state,
                     );
+                    if outcome.request_redraw {
+                        if let Some(gfx) = self.gfx.as_ref() {
+                            gfx.window.request_redraw();
+                        }
+                    }
                 }
             }
         }
@@ -327,8 +332,8 @@ impl ApplicationHandler for App {
             // tracking camera: keep the selected entity centered.
             if self.controls.track_mode && self.game_state == GameState::Playing {
                 if let Some(entity_id) = self.controls.selection.first() {
-                    if let Some(loc) = self.world.get_location(*entity_id) {
-                        self.viewport.center_on_entity(loc.x, loc.y);
+                    if let Some(loc) = self.world.get_location_f64(*entity_id) {
+                        self.viewport.center_on_world(loc);
                     }
                 }
             }

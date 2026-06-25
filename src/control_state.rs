@@ -18,9 +18,9 @@ pub struct ControlState {
     pub shift_down: bool,
     /// last known cursor position in physical pixels. winit, unlike sdl, has no
     /// "current mouse position" query, so we track it on every `CursorMoved`.
-    pub last_mouse_pos: Option<(i32, i32)>,
+    pub last_mouse_pos: Option<(f64, f64)>,
     /// box-select drag origin (set on empty-space left-press, cleared on release).
-    pub selection_box_start: Option<(i32, i32)>,
+    pub selection_box_start: Option<(f64, f64)>,
     /// set by the ui / escape handling to request app exit; the event loop reads
     /// it (egui and the input handler can't call `event_loop.exit()` directly).
     pub quit_requested: bool,
