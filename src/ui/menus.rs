@@ -14,7 +14,7 @@ use crate::world::components::MiningRoute;
 use crate::world::types::{BuildingType, RawResource};
 use crate::world::{EntityId, World};
 
-use super::{centered_window, raw_resource_display};
+use super::{centered_window, raw_resource_display, storable_display};
 
 pub fn build_menu(
     ctx: &egui::Context,
@@ -203,24 +203,74 @@ pub fn shipyard_menu(
             return;
         };
         ui.label("build ship?");
-        if ui.button("frigate").clicked() {
-            world.add_command(Command::BuildShip {
-                shipyard_entity_id: shipyard_id,
-                ship_type: ShipType::Frigate,
-            });
-            *game_state = GameState::Playing;
-        }
-        if ui.button("mining ship").clicked() {
-            world.add_command(Command::BuildShip {
-                shipyard_entity_id: shipyard_id,
-                ship_type: ShipType::MiningShip,
-            });
-            *game_state = GameState::Playing;
+        for ship_type in [ShipType::Frigate, ShipType::MiningShip] {
+            let label = format!("{}  ({})", ship_name(ship_type), cost_summary(ship_type));
+            if ui.button(label).clicked() {
+                try_build_ship(world, game_state, shipyard_id, ship_type);
+            }
         }
         if ui.button("close").clicked() {
             *game_state = GameState::Playing;
         }
     });
+}
+
+fn ship_name(ship_type: ShipType) -> &'static str {
+    match ship_type {
+        ShipType::Frigate => "frigate",
+        ShipType::MiningShip => "mining ship",
+    }
+}
+
+/// a "80 metals, 30 crystals" summary of a ship's build cost.
+fn cost_summary(ship_type: ShipType) -> String {
+    let mut parts: Vec<(&'static str, f32)> = ship_type
+        .build_cost()
+        .into_iter()
+        .map(|(storable, cost)| (storable_display(storable).0, cost))
+        .collect();
+    parts.sort_by_key(|(label, _)| *label);
+    parts
+        .iter()
+        .map(|(label, cost)| format!("{cost:.0} {label}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// issue a ship build if the shipyard body can afford it, otherwise route to
+/// the shipyard error state naming the missing resource.
+fn try_build_ship(
+    world: &mut World,
+    game_state: &mut GameState,
+    shipyard_id: EntityId,
+    ship_type: ShipType,
+) {
+    let costs = ship_type.build_cost();
+    let shortfall = {
+        let body = world.celestial_data.get(&shipyard_id);
+        costs.iter().find_map(|(&resource, &cost)| {
+            let have = body
+                .and_then(|d| d.stocks.get(&resource))
+                .copied()
+                .unwrap_or(0.0);
+            (have < cost).then_some((resource, cost, have))
+        })
+    };
+    match shortfall {
+        Some((resource, cost, have)) => {
+            let (label, _) = storable_display(resource);
+            *game_state = GameState::ShipyardMenuError {
+                message: format!("not enough {label} (need {cost:.0}, have {have:.0})"),
+            };
+        }
+        None => {
+            world.add_command(Command::BuildShip {
+                shipyard_entity_id: shipyard_id,
+                ship_type,
+            });
+            *game_state = GameState::Playing;
+        }
+    }
 }
 
 pub fn mining_route_menu(

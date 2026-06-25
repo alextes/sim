@@ -38,9 +38,7 @@ pub enum GameState {
         mode: BuildMenuMode,
     },
     ShipyardMenu,
-    // designed error state; the render path exists but the failure trigger is
-    // not re-wired yet.
-    #[allow(dead_code)]
+    /// shown when a ship build is rejected (the shipyard body can't afford it).
     ShipyardMenuError {
         message: String,
     },

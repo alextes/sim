@@ -26,7 +26,28 @@ impl World {
                 shipyard_entity_id,
                 ship_type,
             } => {
-                if let Some(shipyard_loc) = self.locations.get_location(shipyard_entity_id) {
+                let costs = ship_type.build_cost();
+                let can_afford = self
+                    .celestial_data
+                    .get(&shipyard_entity_id)
+                    .is_some_and(|cd| {
+                        costs
+                            .iter()
+                            .all(|(res, &cost)| cd.stocks.get(res).copied().unwrap_or(0.0) >= cost)
+                    });
+                if !can_afford {
+                    tracing::warn!(
+                        "entity {} cannot afford ship {:?}",
+                        self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
+                        ship_type
+                    );
+                } else if let Some(shipyard_loc) = self.locations.get_location(shipyard_entity_id) {
+                    // deduct the cost from the shipyard body's stocks.
+                    if let Some(cd) = self.celestial_data.get_mut(&shipyard_entity_id) {
+                        for (res, cost) in &costs {
+                            *cd.stocks.entry(*res).or_insert(0.0) -= cost;
+                        }
+                    }
                     let mut rng = rand::rng();
                     let spawn_offset_x = rng.random_range(-2.0..2.0);
                     let spawn_offset_y = rng.random_range(-2.0..2.0);
