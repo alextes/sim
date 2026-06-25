@@ -25,7 +25,7 @@ format: `<type>[(scope)][!]: <description>`
 
 all lowercase for comments, tracing, docs, issue titles, and other prose. exceptions: acronyms (CLI, API, ID, etc.).
 
-<!-- braid:agents:start v7 -->
+<!-- braid:agents:start v8 -->
 ## braid workflow
 
 this repo uses braid (`brd`) for issue tracking. issues live in `.braid/issues/` as markdown files.
@@ -44,6 +44,7 @@ useful commands:
 - `brd show <id>` — view issue details (shows deps and dependents)
 - `brd show <id> --context` — view issue with full content of related issues
 - `brd config` — show current workflow configuration
+- `brd path <id>` — print the absolute file path of an issue (for hand-editing)
 
 **tip:** before starting work, use `brd show <id> --context` to see the issue plus all its dependencies and dependents in one view.
 
