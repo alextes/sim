@@ -40,7 +40,9 @@ pub fn build_ui(
         GameState::ShipyardMenuError { message } => {
             menus::shipyard_menu(ctx, world, controls, game_state, Some(&message))
         }
-        GameState::PlanetOverview { .. } => {}
+        GameState::PlanetOverview { selected } => {
+            menus::planet_overview(ctx, world, controls, game_state, selected)
+        }
         GameState::MiningRouteMenu { ship_id, mode } => {
             menus::mining_route_menu(ctx, world, game_state, ship_id, &mode)
         }

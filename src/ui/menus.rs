@@ -11,10 +11,173 @@ use crate::control_state::ControlState;
 use crate::palette;
 use crate::ships::{buildable_ships, ShipBuildShortfall, ShipBuildable};
 use crate::world::components::MiningRoute;
-use crate::world::types::{BuildingType, RawResource};
+use crate::world::types::{BuildingType, EntityType, RawResource};
 use crate::world::{EntityId, World};
 
 use super::{centered_window, raw_resource_display, storable_display};
+
+pub fn planet_overview(
+    ctx: &egui::Context,
+    world: &World,
+    controls: &mut ControlState,
+    game_state: &mut GameState,
+    selected: Option<EntityId>,
+) {
+    let bodies = world.owned_body_overview_entities();
+    let current = selected
+        .filter(|entity| bodies.contains(entity))
+        .or_else(|| bodies.first().copied());
+    if current != selected {
+        *game_state = GameState::PlanetOverview { selected: current };
+    }
+
+    egui::Window::new("planet overview")
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .collapsible(false)
+        .resizable(true)
+        .default_width(720.0)
+        .default_height(460.0)
+        .show(ctx, |ui| {
+            if bodies.is_empty() {
+                ui.colored_label(palette::DGRAY, "no owned planets");
+                if ui.button("close").clicked() {
+                    *game_state = GameState::Playing;
+                }
+                return;
+            }
+
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(220.0);
+                    ui.label("owned bodies");
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .id_salt("planet_overview_body_list")
+                        .max_height(360.0)
+                        .show(ui, |ui| {
+                            for body in &bodies {
+                                let name = world.get_entity_name(*body).unwrap_or_default();
+                                let selected_row = current == Some(*body);
+                                if ui.selectable_label(selected_row, name).clicked() {
+                                    controls.selection = vec![*body];
+                                    *game_state = GameState::PlanetOverview {
+                                        selected: Some(*body),
+                                    };
+                                }
+                            }
+                        });
+                });
+
+                ui.separator();
+
+                ui.vertical(|ui| {
+                    ui.set_min_width(420.0);
+                    if let Some(body) = current {
+                        planet_detail(ui, world, body);
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            if ui.button("build").clicked() {
+                                controls.selection = vec![body];
+                                *game_state = GameState::BuildMenu {
+                                    mode: BuildMenuMode::Main,
+                                };
+                            }
+                            let has_shipyard =
+                                world.buildings.get(&body).is_some_and(|buildings| {
+                                    buildings.get_count(BuildingType::Shipyard) > 0
+                                });
+                            if ui
+                                .add_enabled(has_shipyard, egui::Button::new("shipyard"))
+                                .clicked()
+                            {
+                                controls.selection = vec![body];
+                                *game_state = GameState::ShipyardMenu;
+                            }
+                            if ui.button("close").clicked() {
+                                *game_state = GameState::Playing;
+                            }
+                        });
+                    }
+                });
+            });
+        });
+}
+
+fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
+    let name = world.get_entity_name(body).unwrap_or_default();
+    ui.heading(name);
+    if let Some(entity_type) = world.get_entity_type(body) {
+        ui.colored_label(palette::GRAY, body_type_label(entity_type));
+    }
+
+    egui::ScrollArea::vertical()
+        .id_salt("planet_overview_detail")
+        .max_height(350.0)
+        .show(ui, |ui| {
+            if let Some(data) = world.celestial_data.get(&body) {
+                ui.label(format!("population: {:.2}m", data.population));
+                ui.label(format!("civ credits: {:.0}", data.credits));
+                if !data.yields.is_empty() {
+                    ui.separator();
+                    ui.label("yields");
+                    let mut yields: Vec<_> = data.yields.iter().collect();
+                    yields.sort_by_key(|(resource, _)| **resource);
+                    for (resource, grade) in yields {
+                        let (label, color) = raw_resource_display(*resource);
+                        ui.colored_label(color, format!("{label}: {grade:.2}"));
+                    }
+                }
+                if !data.stocks.is_empty() {
+                    ui.separator();
+                    ui.label("stocks");
+                    let mut stocks: Vec<_> = data.stocks.iter().collect();
+                    stocks.sort_by_key(|(storable, _)| **storable);
+                    for (storable, amount) in stocks {
+                        let (label, color) = storable_display(*storable);
+                        ui.colored_label(color, format!("{label}: {amount:.1}"));
+                    }
+                }
+            }
+
+            if let Some(buildings) = world.buildings.get(&body) {
+                ui.separator();
+                ui.label("infrastructure");
+                if buildings.infra.is_empty() {
+                    ui.colored_label(palette::DGRAY, "(none)");
+                } else {
+                    let mut infra: Vec<_> = buildings.infra.iter().collect();
+                    infra.sort_by_key(|(building, _)| format!("{building:?}"));
+                    for (building, count) in infra {
+                        let name = EntityBuildings::building_name(*building);
+                        ui.colored_label(palette::GRAY, format!("{name}: {count}"));
+                    }
+                }
+
+                ui.separator();
+                ui.label("construction queue");
+                if buildings.build_queue.is_empty() {
+                    ui.colored_label(palette::DGRAY, "(empty)");
+                } else {
+                    for (building, count) in &buildings.build_queue {
+                        ui.label(format!(
+                            "{} x{count}",
+                            EntityBuildings::building_name(*building)
+                        ));
+                    }
+                }
+            }
+        });
+}
+
+fn body_type_label(entity_type: EntityType) -> &'static str {
+    match entity_type {
+        EntityType::Planet => "planet",
+        EntityType::Moon => "moon",
+        EntityType::GasGiant => "gas giant",
+        EntityType::Star => "star",
+        EntityType::Ship => "ship",
+    }
+}
 
 pub fn build_menu(
     ctx: &egui::Context,
