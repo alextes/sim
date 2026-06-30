@@ -63,6 +63,89 @@ pub enum EntityType {
     Ship,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BodyClass {
+    Greenhouse,
+    Barren,
+    Volcanic,
+    Oceanic,
+    Lunar,
+    GasGiant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BodySize {
+    Tiny,
+    Small,
+    Medium,
+    Large,
+    Giant,
+}
+
+impl BodySize {
+    #[allow(dead_code)]
+    pub fn capacity(self) -> u32 {
+        match self {
+            BodySize::Tiny => 4,
+            BodySize::Small => 8,
+            BodySize::Medium => 16,
+            BodySize::Large => 28,
+            BodySize::Giant => 48,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Atmosphere {
+    None,
+    Thin,
+    Breathable,
+    Dense,
+    Toxic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BodyProfile {
+    pub class: BodyClass,
+    pub size: BodySize,
+    pub gravity: f32,
+    pub atmosphere: Atmosphere,
+}
+
+impl BodyProfile {
+    #[allow(dead_code)]
+    pub fn capacity(self) -> u32 {
+        self.size.capacity()
+    }
+
+    pub fn default_planet() -> Self {
+        Self {
+            class: BodyClass::Barren,
+            size: BodySize::Medium,
+            gravity: 1.0,
+            atmosphere: Atmosphere::Thin,
+        }
+    }
+
+    pub fn default_moon() -> Self {
+        Self {
+            class: BodyClass::Lunar,
+            size: BodySize::Small,
+            gravity: 0.2,
+            atmosphere: Atmosphere::None,
+        }
+    }
+
+    pub fn default_gas_giant() -> Self {
+        Self {
+            class: BodyClass::GasGiant,
+            size: BodySize::Giant,
+            gravity: 2.5,
+            atmosphere: Atmosphere::Dense,
+        }
+    }
+}
+
 pub const PLANETARY_RESOURCES: &[RawResource] = &[
     RawResource::Metals,
     RawResource::Organics,

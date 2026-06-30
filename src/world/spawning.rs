@@ -5,7 +5,7 @@ use crate::location::PointF64;
 use crate::world::components::CivilianShipState;
 use crate::world::components::{Cargo, CivilianShipAI};
 use crate::world::types::{
-    CelestialBodyData, EntityType, GAS_GIANT_RESOURCES, PLANETARY_RESOURCES,
+    BodyProfile, CelestialBodyData, EntityType, GAS_GIANT_RESOURCES, PLANETARY_RESOURCES,
 };
 use rand::prelude::*;
 use std::collections::HashMap;
@@ -52,6 +52,9 @@ pub fn spawn_planet(
         .locations
         .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
     world.buildings.insert(id, EntityBuildings::new(&name));
+    world
+        .body_profiles
+        .insert(id, BodyProfile::default_planet());
 
     let mut yields = HashMap::new();
     let chosen_resources = PLANETARY_RESOURCES
@@ -105,6 +108,7 @@ pub fn spawn_moon(
         .locations
         .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
     world.buildings.insert(id, EntityBuildings::new(&name));
+    world.body_profiles.insert(id, BodyProfile::default_moon());
 
     let mut yields = HashMap::new();
     let chosen_resources = PLANETARY_RESOURCES
@@ -187,6 +191,9 @@ pub fn spawn_gas_giant(
         .locations
         .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
     world.buildings.insert(id, EntityBuildings::new(&name));
+    world
+        .body_profiles
+        .insert(id, BodyProfile::default_gas_giant());
 
     let mut yields = HashMap::new();
     let chosen_resources = GAS_GIANT_RESOURCES

@@ -42,6 +42,9 @@ pub enum GameState {
     ShipyardMenuError {
         message: String,
     },
+    PlanetOverview {
+        selected: Option<world::EntityId>,
+    },
     MiningRouteMenu {
         ship_id: world::EntityId,
         mode: MiningRouteMenuMode,

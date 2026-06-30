@@ -2,7 +2,7 @@ use rand::Rng;
 use std::f64::consts::TAU;
 
 use crate::location::Point;
-use crate::world::types::BuildingType;
+use crate::world::types::{Atmosphere, BodyClass, BodyProfile, BodySize, BuildingType};
 use crate::world::{EntityId, World};
 
 const NUM_STARS: usize = 64;
@@ -25,17 +25,65 @@ fn add_sol_system(world: &mut World) -> EntityId {
 
     // planets
     // venus
-    world.spawn_planet("venus".to_string(), sol_id, 12.0, 1.0, TAU / 45.0);
+    let venus_id = world.spawn_planet("venus".to_string(), sol_id, 12.0, 1.0, TAU / 45.0);
     // earth: complete one orbit (2π) in 60 seconds → angular_velocity = tau / 60
     let earth_id = world.spawn_planet("earth".to_string(), sol_id, 16.0, 0.0, TAU / 60.0);
     // moon: faster orbit around earth, e.g. complete in 5 seconds
-    let _moon_id = world.spawn_moon("moon".to_string(), earth_id, 4.0, 0.0, TAU / 5.0);
+    let moon_id = world.spawn_moon("moon".to_string(), earth_id, 4.0, 0.0, TAU / 5.0);
     // mars
-    world.spawn_planet("mars".to_string(), sol_id, 24.0, 2.5, TAU / 90.0);
+    let mars_id = world.spawn_planet("mars".to_string(), sol_id, 24.0, 2.5, TAU / 90.0);
 
     // gas giants
-    world.spawn_gas_giant("jupiter".to_string(), sol_id, 40.0, 4.0, TAU / 200.0);
-    world.spawn_gas_giant("saturn".to_string(), sol_id, 60.0, 5.5, TAU / 350.0);
+    let jupiter_id = world.spawn_gas_giant("jupiter".to_string(), sol_id, 40.0, 4.0, TAU / 200.0);
+    let saturn_id = world.spawn_gas_giant("saturn".to_string(), sol_id, 60.0, 5.5, TAU / 350.0);
+
+    world.body_profiles.insert(
+        venus_id,
+        BodyProfile {
+            class: BodyClass::Greenhouse,
+            size: BodySize::Medium,
+            gravity: 0.9,
+            atmosphere: Atmosphere::Toxic,
+        },
+    );
+    world.body_profiles.insert(
+        earth_id,
+        BodyProfile {
+            class: BodyClass::Oceanic,
+            size: BodySize::Medium,
+            gravity: 1.0,
+            atmosphere: Atmosphere::Breathable,
+        },
+    );
+    world.body_profiles.insert(
+        moon_id,
+        BodyProfile {
+            class: BodyClass::Lunar,
+            size: BodySize::Small,
+            gravity: 0.16,
+            atmosphere: Atmosphere::None,
+        },
+    );
+    world.body_profiles.insert(
+        mars_id,
+        BodyProfile {
+            class: BodyClass::Barren,
+            size: BodySize::Small,
+            gravity: 0.38,
+            atmosphere: Atmosphere::Thin,
+        },
+    );
+    for gas_giant_id in [jupiter_id, saturn_id] {
+        world.body_profiles.insert(
+            gas_giant_id,
+            BodyProfile {
+                class: BodyClass::GasGiant,
+                size: BodySize::Giant,
+                gravity: 2.5,
+                atmosphere: Atmosphere::Dense,
+            },
+        );
+    }
 
     world.set_player_controlled(earth_id);
 
@@ -246,7 +294,34 @@ mod tests {
         assert_eq!(world.get_render_glyph(jupiter_id), 'g');
         assert_eq!(world.get_render_glyph(saturn_id), 'g');
 
-        // Check earth has buildings
+        assert_eq!(
+            world.body_profiles.get(&earth_id).unwrap().class,
+            BodyClass::Oceanic
+        );
+        assert_eq!(
+            world.body_profiles.get(&earth_id).unwrap().atmosphere,
+            Atmosphere::Breathable
+        );
+        assert_eq!(world.body_profiles.get(&earth_id).unwrap().capacity(), 16);
+        assert_eq!(
+            world.body_profiles.get(&moon_id).unwrap().class,
+            BodyClass::Lunar
+        );
+        assert_eq!(
+            world.body_profiles.get(&venus_id).unwrap().class,
+            BodyClass::Greenhouse
+        );
+        assert_eq!(
+            world.body_profiles.get(&mars_id).unwrap().size,
+            BodySize::Small
+        );
+        assert_eq!(
+            world.body_profiles.get(&jupiter_id).unwrap().class,
+            BodyClass::GasGiant
+        );
+        assert_eq!(world.body_profiles.get(&saturn_id).unwrap().capacity(), 48);
+
+        // check earth has buildings
         let buildings = world.buildings.get(&earth_id).unwrap();
         assert!(buildings.get_count(BuildingType::Mine) > 0);
         assert!(buildings.get_count(BuildingType::Farm) > 0);
@@ -276,6 +351,19 @@ mod tests {
             .count();
         // 1 for earth
         assert!(planet_count >= 1);
+
+        for entity in world.iter_entities() {
+            if matches!(
+                world.get_entity_type(entity),
+                Some(
+                    crate::world::types::EntityType::Planet
+                        | crate::world::types::EntityType::Moon
+                        | crate::world::types::EntityType::GasGiant
+                )
+            ) {
+                assert!(world.body_profiles.contains_key(&entity));
+            }
+        }
 
         // star lanes should be generated
         assert!(!world.lanes.is_empty());

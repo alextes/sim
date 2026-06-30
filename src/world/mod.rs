@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use crate::ships::ShipType;
 use crate::world::components::{Cargo, CivilianShipAI, MiningRoute};
 use crate::world::types::{
-    CelestialBodyData, Color, EntityType, MOON_COLORS, PLANET_COLORS, STAR_COLORS,
+    BodyProfile, CelestialBodyData, Color, EntityType, MOON_COLORS, PLANET_COLORS, STAR_COLORS,
 };
 
 mod civ_economy;
@@ -55,6 +55,8 @@ pub struct World {
     pub resources: ResourceSystem,
     /// Data for celestial bodies (population, yields, etc.)
     pub celestial_data: HashMap<EntityId, CelestialBodyData>,
+    /// static character and development capacity for planet-like bodies.
+    pub body_profiles: HashMap<EntityId, BodyProfile>,
     /// Building slots for entities that support them
     pub buildings: HashMap<EntityId, EntityBuildings>,
     /// visual-only star lanes between entities
@@ -323,6 +325,36 @@ impl World {
         self.player_controlled.contains(&entity)
     }
 
+    /// player-controlled bodies shown in the planet overview, in stable order.
+    pub fn owned_body_overview_entities(&self) -> Vec<EntityId> {
+        let mut bodies: Vec<_> = self
+            .entities
+            .iter()
+            .copied()
+            .filter(|&entity| self.is_owned_overview_body(entity))
+            .collect();
+
+        bodies.sort_by_key(|&entity| {
+            (
+                self.find_star_for_entity(entity).unwrap_or(u32::MAX),
+                overview_body_type_priority(self.get_entity_type(entity)),
+                self.entity_names.get(&entity).cloned().unwrap_or_default(),
+                entity,
+            )
+        });
+        bodies
+    }
+
+    fn is_owned_overview_body(&self, entity: EntityId) -> bool {
+        self.is_player_controlled(entity)
+            && self.celestial_data.contains_key(&entity)
+            && self.buildings.contains_key(&entity)
+            && matches!(
+                self.get_entity_type(entity),
+                Some(EntityType::GasGiant | EntityType::Planet | EntityType::Moon)
+            )
+    }
+
     /// iterate over lane pairs (consumed by the star-lane overlay).
     pub fn iter_lanes(&self) -> impl Iterator<Item = &(EntityId, EntityId)> {
         self.lanes.iter()
@@ -378,10 +410,20 @@ impl World {
     }
 }
 
+fn overview_body_type_priority(entity_type: Option<EntityType>) -> u8 {
+    match entity_type {
+        Some(EntityType::GasGiant) => 0,
+        Some(EntityType::Planet) => 1,
+        Some(EntityType::Moon) => 2,
+        _ => 3,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::location::Point;
+    use crate::world::types::BodySize;
 
     #[test]
     fn test_spawn_frigate() {
@@ -405,5 +447,78 @@ mod tests {
         if let Some(ship_info) = world.ships.get(&frigate_id) {
             assert_eq!(ship_info.speed, 5.0);
         }
+    }
+
+    #[test]
+    fn body_size_capacity_uses_v1_defaults() {
+        assert_eq!(BodySize::Tiny.capacity(), 4);
+        assert_eq!(BodySize::Small.capacity(), 8);
+        assert_eq!(BodySize::Medium.capacity(), 16);
+        assert_eq!(BodySize::Large.capacity(), 28);
+        assert_eq!(BodySize::Giant.capacity(), 48);
+    }
+
+    #[test]
+    fn owned_body_overview_entities_filters_to_owned_celestial_bodies() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 1.0);
+        let moon_id = world.spawn_moon("moon".to_string(), planet_id, 2.0, 0.0, 1.0);
+        let gas_id = world.spawn_gas_giant("jupiter".to_string(), star_id, 20.0, 0.0, 1.0);
+        let _ship_id = world.spawn_frigate("frigate".to_string(), Point { x: 1, y: 1 });
+        let _unowned_id = world.spawn_planet("mars".to_string(), star_id, 15.0, 0.0, 1.0);
+        let missing_buildings_id = world.spawn_planet("venus".to_string(), star_id, 12.0, 0.0, 1.0);
+        let missing_data_id = world.spawn_planet("mercury".to_string(), star_id, 8.0, 0.0, 1.0);
+
+        for entity in [
+            planet_id,
+            moon_id,
+            gas_id,
+            missing_buildings_id,
+            missing_data_id,
+        ] {
+            world.set_player_controlled(entity);
+        }
+        world.buildings.remove(&missing_buildings_id);
+        world.celestial_data.remove(&missing_data_id);
+
+        let bodies = world.owned_body_overview_entities();
+
+        assert_eq!(bodies, vec![gas_id, planet_id, moon_id]);
+    }
+
+    #[test]
+    fn owned_body_overview_entities_sorts_deterministically() {
+        let mut world = World::default();
+        let first_star = world.spawn_star("a-star".to_string(), Point { x: 0, y: 0 });
+        let second_star = world.spawn_star("b-star".to_string(), Point { x: 100, y: 0 });
+        let first_planet_z = world.spawn_planet("zeta".to_string(), first_star, 10.0, 0.0, 1.0);
+        let first_planet_a = world.spawn_planet("alpha".to_string(), first_star, 12.0, 0.0, 1.0);
+        let first_moon = world.spawn_moon("moon".to_string(), first_planet_z, 2.0, 0.0, 1.0);
+        let first_gas = world.spawn_gas_giant("giant".to_string(), first_star, 20.0, 0.0, 1.0);
+        let second_planet = world.spawn_planet("other".to_string(), second_star, 10.0, 0.0, 1.0);
+
+        for entity in [
+            first_planet_z,
+            first_planet_a,
+            first_moon,
+            first_gas,
+            second_planet,
+        ] {
+            world.set_player_controlled(entity);
+        }
+
+        let bodies = world.owned_body_overview_entities();
+
+        assert_eq!(
+            bodies,
+            vec![
+                first_gas,
+                first_planet_a,
+                first_planet_z,
+                first_moon,
+                second_planet
+            ]
+        );
     }
 }

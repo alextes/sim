@@ -186,6 +186,10 @@ fn handle_keydown(
             open_mining_menu(world, controls, game_state);
             InputOutcome::default()
         }
+        KeyCode::KeyO if !event.repeat => {
+            open_planet_overview(world, controls, game_state);
+            InputOutcome::default()
+        }
         KeyCode::Space if !event.repeat => {
             controls.paused = !controls.paused;
             InputOutcome::default()
@@ -218,8 +222,22 @@ fn handle_escape(game_state: &mut GameState, controls: &mut ControlState) {
         GameState::BuildMenu { .. }
         | GameState::ShipyardMenu
         | GameState::ShipyardMenuError { .. }
+        | GameState::PlanetOverview { .. }
         | GameState::MiningRouteMenu { .. } => *game_state = GameState::Playing,
     }
+}
+
+/// (o) open the owned-body planet overview.
+fn open_planet_overview(world: &World, controls: &ControlState, game_state: &mut GameState) {
+    let bodies = world.owned_body_overview_entities();
+    let selected = controls
+        .selection
+        .first()
+        .copied()
+        .filter(|entity| bodies.contains(entity))
+        .or_else(|| bodies.first().copied());
+
+    *game_state = GameState::PlanetOverview { selected };
 }
 
 /// (b) open the build menu if the selection is a player-controlled body.
@@ -542,5 +560,56 @@ mod tests {
         assert!((viewport.anchor.x - -(0.5 / 9.0)).abs() < 1e-9);
         assert!((viewport.anchor.y - -(0.5 / 9.0)).abs() < 1e-9);
         assert_eq!(controls.last_mouse_pos, Some((10.75, 20.75)));
+    }
+
+    #[test]
+    fn open_planet_overview_uses_selected_owned_body() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let earth_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 1.0);
+        let mars_id = world.spawn_planet("mars".to_string(), star_id, 12.0, 0.0, 1.0);
+        world.set_player_controlled(earth_id);
+        world.set_player_controlled(mars_id);
+        let controls = ControlState::new(vec![mars_id]);
+        let mut game_state = GameState::Playing;
+
+        open_planet_overview(&world, &controls, &mut game_state);
+
+        assert_eq!(
+            game_state,
+            GameState::PlanetOverview {
+                selected: Some(mars_id)
+            }
+        );
+    }
+
+    #[test]
+    fn open_planet_overview_falls_back_to_first_owned_body() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let earth_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 1.0);
+        let ship_id = world.spawn_frigate("frigate".to_string(), Point { x: 1, y: 1 });
+        world.set_player_controlled(earth_id);
+        let controls = ControlState::new(vec![ship_id]);
+        let mut game_state = GameState::Playing;
+
+        open_planet_overview(&world, &controls, &mut game_state);
+
+        assert_eq!(
+            game_state,
+            GameState::PlanetOverview {
+                selected: Some(earth_id)
+            }
+        );
+    }
+
+    #[test]
+    fn escape_closes_planet_overview() {
+        let mut controls = ControlState::new(vec![]);
+        let mut game_state = GameState::PlanetOverview { selected: Some(42) };
+
+        handle_escape(&mut game_state, &mut controls);
+
+        assert_eq!(game_state, GameState::Playing);
     }
 }
