@@ -9,7 +9,7 @@ use wgpu::util::DeviceExt;
 use crate::control_state::ControlState;
 use crate::palette;
 use crate::viewport::Viewport;
-use crate::world::World;
+use crate::world::{EntityId, World};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -228,10 +228,9 @@ impl LineBatch {
         let scale = viewport.world_tile_pixel_size_on_screen();
         let color = rgba(palette::DGRAY, 0.35);
         for (_, info) in world.iter_orbitals() {
-            let Some(anchor) = world.get_location(info.anchor) else {
+            let Some(center) = orbit_anchor_screen_center(world, viewport, info.anchor) else {
                 continue;
             };
-            let center = viewport.world_to_screen_px(anchor.x as f64, anchor.y as f64);
             let radius = info.radius * scale;
             let mut prev: Option<(f64, f64)> = None;
             for i in 0..=ORBIT_SEGMENTS {
@@ -335,4 +334,40 @@ fn rgba(color: Color32, alpha: f32) -> [f32; 4] {
         color.b() as f32 / 255.0,
         alpha,
     ]
+}
+
+fn orbit_anchor_screen_center(
+    world: &World,
+    viewport: &Viewport,
+    anchor: EntityId,
+) -> Option<(f64, f64)> {
+    let anchor = world.get_location_f64(anchor)?;
+    Some(viewport.world_to_screen_px(anchor.x, anchor.y))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::location::Point;
+
+    #[test]
+    fn orbit_anchor_screen_center_preserves_fractional_motion() {
+        let mut world = World::default();
+        let sol = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let earth = world.spawn_planet("earth".to_string(), sol, 16.0, 0.1, 0.0);
+        let _moon = world.spawn_moon("moon".to_string(), earth, 4.0, 0.0, 0.0);
+        let viewport = Viewport::default();
+
+        let precise = world.get_location_f64(earth).unwrap();
+        let rounded = world.get_location(earth).unwrap();
+        let center = orbit_anchor_screen_center(&world, &viewport, earth).unwrap();
+        let expected = viewport.world_to_screen_px(precise.x, precise.y);
+        let rounded_center = viewport.world_to_screen_px(rounded.x as f64, rounded.y as f64);
+
+        assert!((center.0 - expected.0).abs() < f64::EPSILON);
+        assert!((center.1 - expected.1).abs() < f64::EPSILON);
+        assert!((center.0 - rounded_center.0).abs() > f64::EPSILON);
+        assert!((center.1 - rounded_center.1).abs() > f64::EPSILON);
+    }
 }
