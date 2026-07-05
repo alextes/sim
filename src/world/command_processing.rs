@@ -1,5 +1,5 @@
-use crate::buildings::EntityBuildings;
 use crate::command::Command;
+use crate::infrastructure::EntityInfrastructure;
 use crate::location::Point;
 use crate::location::PointF64;
 use crate::ships::{buildable_ship, ShipType};
@@ -121,10 +121,10 @@ impl World {
             }
             Command::Build {
                 entity_id,
-                building_type,
+                infrastructure_type,
                 amount,
             } => {
-                let costs = EntityBuildings::get_build_costs(building_type, amount);
+                let costs = EntityInfrastructure::get_build_costs(infrastructure_type, amount);
                 let can_afford = {
                     if let Some(cd) = self.celestial_data.get(&entity_id) {
                         costs.iter().all(|(resource, &cost)| {
@@ -133,7 +133,7 @@ impl World {
                                 tracing::warn!(
                                     "entity {} cannot afford to build {:?} x{}: not enough {:?} (needs {}, has {})",
                                     self.get_entity_name(entity_id).unwrap_or_default(),
-                                    building_type,
+                                    infrastructure_type,
                                     amount,
                                     resource,
                                     cost,
@@ -156,11 +156,11 @@ impl World {
                         }
                     }
 
-                    if let Some(buildings) = self.buildings.get_mut(&entity_id) {
-                        buildings.queue_build(building_type, amount);
+                    if let Some(infrastructure) = self.infrastructure.get_mut(&entity_id) {
+                        infrastructure.queue_build(infrastructure_type, amount);
                         tracing::info!(
                             "queued build of {:?} x{} on entity {}",
-                            building_type,
+                            infrastructure_type,
                             amount,
                             self.get_entity_name(entity_id).unwrap_or_default()
                         );

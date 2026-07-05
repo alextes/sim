@@ -15,7 +15,7 @@ use crate::control_state::ControlState;
 use crate::location::PointF64;
 use crate::ships::ShipType;
 use crate::viewport::Viewport;
-use crate::world::types::{BuildingType, EntityType};
+use crate::world::types::{EntityType, InfrastructureType};
 use crate::world::{EntityId, World};
 
 /// world distance panned per arrow-key press at zoom 1.0.
@@ -243,7 +243,7 @@ fn open_planet_overview(world: &World, controls: &ControlState, game_state: &mut
 /// (b) open the build menu if the selection is a player-controlled body.
 fn open_build_menu(world: &World, controls: &ControlState, game_state: &mut GameState) {
     if let Some(&id) = controls.selection.first() {
-        if world.is_player_controlled(id) && world.buildings.contains_key(&id) {
+        if world.is_player_controlled(id) && world.infrastructure.contains_key(&id) {
             *game_state = GameState::BuildMenu {
                 mode: BuildMenuMode::Main,
             };
@@ -258,8 +258,8 @@ fn open_shipyard_menu(world: &World, controls: &ControlState, game_state: &mut G
     }
     let id = controls.selection[0];
     if world.is_player_controlled(id) {
-        if let Some(buildings) = world.buildings.get(&id) {
-            if buildings.get_count(BuildingType::Shipyard) > 0 {
+        if let Some(infrastructure) = world.infrastructure.get(&id) {
+            if infrastructure.get_count(InfrastructureType::Shipyard) > 0 {
                 *game_state = GameState::ShipyardMenu;
             }
         }

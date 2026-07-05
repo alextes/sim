@@ -1,6 +1,6 @@
 //! entity spawning logic.
 use super::{Color, EntityId, Point, ShipInfo, World, MOON_COLORS, PLANET_COLORS, STAR_COLORS};
-use crate::buildings::EntityBuildings;
+use crate::infrastructure::EntityInfrastructure;
 use crate::location::PointF64;
 use crate::world::components::CivilianShipState;
 use crate::world::components::{Cargo, CivilianShipAI};
@@ -22,7 +22,9 @@ pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId 
     let color = STAR_COLORS.iter().choose(&mut rng).unwrap();
     world.entity_colors.insert(id, *color);
     world.locations.add_static(id, position);
-    world.buildings.insert(id, EntityBuildings::new(&name));
+    world
+        .infrastructure
+        .insert(id, EntityInfrastructure::new(&name));
     world
         .celestial_data
         .insert(id, CelestialBodyData::default());
@@ -51,7 +53,9 @@ pub fn spawn_planet(
     world
         .locations
         .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
-    world.buildings.insert(id, EntityBuildings::new(&name));
+    world
+        .infrastructure
+        .insert(id, EntityInfrastructure::new(&name));
     world
         .body_profiles
         .insert(id, BodyProfile::default_planet());
@@ -107,7 +111,9 @@ pub fn spawn_moon(
     world
         .locations
         .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
-    world.buildings.insert(id, EntityBuildings::new(&name));
+    world
+        .infrastructure
+        .insert(id, EntityInfrastructure::new(&name));
     world.body_profiles.insert(id, BodyProfile::default_moon());
 
     let mut yields = HashMap::new();
@@ -190,7 +196,9 @@ pub fn spawn_gas_giant(
     world
         .locations
         .add_orbital(id, anchor, radius, initial_angle, angular_velocity);
-    world.buildings.insert(id, EntityBuildings::new(&name));
+    world
+        .infrastructure
+        .insert(id, EntityInfrastructure::new(&name));
     world
         .body_profiles
         .insert(id, BodyProfile::default_gas_giant());

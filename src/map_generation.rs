@@ -2,7 +2,7 @@ use rand::Rng;
 use std::f64::consts::TAU;
 
 use crate::location::Point;
-use crate::world::types::{Atmosphere, BodyClass, BodyProfile, BodySize, BuildingType};
+use crate::world::types::{Atmosphere, BodyClass, BodyProfile, BodySize, InfrastructureType};
 use crate::world::{EntityId, World};
 
 const NUM_STARS: usize = 64;
@@ -113,17 +113,23 @@ fn add_sol_system(world: &mut World) -> EntityId {
         data.credits = 5000.0;
     }
 
-    // pre-build on earth
-    if let Some(earth_buildings) = world.buildings.get_mut(&earth_id) {
-        earth_buildings.infra.insert(BuildingType::Mine, 1);
-        earth_buildings.infra.insert(BuildingType::Farm, 2);
-        earth_buildings
+    // pre-build infrastructure on earth.
+    if let Some(earth_infrastructure) = world.infrastructure.get_mut(&earth_id) {
+        earth_infrastructure
             .infra
-            .insert(BuildingType::FuelCellCracker, 1);
-        earth_buildings.infra.insert(BuildingType::Shipyard, 1);
-        earth_buildings
+            .insert(InfrastructureType::Mine, 1);
+        earth_infrastructure
             .infra
-            .insert(BuildingType::ConstructionFactory, 1);
+            .insert(InfrastructureType::Farm, 2);
+        earth_infrastructure
+            .infra
+            .insert(InfrastructureType::FuelCellCracker, 1);
+        earth_infrastructure
+            .infra
+            .insert(InfrastructureType::Shipyard, 1);
+        earth_infrastructure
+            .infra
+            .insert(InfrastructureType::ConstructionFactory, 1);
     }
 
     if let Some(earth_pos) = world.get_location(earth_id) {
@@ -321,12 +327,12 @@ mod tests {
         );
         assert_eq!(world.body_profiles.get(&saturn_id).unwrap().capacity(), 48);
 
-        // check earth has buildings
-        let buildings = world.buildings.get(&earth_id).unwrap();
-        assert!(buildings.get_count(BuildingType::Mine) > 0);
-        assert!(buildings.get_count(BuildingType::Farm) > 0);
-        assert!(buildings.get_count(BuildingType::FuelCellCracker) > 0);
-        assert!(buildings.get_count(BuildingType::Shipyard) > 0);
+        // check earth has infrastructure.
+        let infrastructure = world.infrastructure.get(&earth_id).unwrap();
+        assert!(infrastructure.get_count(InfrastructureType::Mine) > 0);
+        assert!(infrastructure.get_count(InfrastructureType::Farm) > 0);
+        assert!(infrastructure.get_count(InfrastructureType::FuelCellCracker) > 0);
+        assert!(infrastructure.get_count(InfrastructureType::Shipyard) > 0);
     }
 
     #[test]

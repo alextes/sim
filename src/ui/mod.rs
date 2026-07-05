@@ -154,16 +154,18 @@ fn single_selection(ui: &mut egui::Ui, world: &World, controls: &ControlState, i
         }
     }
 
-    if let Some(buildings) = world.buildings.get(&id) {
+    if let Some(infrastructure) = world.infrastructure.get(&id) {
         ui.separator();
         ui.label("infrastructure");
-        if buildings.infra.is_empty() {
+        if infrastructure.infra.is_empty() {
             ui.colored_label(palette::DGRAY, "  (none)");
         } else {
-            let mut infra: Vec<_> = buildings.infra.iter().collect();
+            let mut infra: Vec<_> = infrastructure.infra.iter().collect();
             infra.sort_by_key(|(bt, _)| format!("{bt:?}"));
-            for (building, count) in infra {
-                let name = crate::buildings::EntityBuildings::building_name(*building);
+            for (infrastructure_type, count) in infra {
+                let name = crate::infrastructure::EntityInfrastructure::infrastructure_name(
+                    *infrastructure_type,
+                );
                 ui.colored_label(palette::GRAY, format!("  - {name}: {count}"));
             }
         }

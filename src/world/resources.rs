@@ -1,8 +1,8 @@
 #![allow(dead_code)] // TODO remove later
 
-use crate::buildings::EntityBuildings;
+use crate::infrastructure::EntityInfrastructure;
 use crate::world::types::EntityType;
-use crate::world::types::{BuildingType, CelestialBodyData, Good, RawResource, Storable};
+use crate::world::types::{CelestialBodyData, Good, InfrastructureType, RawResource, Storable};
 use crate::world::EntityId;
 use crate::world::World;
 use crate::SIMULATION_DT;
@@ -12,25 +12,25 @@ use std::sync::LazyLock;
 // calculate simulation frequency based on simulation DT
 static SIMULATION_HZ: LazyLock<f64> = LazyLock::new(|| 1.0 / SIMULATION_DT.as_secs_f64());
 
-// --- Resource Generation Config ---
-// Generate resources every N seconds of simulated time.
-// SIMULATION_DT is 10ms (0.01s), so 100 ticks = 1.0 second.
+// --- resource generation config ---
+// generate resources every n seconds of simulated time.
+// simulation_dt is 10ms (0.01s), so 100 ticks = 1.0 second.
 pub const RESOURCE_INTERVAL_SECONDS: f64 = 1.0; // update once per second
 
 #[derive(Debug, Default)]
 pub struct ResourceSystem {
-    // This system is now only responsible for ticking time forward for production.
-    // All resource stockpiles are held in CelestialBodyData.
-    time_accumulator: f64, // Accumulates dt_seconds
+    // this system is now only responsible for ticking time forward for production.
+    // all resource stockpiles are held in celestial body data.
+    time_accumulator: f64, // accumulates dt_seconds
 }
 
 impl ResourceSystem {
-    /// Updates resource counts based on buildings and elapsed simulated time.
+    /// updates resource counts based on infrastructure and elapsed simulated time.
     pub fn update(
         &mut self,
-        dt_seconds: f64, // Delta time for the current simulation step
+        dt_seconds: f64, // delta time for the current simulation step
         entity_types: &HashMap<EntityId, EntityType>,
-        buildings_map: &HashMap<EntityId, EntityBuildings>,
+        infrastructure_map: &HashMap<EntityId, EntityInfrastructure>,
         celestial_data_map: &mut HashMap<EntityId, CelestialBodyData>,
     ) {
         self.time_accumulator += dt_seconds;
@@ -53,18 +53,18 @@ impl ResourceSystem {
 
             match entity_type {
                 EntityType::Planet | EntityType::Moon | EntityType::GasGiant => {
-                    // This entity type produces resources.
+                    // this entity type produces resources.
                 }
-                _ => continue, // Other types do not produce resources.
+                _ => continue, // other types do not produce resources.
             }
 
-            let buildings = match buildings_map.get(entity_id) {
-                Some(b) => b,
+            let infrastructure = match infrastructure_map.get(entity_id) {
+                Some(infrastructure) => infrastructure,
                 None => continue,
             };
 
             // handle raw resource extraction from mines
-            let mine_infra = buildings.get_count(BuildingType::Mine) as f32;
+            let mine_infra = infrastructure.get_count(InfrastructureType::Mine) as f32;
 
             if mine_infra > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
@@ -81,7 +81,8 @@ impl ResourceSystem {
             }
 
             // handle manufactured goods production
-            let cracker_infra = buildings.get_count(BuildingType::FuelCellCracker) as f32;
+            let cracker_infra =
+                infrastructure.get_count(InfrastructureType::FuelCellCracker) as f32;
 
             if cracker_infra > 0.0 {
                 // recipe: 1 volatile + 0.1 metals -> 1 fuel cell
@@ -127,7 +128,7 @@ impl ResourceSystem {
             }
 
             // handle food production from farms
-            let farm_infra = buildings.get_count(BuildingType::Farm) as f32;
+            let farm_infra = infrastructure.get_count(InfrastructureType::Farm) as f32;
 
             if farm_infra > 0.0 {
                 // recipe: 1 organics -> 1 food
@@ -155,23 +156,23 @@ impl ResourceSystem {
         }
     }
 
-    /// Calculate the current production rates for all resources across all celestial bodies.
+    /// calculate the current production rates for all resources across all celestial bodies.
     /// this is an aggregate view for the UI, not a global stockpile.
     pub fn calculate_rates(
         &self,
-        buildings_map: &HashMap<EntityId, EntityBuildings>,
+        infrastructure_map: &HashMap<EntityId, EntityInfrastructure>,
         celestial_data_map: &HashMap<EntityId, CelestialBodyData>,
     ) -> HashMap<Storable, f32> {
         let mut rates = HashMap::new();
 
-        // Calculate rates based on buildings
-        for (entity_id, buildings) in buildings_map.iter() {
+        // calculate rates based on infrastructure.
+        for (entity_id, infrastructure) in infrastructure_map.iter() {
             let celestial_data = match celestial_data_map.get(entity_id) {
                 Some(data) => data,
                 None => continue,
             };
 
-            let mine_infra = buildings.get_count(BuildingType::Mine) as f32;
+            let mine_infra = infrastructure.get_count(InfrastructureType::Mine) as f32;
 
             if mine_infra > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
@@ -181,7 +182,8 @@ impl ResourceSystem {
                 }
             }
 
-            let cracker_infra = buildings.get_count(BuildingType::FuelCellCracker) as f32;
+            let cracker_infra =
+                infrastructure.get_count(InfrastructureType::FuelCellCracker) as f32;
 
             if cracker_infra > 0.0 {
                 // this is a simplified view. it does not account for input resource availability.
@@ -189,7 +191,7 @@ impl ResourceSystem {
                 *rates.entry(Storable::Good(Good::FuelCells)).or_insert(0.0) += production_rate;
             }
 
-            let farm_infra = buildings.get_count(BuildingType::Farm) as f32;
+            let farm_infra = infrastructure.get_count(InfrastructureType::Farm) as f32;
 
             if farm_infra > 0.0 {
                 // simplified view, does not account for input availability
@@ -260,23 +262,27 @@ pub fn get_resource_base_price(resource: Storable) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buildings::EntityBuildings;
-    use crate::world::types::{BuildingType, CelestialBodyData, EntityType, RawResource, Storable};
+    use crate::infrastructure::EntityInfrastructure;
+    use crate::world::types::{
+        CelestialBodyData, EntityType, InfrastructureType, RawResource, Storable,
+    };
     use std::collections::HashMap;
 
     fn create_test_data(
         mines: u32,
     ) -> (
         HashMap<EntityId, EntityType>,
-        HashMap<EntityId, EntityBuildings>,
+        HashMap<EntityId, EntityInfrastructure>,
         HashMap<EntityId, CelestialBodyData>,
     ) {
-        let mut buildings_map = HashMap::new();
-        let mut buildings_data = EntityBuildings::new("test");
+        let mut infrastructure_map = HashMap::new();
+        let mut infrastructure_data = EntityInfrastructure::new("test");
         let entity_id = 1;
 
-        buildings_data.infra.insert(BuildingType::Mine, mines);
-        buildings_map.insert(entity_id, buildings_data);
+        infrastructure_data
+            .infra
+            .insert(InfrastructureType::Mine, mines);
+        infrastructure_map.insert(entity_id, infrastructure_data);
 
         let mut celestial_data_map = HashMap::new();
         let mut yields = HashMap::new();
@@ -298,18 +304,18 @@ mod tests {
         let mut entity_types = HashMap::new();
         entity_types.insert(entity_id, EntityType::Planet);
 
-        (entity_types, buildings_map, celestial_data_map)
+        (entity_types, infrastructure_map, celestial_data_map)
     }
 
     #[test]
     fn test_resource_system_update() {
-        let (entity_types, buildings, mut celestial_data) = create_test_data(1);
+        let (entity_types, infrastructure, mut celestial_data) = create_test_data(1);
         let mut resource_system = ResourceSystem::default();
 
         resource_system.update(
             RESOURCE_INTERVAL_SECONDS,
             &entity_types,
-            &buildings,
+            &infrastructure,
             &mut celestial_data,
         );
 

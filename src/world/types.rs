@@ -238,7 +238,7 @@ pub const MOON_COLORS: [Color; 3] = [
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
-pub enum BuildingType {
+pub enum InfrastructureType {
     // ground
     Mine,
     FuelCellCracker,

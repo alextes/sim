@@ -5,13 +5,13 @@
 use strum::IntoEnumIterator;
 
 use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
-use crate::buildings::EntityBuildings;
 use crate::command::Command;
 use crate::control_state::ControlState;
+use crate::infrastructure::EntityInfrastructure;
 use crate::palette;
 use crate::ships::{buildable_ships, ShipBuildShortfall, ShipBuildable};
 use crate::world::components::MiningRoute;
-use crate::world::types::{BuildingType, EntityType, RawResource};
+use crate::world::types::{EntityType, InfrastructureType, RawResource};
 use crate::world::{EntityId, World};
 
 use super::{centered_window, raw_resource_display, storable_display};
@@ -83,9 +83,12 @@ pub fn planet_overview(
                                 };
                             }
                             let has_shipyard =
-                                world.buildings.get(&body).is_some_and(|buildings| {
-                                    buildings.get_count(BuildingType::Shipyard) > 0
-                                });
+                                world
+                                    .infrastructure
+                                    .get(&body)
+                                    .is_some_and(|infrastructure| {
+                                        infrastructure.get_count(InfrastructureType::Shipyard) > 0
+                                    });
                             if ui
                                 .add_enabled(has_shipyard, egui::Button::new("shipyard"))
                                 .clicked()
@@ -139,29 +142,29 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                 }
             }
 
-            if let Some(buildings) = world.buildings.get(&body) {
+            if let Some(infrastructure) = world.infrastructure.get(&body) {
                 ui.separator();
                 ui.label("infrastructure");
-                if buildings.infra.is_empty() {
+                if infrastructure.infra.is_empty() {
                     ui.colored_label(palette::DGRAY, "(none)");
                 } else {
-                    let mut infra: Vec<_> = buildings.infra.iter().collect();
-                    infra.sort_by_key(|(building, _)| format!("{building:?}"));
-                    for (building, count) in infra {
-                        let name = EntityBuildings::building_name(*building);
+                    let mut infra: Vec<_> = infrastructure.infra.iter().collect();
+                    infra.sort_by_key(|(infrastructure, _)| format!("{infrastructure:?}"));
+                    for (infrastructure, count) in infra {
+                        let name = EntityInfrastructure::infrastructure_name(*infrastructure);
                         ui.colored_label(palette::GRAY, format!("{name}: {count}"));
                     }
                 }
 
                 ui.separator();
                 ui.label("construction queue");
-                if buildings.build_queue.is_empty() {
+                if infrastructure.build_queue.is_empty() {
                     ui.colored_label(palette::DGRAY, "(empty)");
                 } else {
-                    for (building, count) in &buildings.build_queue {
+                    for (infrastructure_type, count) in &infrastructure.build_queue {
                         ui.label(format!(
                             "{} x{count}",
-                            EntityBuildings::building_name(*building)
+                            EntityInfrastructure::infrastructure_name(*infrastructure_type)
                         ));
                     }
                 }
@@ -196,14 +199,15 @@ pub fn build_menu(
         ui.heading(name.as_str());
         match mode {
             BuildMenuMode::Main => build_main(ui, world, game_state, entity_id),
-            BuildMenuMode::SelectBuilding => build_select(ui, game_state),
+            BuildMenuMode::SelectInfrastructure => build_select(ui, game_state),
             BuildMenuMode::EnterQuantity {
-                building,
+                infrastructure,
                 quantity_string,
-            } => build_quantity(ui, game_state, *building, quantity_string),
-            BuildMenuMode::ConfirmQuote { building, amount } => {
-                build_confirm(ui, world, game_state, entity_id, *building, *amount)
-            }
+            } => build_quantity(ui, game_state, *infrastructure, quantity_string),
+            BuildMenuMode::ConfirmQuote {
+                infrastructure,
+                amount,
+            } => build_confirm(ui, world, game_state, entity_id, *infrastructure, *amount),
         }
     });
 }
@@ -211,14 +215,14 @@ pub fn build_menu(
 fn build_main(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, entity_id: EntityId) {
     ui.separator();
     ui.label("construction queue:");
-    if let Some(buildings) = world.buildings.get(&entity_id) {
-        if buildings.build_queue.is_empty() {
+    if let Some(infrastructure) = world.infrastructure.get(&entity_id) {
+        if infrastructure.build_queue.is_empty() {
             ui.colored_label(palette::DGRAY, "  (empty)");
         } else {
-            for (building, count) in &buildings.build_queue {
+            for (infrastructure_type, count) in &infrastructure.build_queue {
                 ui.label(format!(
                     "  - {} x{count}",
-                    EntityBuildings::building_name(*building)
+                    EntityInfrastructure::infrastructure_name(*infrastructure_type)
                 ));
             }
         }
@@ -226,7 +230,7 @@ fn build_main(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, enti
     ui.separator();
     if ui.button("add to queue").clicked() {
         *game_state = GameState::BuildMenu {
-            mode: BuildMenuMode::SelectBuilding,
+            mode: BuildMenuMode::SelectInfrastructure,
         };
     }
     if ui.button("close").clicked() {
@@ -235,15 +239,15 @@ fn build_main(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, enti
 }
 
 fn build_select(ui: &mut egui::Ui, game_state: &mut GameState) {
-    ui.label("select building:");
-    for building in BuildingType::iter() {
+    ui.label("select infrastructure:");
+    for infrastructure in InfrastructureType::iter() {
         if ui
-            .button(EntityBuildings::building_name(building))
+            .button(EntityInfrastructure::infrastructure_name(infrastructure))
             .clicked()
         {
             *game_state = GameState::BuildMenu {
                 mode: BuildMenuMode::EnterQuantity {
-                    building,
+                    infrastructure,
                     quantity_string: String::new(),
                 },
             };
@@ -259,12 +263,12 @@ fn build_select(ui: &mut egui::Ui, game_state: &mut GameState) {
 fn build_quantity(
     ui: &mut egui::Ui,
     game_state: &mut GameState,
-    building: BuildingType,
+    infrastructure: InfrastructureType,
     quantity_string: &str,
 ) {
     ui.label(format!(
-        "building: {}",
-        EntityBuildings::building_name(building)
+        "infrastructure: {}",
+        EntityInfrastructure::infrastructure_name(infrastructure)
     ));
     let mut qty = quantity_string.to_string();
     let response = ui.add(egui::TextEdit::singleline(&mut qty).hint_text("quantity"));
@@ -282,7 +286,7 @@ fn build_quantity(
     } else if (enter || confirm) && amount.is_some() {
         *game_state = GameState::BuildMenu {
             mode: BuildMenuMode::ConfirmQuote {
-                building,
+                infrastructure,
                 amount: amount.unwrap(),
             },
         };
@@ -290,7 +294,7 @@ fn build_quantity(
         // persist the edited text back into the state machine for next frame.
         *game_state = GameState::BuildMenu {
             mode: BuildMenuMode::EnterQuantity {
-                building,
+                infrastructure,
                 quantity_string: qty,
             },
         };
@@ -302,15 +306,15 @@ fn build_confirm(
     world: &mut World,
     game_state: &mut GameState,
     entity_id: EntityId,
-    building: BuildingType,
+    infrastructure: InfrastructureType,
     amount: u32,
 ) {
     ui.label(format!(
         "build {amount}x {}?",
-        EntityBuildings::building_name(building)
+        EntityInfrastructure::infrastructure_name(infrastructure)
     ));
     ui.label("cost:");
-    let costs = EntityBuildings::get_build_costs(building, amount);
+    let costs = EntityInfrastructure::get_build_costs(infrastructure, amount);
     let mut items: Vec<_> = costs.into_iter().collect();
     items.sort_by_key(|(storable, _)| format!("{storable}"));
     for (storable, cost) in &items {
@@ -331,7 +335,7 @@ fn build_confirm(
         if ui.button("yes").clicked() {
             world.add_command(Command::Build {
                 entity_id,
-                building_type: building,
+                infrastructure_type: infrastructure,
                 amount,
             });
             *game_state = GameState::Playing;

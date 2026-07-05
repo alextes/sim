@@ -74,9 +74,9 @@ impl World {
                 const MAX_MINING_SHIPS_PER_BODY: usize = 64;
 
                 // refinery demand
-                if let Some(buildings) = self.buildings.get(&entity_id) {
-                    let cracker_infra = buildings
-                        .get_count(crate::world::types::BuildingType::FuelCellCracker)
+                if let Some(infrastructure) = self.infrastructure.get(&entity_id) {
+                    let cracker_infra = infrastructure
+                        .get_count(crate::world::types::InfrastructureType::FuelCellCracker)
                         as f32;
 
                     if cracker_infra > 0.0 {
@@ -99,9 +99,10 @@ impl World {
                 if data.credits >= MINING_SHIP_COST
                     && existing_ships_for_base < MAX_MINING_SHIPS_PER_BODY
                 {
-                    if let Some(buildings) = self.buildings.get(&entity_id) {
-                        let has_shipyard =
-                            buildings.get_count(crate::world::types::BuildingType::Shipyard) > 0;
+                    if let Some(infrastructure) = self.infrastructure.get(&entity_id) {
+                        let has_shipyard = infrastructure
+                            .get_count(crate::world::types::InfrastructureType::Shipyard)
+                            > 0;
 
                         let can_afford_ship_resources = buildable_ship(ShipType::MiningShip)
                             .is_some_and(|buildable| buildable.can_afford(&data.stocks));
@@ -394,9 +395,9 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buildings::EntityBuildings;
+    use crate::infrastructure::EntityInfrastructure;
     use crate::location::Point;
-    use crate::world::types::{BuildingType, CelestialBodyData};
+    use crate::world::types::{CelestialBodyData, InfrastructureType};
 
     #[test]
     fn civilian_ai_keeps_credits_when_shipyard_lacks_mining_ship_resources() {
@@ -410,9 +411,9 @@ mod tests {
                 ..Default::default()
             },
         );
-        let mut buildings = EntityBuildings::new("shipyard");
-        buildings.infra.insert(BuildingType::Shipyard, 1);
-        world.buildings.insert(shipyard_id, buildings);
+        let mut infrastructure = EntityInfrastructure::new("shipyard");
+        infrastructure.infra.insert(InfrastructureType::Shipyard, 1);
+        world.infrastructure.insert(shipyard_id, infrastructure);
 
         world.update_civilian_economy(0.0);
 

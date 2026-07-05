@@ -54,13 +54,13 @@ pub enum GameState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BuildMenuMode {
     Main,
-    SelectBuilding,
+    SelectInfrastructure,
     EnterQuantity {
-        building: world::types::BuildingType,
+        infrastructure: world::types::InfrastructureType,
         quantity_string: String,
     },
     ConfirmQuote {
-        building: world::types::BuildingType,
+        infrastructure: world::types::InfrastructureType,
         amount: u32,
     },
 }

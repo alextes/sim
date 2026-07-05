@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use crate::location::OrbitalParameters;
 use crate::location::{LocationSystem, OrbitalInfo, Point};
 
-use crate::buildings::EntityBuildings;
 use crate::command::Command;
+use crate::infrastructure::EntityInfrastructure;
 use crate::location::PointF64;
 use std::collections::VecDeque;
 
@@ -57,8 +57,8 @@ pub struct World {
     pub celestial_data: HashMap<EntityId, CelestialBodyData>,
     /// static character and development capacity for planet-like bodies.
     pub body_profiles: HashMap<EntityId, BodyProfile>,
-    /// Building slots for entities that support them
-    pub buildings: HashMap<EntityId, EntityBuildings>,
+    /// infrastructure for entities that support it.
+    pub infrastructure: HashMap<EntityId, EntityInfrastructure>,
     /// visual-only star lanes between entities
     pub lanes: Vec<(EntityId, EntityId)>,
     /// set of entities controlled by the player
@@ -155,7 +155,7 @@ impl World {
         self.resources.update(
             dt,
             &self.entity_types,
-            &self.buildings,
+            &self.infrastructure,
             &mut self.celestial_data,
         );
         self.update_population(dt);
@@ -227,8 +227,8 @@ impl World {
     }
 
     fn process_construction(&mut self, dt: f64) {
-        for (_, buildings) in self.buildings.iter_mut() {
-            buildings.process_construction(dt as f32);
+        for (_, infrastructure) in self.infrastructure.iter_mut() {
+            infrastructure.process_construction(dt as f32);
         }
     }
 
@@ -348,7 +348,7 @@ impl World {
     fn is_owned_overview_body(&self, entity: EntityId) -> bool {
         self.is_player_controlled(entity)
             && self.celestial_data.contains_key(&entity)
-            && self.buildings.contains_key(&entity)
+            && self.infrastructure.contains_key(&entity)
             && matches!(
                 self.get_entity_type(entity),
                 Some(EntityType::GasGiant | EntityType::Planet | EntityType::Moon)
@@ -467,19 +467,20 @@ mod tests {
         let gas_id = world.spawn_gas_giant("jupiter".to_string(), star_id, 20.0, 0.0, 1.0);
         let _ship_id = world.spawn_frigate("frigate".to_string(), Point { x: 1, y: 1 });
         let _unowned_id = world.spawn_planet("mars".to_string(), star_id, 15.0, 0.0, 1.0);
-        let missing_buildings_id = world.spawn_planet("venus".to_string(), star_id, 12.0, 0.0, 1.0);
+        let missing_infrastructure_id =
+            world.spawn_planet("venus".to_string(), star_id, 12.0, 0.0, 1.0);
         let missing_data_id = world.spawn_planet("mercury".to_string(), star_id, 8.0, 0.0, 1.0);
 
         for entity in [
             planet_id,
             moon_id,
             gas_id,
-            missing_buildings_id,
+            missing_infrastructure_id,
             missing_data_id,
         ] {
             world.set_player_controlled(entity);
         }
-        world.buildings.remove(&missing_buildings_id);
+        world.infrastructure.remove(&missing_infrastructure_id);
         world.celestial_data.remove(&missing_data_id);
 
         let bodies = world.owned_body_overview_entities();

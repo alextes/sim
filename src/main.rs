@@ -1,11 +1,11 @@
 mod app;
 mod background;
-mod buildings;
 mod command;
 mod control_state;
 mod egui_layer;
 mod game_loop;
 mod gfx;
+mod infrastructure;
 mod input;
 mod location;
 mod map_generation;

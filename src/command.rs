@@ -1,6 +1,6 @@
 use crate::location::PointF64;
 use crate::ships::ShipType;
-use crate::world::types::BuildingType;
+use crate::world::types::InfrastructureType;
 use crate::world::EntityId;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -11,7 +11,7 @@ pub enum Command {
     },
     Build {
         entity_id: EntityId,
-        building_type: BuildingType,
+        infrastructure_type: InfrastructureType,
         amount: u32,
     },
     BuildShip {
