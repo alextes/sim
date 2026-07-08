@@ -3,11 +3,13 @@ schema_version: 9
 id: sim-cw48
 title: migrate building model to infrastructure model
 priority: P2
-status: open
+status: done
 deps:
 - sim-r1kx
 owner: null
 created_at: 2026-06-30T22:11:45.967559Z
+started_at: 2026-07-05T20:20:44.514971Z
+completed_at: 2026-07-05T20:30:30.745704Z
 acceptance:
 - BuildingType is replaced by InfrastructureType as the active infrastructure unit identity
 - EntityBuildings is replaced by an infrastructure-owned container such as EntityInfrastructure
