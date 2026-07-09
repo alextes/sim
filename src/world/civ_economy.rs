@@ -130,28 +130,47 @@ impl World {
         let mut commands_to_issue = Vec::new();
         let mut state_changes_to_apply = Vec::new();
 
-        let potential_mining_targets: Vec<(u32, crate::world::types::RawResource)> = self
+        let mut potential_mining_targets: Vec<(u32, crate::world::types::RawResource)> = self
             .celestial_data
             .iter()
             .flat_map(|(id, data)| data.yields.keys().map(move |resource| (*id, *resource)))
             .collect();
+        // sort for deterministic target order: this vec is built from hashmap
+        // iteration and later indexed by a random roll, so its order matters.
+        potential_mining_targets.sort_unstable();
 
         if potential_mining_targets.is_empty() {
             return;
         }
 
-        for (&ship_id, ai) in &self.civilian_ai {
-            let route: Option<&MiningRoute> = self.mining_routes.get(&ship_id);
+        // snapshot ship ai in a stable order so we can roll the world rng
+        // (a mutable borrow) between the immutable decision calls.
+        let mut ships: Vec<(
+            EntityId,
+            crate::world::components::CivilianShipAI,
+            Option<MiningRoute>,
+        )> = self
+            .civilian_ai
+            .iter()
+            .map(|(&id, ai)| (id, ai.clone(), self.mining_routes.get(&id).copied()))
+            .collect();
+        ships.sort_by_key(|(id, _, _)| *id);
+
+        for (ship_id, ai, route) in &ships {
+            // pre-roll the target selection while we hold the rng mutably; the
+            // decision function itself stays a pure function of world state.
+            let target_roll = self.rng.0.random::<f64>();
             let (new_state, command) = self.decide_civilian_ship_action(
-                ship_id,
+                *ship_id,
                 ai,
                 &potential_mining_targets,
                 dt,
                 self.enable_civilian_ai,
-                route,
+                route.as_ref(),
+                target_roll,
             );
             if let Some(state) = new_state {
-                state_changes_to_apply.push((ship_id, state));
+                state_changes_to_apply.push((*ship_id, state));
             }
             if let Some(cmd) = command {
                 commands_to_issue.push(cmd);
@@ -171,6 +190,7 @@ impl World {
     }
 
     // this is now a pure function that returns decisions, not applying them.
+    #[allow(clippy::too_many_arguments)]
     fn decide_civilian_ship_action(
         &self,
         ship_id: EntityId,
@@ -179,6 +199,9 @@ impl World {
         dt: f64,
         enable_random_ai: bool,
         route: Option<&MiningRoute>,
+        // pre-rolled uniform value in [0, 1) used to pick a random in-range
+        // target; passed in so this stays a pure function (no rng ownership).
+        target_roll: f64,
     ) -> (Option<CivilianShipState>, Option<Command>) {
         let home_base = ai.home_base;
 
@@ -231,8 +254,9 @@ impl World {
                             .collect();
 
                     if !in_range_targets.is_empty() {
-                        let &(target_id, resource) =
-                            &in_range_targets[rand::rng().random_range(0..in_range_targets.len())];
+                        let index = ((target_roll * in_range_targets.len() as f64) as usize)
+                            .min(in_range_targets.len() - 1);
+                        let &(target_id, resource) = &in_range_targets[index];
                         if let Some(intercept_pos) =
                             predict_orbital_intercept(self, ship_id, target_id)
                         {
@@ -337,7 +361,7 @@ impl World {
     }
 
     pub(super) fn process_ship_sales(&mut self) -> Vec<ShipSaleInfo> {
-        let sales_updates: Vec<(EntityId, EntityId)> = self
+        let mut sales_updates: Vec<(EntityId, EntityId)> = self
             .civilian_ai
             .iter()
             .filter_map(|(id, ai)| {
@@ -351,6 +375,10 @@ impl World {
                 None
             })
             .collect();
+        // sort by ship id so credits/stocks accumulate on the destination body in
+        // a deterministic order; float addition isn't associative, and this feeds
+        // build-timing decisions and thus the rng stream.
+        sales_updates.sort_unstable();
 
         let mut sales_info: Vec<ShipSaleInfo> = Vec::new();
         let mut sales_to_process = Vec::new();

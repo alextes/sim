@@ -94,10 +94,21 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
+        Self::with_seed(None)
+    }
+
+    /// construct the app, optionally seeding world generation for reproducible
+    /// runs. `None` leaves the world's entropy-seeded rng (normal interactive
+    /// play).
+    pub fn with_seed(seed: Option<u64>) -> Self {
         let mut world = World::default();
-        let mut rng = rand::rng();
-        map_generation::populate_initial_galaxy(&mut world, &mut rng);
-        let background = BackgroundLayer::new(&mut rng);
+        if let Some(seed) = seed {
+            world.seed_rng(seed);
+        }
+        map_generation::populate_initial_galaxy(&mut world);
+        // draw the background from the same rng so a seeded run is fully
+        // reproducible, starfield included.
+        let background = BackgroundLayer::new(&mut world.rng.0);
 
         let selection = if world.entities.is_empty() {
             vec![]

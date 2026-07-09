@@ -109,16 +109,14 @@ impl World {
                 false
             };
 
+        // iterate entities in stable creation order (not hashmap order) so lane
+        // generation is deterministic: the order stars are processed decides
+        // which lanes win the intersection and pruning passes.
         let star_ids: Vec<EntityId> = self
-            .entity_types
+            .entities
             .iter()
-            .filter_map(|(&id, &entity_type)| {
-                if entity_type == crate::world::types::EntityType::Star {
-                    Some(id)
-                } else {
-                    None
-                }
-            })
+            .copied()
+            .filter(|id| self.entity_types.get(id) == Some(&crate::world::types::EntityType::Star))
             .collect();
 
         if star_ids.len() < 2 {
@@ -215,9 +213,15 @@ impl World {
         loop {
             let mut made_change_this_pass = false;
 
+            // work from a sorted snapshot so iteration order (and therefore which
+            // pruning candidate is picked first) is deterministic, not hashset order.
+            let mut ordered_lanes: Vec<(EntityId, EntityId)> =
+                current_lanes_as_set.iter().copied().collect();
+            ordered_lanes.sort_unstable();
+
             // recalculate connection counts based on the current set of lanes for this pass
             let mut temp_star_connection_counts: HashMap<EntityId, usize> = HashMap::new();
-            for &(s1, s2) in &current_lanes_as_set {
+            for &(s1, s2) in &ordered_lanes {
                 *temp_star_connection_counts.entry(s1).or_insert(0) += 1;
                 *temp_star_connection_counts.entry(s2).or_insert(0) += 1;
             }
@@ -233,7 +237,7 @@ impl World {
 
                 let mut lanes_from_this_star: Vec<(f64, EntityId, i32)> = Vec::new(); // (angle, neighbor_id, dist_sq)
 
-                for &(s1_lane, s2_lane) in &current_lanes_as_set {
+                for &(s1_lane, s2_lane) in &ordered_lanes {
                     let neighbor_id_in_lane = if s1_lane == current_star_id {
                         s2_lane
                     } else if s2_lane == current_star_id {
@@ -331,6 +335,8 @@ impl World {
             }
         } // End loop
 
-        self.lanes = current_lanes_as_set.into_iter().collect();
+        let mut final_lanes: Vec<(EntityId, EntityId)> = current_lanes_as_set.into_iter().collect();
+        final_lanes.sort_unstable();
+        self.lanes = final_lanes;
     }
 }

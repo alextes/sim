@@ -24,6 +24,8 @@ mod resources;
 pub mod spawning;
 pub mod types;
 
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 pub use resources::ResourceSystem;
 use tracing::debug;
 
@@ -34,6 +36,18 @@ pub type EntityId = u32;
 pub struct ShipInfo {
     pub speed: f64,
     pub ship_type: ShipType,
+}
+
+/// the world's owned random number generator. wrapping `StdRng` lets `World`
+/// keep deriving `Default` (StdRng has no `Default`); the default seeds from os
+/// entropy for interactive play. reproducible runs reseed via `World::seed_rng`.
+#[derive(Debug)]
+pub struct WorldRng(pub StdRng);
+
+impl Default for WorldRng {
+    fn default() -> Self {
+        WorldRng(StdRng::from_os_rng())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -79,6 +93,9 @@ pub struct World {
     pub mining_routes: HashMap<EntityId, MiningRoute>,
     /// master switch for autonomous civilian ai behavior
     pub enable_civilian_ai: bool,
+    /// world-owned rng driving generation, spawning, and civilian ai. seed it
+    /// for reproducible runs (see `seed_rng`).
+    pub(crate) rng: WorldRng,
 }
 
 impl World {
@@ -133,6 +150,13 @@ impl World {
 
     pub fn spawn_frigate(&mut self, name: String, position: Point) -> EntityId {
         spawning::spawn_frigate(self, name, position)
+    }
+
+    /// reseed the world's rng for reproducible runs. call before
+    /// `populate_initial_galaxy` (and before any `update`) to get an identical
+    /// world and simulation from the same seed.
+    pub fn seed_rng(&mut self, seed: u64) {
+        self.rng = WorldRng(StdRng::seed_from_u64(seed));
     }
 
     /// adds a command to the world's command queue.
@@ -521,5 +545,51 @@ mod tests {
                 second_planet
             ]
         );
+    }
+
+    /// full-sim reproducibility: with the world-owned rng seeded, generation
+    /// plus many ticks of the civilian economy (which selects mining targets
+    /// and places built ships randomly) must produce bit-identical results.
+    #[test]
+    fn same_seed_produces_identical_simulation_run() {
+        fn run(seed: u64) -> Vec<String> {
+            let mut world = World::default();
+            world.seed_rng(seed);
+            crate::map_generation::populate_initial_galaxy(&mut world);
+            world.enable_civilian_ai = true;
+
+            // give the civilian economy something to do: mining ships homed at earth.
+            let earth = world
+                .iter_entities()
+                .find(|&id| world.get_entity_name(id).as_deref() == Some("earth"))
+                .expect("earth exists after generation");
+            for i in 0..3 {
+                world.spawn_mining_ship(format!("miner-{i}"), Point { x: 5 + i, y: 5 }, earth);
+            }
+
+            for _ in 0..300 {
+                world.update(0.1, 0);
+            }
+
+            // fingerprint the parts the rng drives: ship states/positions and credits.
+            let mut lines: Vec<String> = world
+                .civilian_ai
+                .keys()
+                .map(|&id| {
+                    let pos = world
+                        .get_location_f64(id)
+                        .unwrap_or(crate::location::PointF64 { x: 0.0, y: 0.0 });
+                    format!(
+                        "{id}:{:?}:{:.4},{:.4}",
+                        world.civilian_ai[&id].state, pos.x, pos.y
+                    )
+                })
+                .collect();
+            lines.sort();
+            lines.push(format!("credits:{:.4}", world.player_credits));
+            lines
+        }
+
+        assert_eq!(run(777), run(777));
     }
 }

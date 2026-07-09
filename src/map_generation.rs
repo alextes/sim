@@ -88,9 +88,8 @@ fn add_sol_system(world: &mut World) -> EntityId {
     world.set_player_controlled(earth_id);
 
     // set starting population and resources for earth
+    let population_variation = world.rng.0.random_range(-0.2..0.2);
     if let Some(data) = world.celestial_data.get_mut(&earth_id) {
-        let mut rng = rand::rng();
-        let population_variation = rng.random_range(-0.2..0.2);
         data.population = (100_000_000.0 * (1.0 + population_variation)) as f32;
         data.yields
             .insert(crate::world::types::RawResource::Metals, 1.0);
@@ -143,7 +142,7 @@ fn add_sol_system(world: &mut World) -> EntityId {
     sol_id
 }
 
-pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
+pub fn populate_initial_galaxy(world: &mut World) {
     tracing::info!("populating initial galaxy...");
     world.player_credits = 1_000_000.0;
     let mut star_ids = vec![];
@@ -156,14 +155,14 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
     star_positions.push(world.get_location(sol_id).unwrap()); // sol is guaranteed to have a location
 
     for _ in 0..NUM_STARS {
-        let star_name = generate_star_name(rng);
+        let star_name = generate_star_name(&mut world.rng.0);
         let mut position;
         let mut attempts = 0;
         loop {
-            let angle = rng.random_range(0.0..TAU);
+            let angle = world.rng.0.random_range(0.0..TAU);
             // linear distribution of radius sample: r = R * U, (U in [0,1])
             // this results in an areal density proportional to 1/r, i.e., denser towards the center.
-            let radius_sample = rng.random_range(0.0..1.0f64);
+            let radius_sample = world.rng.0.random_range(0.0..1.0f64);
             let radius = GALAXY_RADIUS as f64 * radius_sample;
 
             position = Point {
@@ -197,16 +196,16 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
 
     // generate some planets for the other stars, filtering out sol which is special
     for &star_id in star_ids.iter().filter(|&&id| id != sol_id) {
-        let num_planets = rng.random_range(0..=MAX_PLANETS_PER_STAR);
+        let num_planets = world.rng.0.random_range(0..=MAX_PLANETS_PER_STAR);
         let star_name = world.get_entity_name(star_id).unwrap_or_default();
-        let mut last_radius = rng.random_range(4.0..8.0);
+        let mut last_radius = world.rng.0.random_range(4.0..8.0);
 
         for i in 0..num_planets {
             let planet_name = format!("{}-{}", star_name, i + 1);
-            let radius = last_radius + rng.random_range(5.0..10.0);
-            let initial_angle = rng.random_range(0.0..TAU);
+            let radius = last_radius + world.rng.0.random_range(5.0..10.0);
+            let initial_angle = world.rng.0.random_range(0.0..TAU);
             // slower for further planets
-            let angular_velocity = rng.random_range(0.05..0.2) / (radius / 10.0);
+            let angular_velocity = world.rng.0.random_range(0.05..0.2) / (radius / 10.0);
 
             world.spawn_planet(
                 planet_name,
@@ -218,12 +217,12 @@ pub fn populate_initial_galaxy<R: Rng>(world: &mut World, rng: &mut R) {
             last_radius = radius;
         }
 
-        let num_gas_giants = rng.random_range(0..=MAX_GAS_GIANTS_PER_STAR);
+        let num_gas_giants = world.rng.0.random_range(0..=MAX_GAS_GIANTS_PER_STAR);
         for i in 0..num_gas_giants {
             let gg_name = format!("{}-gg-{}", star_name, i + 1);
-            let radius = last_radius + rng.random_range(15.0..25.0);
-            let initial_angle = rng.random_range(0.0..TAU);
-            let angular_velocity = rng.random_range(0.01..0.05) / (radius / 10.0);
+            let radius = last_radius + world.rng.0.random_range(15.0..25.0);
+            let initial_angle = world.rng.0.random_range(0.0..TAU);
+            let angular_velocity = world.rng.0.random_range(0.01..0.05) / (radius / 10.0);
 
             world.spawn_gas_giant(gg_name, star_id, radius, initial_angle, angular_velocity);
             last_radius = radius;
@@ -258,6 +257,7 @@ mod tests {
     #[test]
     fn test_add_sol_system() {
         let mut world = World::default();
+        world.seed_rng(42);
         let sol_id_from_func = add_sol_system(&mut world);
 
         // Check that sol, earth, moon were created
@@ -338,8 +338,8 @@ mod tests {
     #[test]
     fn test_populate_initial_galaxy() {
         let mut world = World::default();
-        let mut rng = StdRng::seed_from_u64(42);
-        populate_initial_galaxy(&mut world, &mut rng);
+        world.seed_rng(42);
+        populate_initial_galaxy(&mut world);
 
         // NUM_STARS from this function + 1 star from add_sol_system
         let star_count = world
@@ -373,5 +373,57 @@ mod tests {
 
         // star lanes should be generated
         assert!(!world.lanes.is_empty());
+    }
+
+    /// a compact, comparable fingerprint of the parts of world state that
+    /// generation controls: every entity's name, type, and rounded position.
+    fn world_fingerprint(world: &World) -> Vec<(String, crate::world::types::EntityType, Point)> {
+        world
+            .iter_entities()
+            .map(|id| {
+                (
+                    world.get_entity_name(id).unwrap_or_default(),
+                    world.get_entity_type(id).expect("entity has a type"),
+                    world.get_location(id).unwrap_or(Point { x: 0, y: 0 }),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn same_seed_produces_identical_world() {
+        let mut world_a = World::default();
+        let mut world_b = World::default();
+        world_a.seed_rng(1234);
+        world_b.seed_rng(1234);
+        populate_initial_galaxy(&mut world_a);
+        populate_initial_galaxy(&mut world_b);
+
+        assert_eq!(world_fingerprint(&world_a), world_fingerprint(&world_b));
+        assert_eq!(world_a.lanes, world_b.lanes);
+        // yields are part of world state too; full reproducibility requires them
+        // to match, not just names/positions.
+        assert_eq!(world_a.celestial_data.len(), world_b.celestial_data.len());
+        for (id, data_a) in &world_a.celestial_data {
+            let data_b = &world_b.celestial_data[id];
+            assert_eq!(
+                data_a.yields, data_b.yields,
+                "yields differ for entity {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn different_seeds_produce_different_worlds() {
+        let mut world_a = World::default();
+        let mut world_b = World::default();
+        world_a.seed_rng(1);
+        world_b.seed_rng(2);
+        populate_initial_galaxy(&mut world_a);
+        populate_initial_galaxy(&mut world_b);
+
+        // the deterministic sol system is shared; the randomized field stars
+        // that follow must diverge.
+        assert_ne!(world_fingerprint(&world_a), world_fingerprint(&world_b));
     }
 }

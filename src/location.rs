@@ -99,7 +99,26 @@ impl LocationSystem {
         );
     }
 
-    /// Advance all orbitals by dt seconds, updating their positions in spawn order.
+    /// number of orbital ancestors above `entity` (0 for a non-orbital or an
+    /// orbital anchored to a static body). used to order the orbital update so
+    /// parents advance before their children.
+    fn orbital_depth(&self, entity: EntityId) -> u32 {
+        let mut depth = 0;
+        let mut current = entity;
+        while let Some(LocatedEntity::Orbital { anchor, .. }) = self.entries.get(&current) {
+            depth += 1;
+            current = *anchor;
+            // guard against malformed cycles in the anchor chain.
+            if depth > 64 {
+                break;
+            }
+        }
+        depth
+    }
+
+    /// advance all orbitals by dt seconds, updating their positions. orbitals
+    /// are processed parent-before-child so a body reads its anchor's fresh
+    /// position within the same tick.
     pub fn update(&mut self, dt: f64) {
         // collect all orbitals
         let mut updates = Vec::new();
@@ -115,6 +134,10 @@ impl LocationSystem {
                 updates.push((id, *anchor, *radius, *angle, *angular_velocity));
             }
         }
+        // sort so every orbital is processed after its anchor chain: children read
+        // their parent's freshly-updated position, and the order is deterministic
+        // (hashmap iteration order is unspecified, so collecting above is not).
+        updates.sort_by_key(|&(id, ..)| (self.orbital_depth(id), id));
         // apply in order, so anchors update before children
         for (id, anchor, radius, old_angle, angular_velocity) in updates {
             let new_angle = old_angle + angular_velocity * dt;

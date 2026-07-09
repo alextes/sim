@@ -90,9 +90,8 @@ impl World {
                     }
                 }
 
-                let mut rng = rand::rng();
-                let spawn_offset_x = rng.random_range(-2.0..2.0);
-                let spawn_offset_y = rng.random_range(-2.0..2.0);
+                let spawn_offset_x = self.rng.0.random_range(-2.0..2.0);
+                let spawn_offset_y = self.rng.0.random_range(-2.0..2.0);
                 let spawn_pos = PointF64 {
                     x: shipyard_loc.x as f64 + spawn_offset_x,
                     y: shipyard_loc.y as f64 + spawn_offset_y,

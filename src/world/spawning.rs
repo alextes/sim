@@ -18,8 +18,7 @@ pub fn spawn_star(world: &mut World, name: String, position: Point) -> EntityId 
     world.entity_names.insert(id, name.clone());
     world.entity_types.insert(id, EntityType::Star);
     world.render_glyphs.insert(id, 's');
-    let mut rng = rand::rng();
-    let color = STAR_COLORS.iter().choose(&mut rng).unwrap();
+    let color = STAR_COLORS.iter().choose(&mut world.rng.0).unwrap();
     world.entity_colors.insert(id, *color);
     world.locations.add_static(id, position);
     world
@@ -47,8 +46,7 @@ pub fn spawn_planet(
     world.entity_names.insert(id, name.clone());
     world.entity_types.insert(id, EntityType::Planet);
     world.render_glyphs.insert(id, 'p');
-    let mut rng = rand::rng();
-    let color = PLANET_COLORS.iter().choose(&mut rng).unwrap();
+    let color = PLANET_COLORS.iter().choose(&mut world.rng.0).unwrap();
     world.entity_colors.insert(id, *color);
     world
         .locations
@@ -62,11 +60,11 @@ pub fn spawn_planet(
 
     let mut yields = HashMap::new();
     let chosen_resources = PLANETARY_RESOURCES
-        .choose_multiple(&mut rng, 3)
+        .choose_multiple(&mut world.rng.0, 3)
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
-        yields.insert(resource, rng.random_range(50.0..150.0));
+        yields.insert(resource, world.rng.0.random_range(50.0..150.0));
     }
 
     let mut demands = HashMap::new();
@@ -105,8 +103,7 @@ pub fn spawn_moon(
     world.entity_names.insert(id, name.clone());
     world.entity_types.insert(id, EntityType::Moon);
     world.render_glyphs.insert(id, 'm');
-    let mut rng = rand::rng();
-    let color = MOON_COLORS.iter().choose(&mut rng).unwrap();
+    let color = MOON_COLORS.iter().choose(&mut world.rng.0).unwrap();
     world.entity_colors.insert(id, *color);
     world
         .locations
@@ -118,11 +115,11 @@ pub fn spawn_moon(
 
     let mut yields = HashMap::new();
     let chosen_resources = PLANETARY_RESOURCES
-        .choose_multiple(&mut rng, 3)
+        .choose_multiple(&mut world.rng.0, 3)
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
-        yields.insert(resource, rng.random_range(20.0..80.0));
+        yields.insert(resource, world.rng.0.random_range(20.0..80.0));
     }
 
     let mut demands = HashMap::new();
@@ -190,8 +187,7 @@ pub fn spawn_gas_giant(
     world.entity_names.insert(id, name.clone());
     world.entity_types.insert(id, EntityType::GasGiant);
     world.render_glyphs.insert(id, 'g');
-    let mut rng = rand::rng();
-    let color = PLANET_COLORS.iter().choose(&mut rng).unwrap(); // Reuse planet colors for now
+    let color = PLANET_COLORS.iter().choose(&mut world.rng.0).unwrap(); // Reuse planet colors for now
     world.entity_colors.insert(id, *color);
     world
         .locations
@@ -205,11 +201,11 @@ pub fn spawn_gas_giant(
 
     let mut yields = HashMap::new();
     let chosen_resources = GAS_GIANT_RESOURCES
-        .choose_multiple(&mut rng, 3)
+        .choose_multiple(&mut world.rng.0, 3)
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
-        yields.insert(resource, rng.random_range(80.0..200.0));
+        yields.insert(resource, world.rng.0.random_range(80.0..200.0));
     }
 
     world.celestial_data.insert(
