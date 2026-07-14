@@ -190,11 +190,11 @@ fn main_menu(ctx: &egui::Context, game_state: &mut GameState, controls: &mut Con
             ui.visuals_mut().widgets.hovered.fg_stroke.color = button_text;
             ui.visuals_mut().widgets.active.fg_stroke.color = button_text;
             ui.visuals_mut().widgets.inactive.bg_stroke =
-                egui::Stroke::new(1.0, Color32::from_rgb(72, 76, 90));
+                egui::Stroke::new(1.0_f32, Color32::from_rgb(72, 76, 90));
             ui.visuals_mut().widgets.hovered.bg_stroke =
-                egui::Stroke::new(1.0, Color32::from_rgb(100, 108, 128));
+                egui::Stroke::new(1.0_f32, Color32::from_rgb(100, 108, 128));
             ui.visuals_mut().widgets.active.bg_stroke =
-                egui::Stroke::new(1.0, Color32::from_rgb(118, 128, 148));
+                egui::Stroke::new(1.0_f32, Color32::from_rgb(118, 128, 148));
 
             ui.vertical_centered(|ui| {
                 if ui

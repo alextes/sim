@@ -251,7 +251,7 @@ impl World {
     }
 
     fn process_construction(&mut self, dt: f64) {
-        for (_, infrastructure) in self.infrastructure.iter_mut() {
+        for infrastructure in self.infrastructure.values_mut() {
             infrastructure.process_construction(dt as f32);
         }
     }
