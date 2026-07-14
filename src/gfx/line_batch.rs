@@ -9,6 +9,7 @@ use wgpu::util::DeviceExt;
 use crate::control_state::ControlState;
 use crate::palette;
 use crate::viewport::Viewport;
+use crate::world::types::EntityType;
 use crate::world::{EntityId, World};
 
 #[repr(C)]
@@ -42,6 +43,10 @@ pub struct LineBatch {
 const GRID_MAX_TILES: f64 = 400.0;
 /// segments used to approximate an orbit ring.
 const ORBIT_SEGMENTS: usize = 48;
+/// minimum zoom for planet and gas-giant orbit rings.
+const PLANET_ORBIT_MIN_ZOOM: f64 = 0.4;
+/// minimum zoom for moon orbit rings.
+const MOON_ORBIT_MIN_ZOOM: f64 = 1.0;
 
 impl LineBatch {
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
@@ -212,9 +217,9 @@ impl LineBatch {
     fn push_lanes(&mut self, world: &World, viewport: &Viewport) {
         let color = rgba(palette::DGRAY, 0.5);
         for &(a, b) in world.iter_lanes() {
-            if let (Some(pa), Some(pb)) = (world.get_location(a), world.get_location(b)) {
-                let p0 = viewport.world_to_screen_px(pa.x as f64, pa.y as f64);
-                let p1 = viewport.world_to_screen_px(pb.x as f64, pb.y as f64);
+            if let Some((start, end)) = lane_world_endpoints(world, a, b) {
+                let p0 = viewport.world_to_screen_px(start.0, start.1);
+                let p1 = viewport.world_to_screen_px(end.0, end.1);
                 self.line(p0, p1, color);
             }
         }
@@ -222,12 +227,18 @@ impl LineBatch {
 
     fn push_orbits(&mut self, world: &World, viewport: &Viewport) {
         // skip orbit rings when zoomed far out; they collapse into noise.
-        if viewport.zoom < 0.4 {
+        if viewport.zoom < PLANET_ORBIT_MIN_ZOOM {
             return;
         }
         let scale = viewport.world_tile_pixel_size_on_screen();
         let color = rgba(palette::DGRAY, 0.35);
-        for (_, info) in world.iter_orbitals() {
+        for (entity, info) in world.iter_orbitals() {
+            let Some(entity_type) = world.get_entity_type(entity) else {
+                continue;
+            };
+            if !orbit_is_visible(entity_type, viewport.zoom) {
+                continue;
+            }
             let Some(center) = orbit_anchor_screen_center(world, viewport, info.anchor) else {
                 continue;
             };
@@ -336,6 +347,39 @@ fn rgba(color: Color32, alpha: f32) -> [f32; 4] {
     ]
 }
 
+fn orbit_is_visible(entity_type: EntityType, zoom: f64) -> bool {
+    match entity_type {
+        EntityType::Planet | EntityType::GasGiant => zoom >= PLANET_ORBIT_MIN_ZOOM,
+        EntityType::Moon => zoom >= MOON_ORBIT_MIN_ZOOM,
+        EntityType::Star | EntityType::Ship => false,
+    }
+}
+
+fn lane_world_endpoints(
+    world: &World,
+    a: EntityId,
+    b: EntityId,
+) -> Option<((f64, f64), (f64, f64))> {
+    let pa = world.get_location_f64(a)?;
+    let pb = world.get_location_f64(b)?;
+    let radius_a = world.get_system_radius(a);
+    let radius_b = world.get_system_radius(b);
+    let dx = pb.x - pa.x;
+    let dy = pb.y - pa.y;
+    let distance = dx.hypot(dy);
+
+    if distance <= radius_a + radius_b {
+        return None;
+    }
+
+    let unit_x = dx / distance;
+    let unit_y = dy / distance;
+    Some((
+        (pa.x + unit_x * radius_a, pa.y + unit_y * radius_a),
+        (pb.x - unit_x * radius_b, pb.y - unit_y * radius_b),
+    ))
+}
+
 fn orbit_anchor_screen_center(
     world: &World,
     viewport: &Viewport,
@@ -369,5 +413,48 @@ mod tests {
         assert!((center.1 - expected.1).abs() < f64::EPSILON);
         assert!((center.0 - rounded_center.0).abs() > f64::EPSILON);
         assert!((center.1 - rounded_center.1).abs() > f64::EPSILON);
+    }
+
+    #[test]
+    fn orbit_visibility_uses_entity_specific_zoom_thresholds() {
+        assert!(orbit_is_visible(EntityType::Planet, 0.4));
+        assert!(orbit_is_visible(EntityType::GasGiant, 0.4));
+        assert!(!orbit_is_visible(EntityType::Planet, 0.399));
+        assert!(!orbit_is_visible(EntityType::GasGiant, 0.399));
+
+        assert!(orbit_is_visible(EntityType::Moon, 1.0));
+        assert!(!orbit_is_visible(EntityType::Moon, 0.999));
+        assert!(!orbit_is_visible(EntityType::Star, 10.0));
+        assert!(!orbit_is_visible(EntityType::Ship, 10.0));
+    }
+
+    #[test]
+    fn lane_endpoints_stop_outside_buffered_system_radii() {
+        let mut world = World::default();
+        let a = world.spawn_star("a".to_string(), Point { x: 0, y: 0 });
+        let b = world.spawn_star("b".to_string(), Point { x: 100, y: 0 });
+        world.spawn_planet("a-1".to_string(), a, 10.0, 0.0, 0.0);
+        let b_planet = world.spawn_planet("b-1".to_string(), b, 20.0, 0.0, 0.0);
+        world.spawn_moon("b-1-moon".to_string(), b_planet, 5.0, 0.0, 0.0);
+
+        let (start, end) = lane_world_endpoints(&world, a, b).unwrap();
+
+        assert_eq!(world.get_system_radius(a), 12.0);
+        assert_eq!(world.get_system_radius(b), 30.0);
+        assert_eq!(start, (12.0, 0.0));
+        assert_eq!(end, (70.0, 0.0));
+    }
+
+    #[test]
+    fn lane_endpoints_omit_touching_or_overlapping_systems() {
+        for distance in [24, 23] {
+            let mut world = World::default();
+            let a = world.spawn_star("a".to_string(), Point { x: 0, y: 0 });
+            let b = world.spawn_star("b".to_string(), Point { x: distance, y: 0 });
+            world.spawn_planet("a-1".to_string(), a, 10.0, 0.0, 0.0);
+            world.spawn_planet("b-1".to_string(), b, 10.0, 0.0, 0.0);
+
+            assert!(lane_world_endpoints(&world, a, b).is_none());
+        }
     }
 }
