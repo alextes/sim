@@ -26,14 +26,16 @@ impl EguiLayer {
         device: &wgpu::Device,
         window: &Window,
         surface_format: wgpu::TextureFormat,
+        native_pixels_per_point: Option<f32>,
     ) -> Self {
         let ctx = egui::Context::default();
         let viewport_id = ctx.viewport_id();
+        let deterministic_capture = native_pixels_per_point.is_some();
         let state = egui_winit::State::new(
             ctx.clone(),
             viewport_id,
             window,
-            Some(window.scale_factor() as f32),
+            native_pixels_per_point.or(Some(window.scale_factor() as f32)),
             None,
             None,
         );
@@ -43,7 +45,7 @@ impl EguiLayer {
             egui_wgpu::RendererOptions {
                 msaa_samples: 1,
                 depth_stencil_format: None,
-                dithering: true,
+                dithering: !deterministic_capture,
                 predictable_texture_filtering: false,
             },
         );

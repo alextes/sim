@@ -22,10 +22,11 @@ pub struct GpuState {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
+    pub capture_texture: Option<wgpu::Texture>,
 }
 
 impl GpuState {
-    pub fn new(window: Arc<Window>) -> Self {
+    pub fn new(window: Arc<Window>, capture_size: Option<(u32, u32)>) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::default();
@@ -77,6 +78,22 @@ impl GpuState {
             desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
+        let capture_texture = capture_size.map(|(width, height)| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("screenshot render target"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: config.format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            })
+        });
 
         Self {
             window,
@@ -84,6 +101,7 @@ impl GpuState {
             device,
             queue,
             config,
+            capture_texture,
         }
     }
 
