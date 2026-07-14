@@ -1,9 +1,13 @@
 //! the winit application: owns the window, gpu, egui, and game state, and
 //! drives the fixed-timestep sim. replaces the old hand-rolled sdl `main` loop.
 
+use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use anyhow::{anyhow, Context};
+use tracing::info;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
@@ -27,6 +31,32 @@ pub const SIMULATION_DT: Duration = Duration::from_millis(10);
 /// render interval (about 60hz).
 pub const RENDER_DT: Duration = Duration::from_nanos(16_666_667);
 const ONE_SECOND: Duration = Duration::from_secs(1);
+
+#[derive(Debug)]
+pub struct CaptureConfig {
+    pub path: PathBuf,
+    pub seed: u64,
+    pub ticks: u64,
+    pub width: u32,
+    pub height: u32,
+    pub start_playing: bool,
+}
+
+struct CaptureRequest {
+    path: PathBuf,
+    width: u32,
+    height: u32,
+    warmup_frames_remaining: u8,
+    result: Option<anyhow::Result<()>>,
+}
+
+struct CaptureBuffer {
+    buffer: wgpu::Buffer,
+    padded_bytes_per_row: u32,
+    unpadded_bytes_per_row: u32,
+    width: u32,
+    height: u32,
+}
 
 /// the different interaction modes the game can be in.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +120,7 @@ pub struct App {
     viewport: Viewport,
     game_state: GameState,
     background: BackgroundLayer,
+    capture: Option<CaptureRequest>,
 }
 
 impl App {
@@ -132,7 +163,46 @@ impl App {
             viewport: Viewport::default(),
             game_state: GameState::MainMenu,
             background,
+            capture: None,
         }
+    }
+
+    pub fn with_capture(config: CaptureConfig) -> Self {
+        let mut app = Self::with_seed(Some(config.seed));
+        if config.start_playing {
+            app.start_playing();
+        }
+        app.controls.paused = true;
+
+        for tick in 1..=config.ticks {
+            app.world.update(SIMULATION_DT.as_secs_f64(), tick);
+        }
+        app.clock.total_sim_ticks = config.ticks;
+        app.viewport.screen_pixel_width = config.width;
+        app.viewport.screen_pixel_height = config.height;
+        app.capture = Some(CaptureRequest {
+            path: config.path,
+            width: config.width,
+            height: config.height,
+            warmup_frames_remaining: 1,
+            result: None,
+        });
+        app
+    }
+
+    pub fn start_playing(&mut self) {
+        self.game_state = GameState::Playing;
+        self.controls.paused = false;
+    }
+
+    pub fn finish_capture(&mut self) -> anyhow::Result<()> {
+        let Some(capture) = self.capture.as_mut() else {
+            return Ok(());
+        };
+        capture
+            .result
+            .take()
+            .ok_or_else(|| anyhow!("game exited before the screenshot was captured"))?
     }
 
     /// render a single frame: clear (world pass) then composite egui on top.
@@ -147,6 +217,7 @@ impl App {
             clock,
             viewport,
             background,
+            capture,
             ..
         } = self;
         let (Some(gfx), Some(world_renderer), Some(egui)) =
@@ -158,6 +229,14 @@ impl App {
         // the galaxy is only drawn in the in-game states; the main menu shows
         // a bare background.
         let show_world = !matches!(game_state, GameState::MainMenu);
+        let screen = gfx
+            .capture_texture
+            .as_ref()
+            .map(|texture| (texture.width(), texture.height()))
+            .unwrap_or((gfx.config.width, gfx.config.height));
+        let should_capture = capture.as_ref().is_some_and(|request| {
+            request.result.is_none() && request.warmup_frames_remaining == 0
+        });
         if show_world {
             world_renderer.prepare(WorldPrepareContext {
                 device: &gfx.device,
@@ -166,16 +245,24 @@ impl App {
                 viewport,
                 background,
                 controls,
-                screen: (gfx.config.width, gfx.config.height),
+                screen,
             });
         }
 
-        let Some(output) = gfx.acquire_frame() else {
-            return;
+        let output = if gfx.capture_texture.is_some() {
+            None
+        } else {
+            let Some(output) = gfx.acquire_frame() else {
+                return;
+            };
+            Some(output)
         };
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let target_texture = gfx
+            .capture_texture
+            .as_ref()
+            .or_else(|| output.as_ref().map(|output| &output.texture))
+            .expect("render target is available");
+        let view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = gfx.create_encoder();
 
         // world pass: clear to the scene background, then draw the tile world.
@@ -208,18 +295,59 @@ impl App {
                 queue: &gfx.queue,
                 encoder: &mut encoder,
                 view: &view,
-                screen_size_in_pixels: [gfx.config.width, gfx.config.height],
+                screen_size_in_pixels: [screen.0, screen.1],
             },
             |ctx| ui::build_ui(ctx, world, controls, game_state, clock, viewport),
         );
 
-        gfx.queue.submit(
+        let render_submission = gfx.queue.submit(
             user_buffers
                 .into_iter()
                 .chain(std::iter::once(encoder.finish())),
         );
-        output.present();
         clock.fps_counter += 1;
+
+        if should_capture {
+            let request = capture.as_mut().expect("capture request is pending");
+            let result = gfx
+                .device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(render_submission),
+                    timeout: None,
+                })
+                .context("waiting for screenshot render")
+                .and_then(|_| {
+                    let mut copy_encoder = gfx.create_encoder();
+                    let buffer = encode_capture(gfx, target_texture, &mut copy_encoder);
+                    gfx.queue.submit(std::iter::once(copy_encoder.finish()));
+                    save_capture(gfx, buffer, &request.path)
+                });
+            request.result = Some(result);
+            controls.quit_requested = true;
+        }
+
+        if let Some(output) = output {
+            output.present();
+        }
+
+        if let Some(request) = capture.as_mut() {
+            if request.result.is_none() && request.warmup_frames_remaining > 0 {
+                match gfx
+                    .device
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .context("waiting for screenshot warm-up frame")
+                {
+                    Ok(_) => {
+                        request.warmup_frames_remaining -= 1;
+                        gfx.window.request_redraw();
+                    }
+                    Err(error) => {
+                        request.result = Some(Err(error));
+                        controls.quit_requested = true;
+                    }
+                }
+            }
+        }
 
         // honor egui's requested repaint cadence (e.g. button hover animations).
         if repaint_now {
@@ -241,24 +369,48 @@ impl ApplicationHandler for App {
             return;
         }
 
-        let attributes = Window::default_attributes()
-            .with_title("sim")
-            .with_inner_size(winit::dpi::LogicalSize::new(
+        let attributes = Window::default_attributes().with_title("sim");
+        let attributes = if let Some(capture) = self.capture.as_ref() {
+            attributes.with_inner_size(winit::dpi::PhysicalSize::new(capture.width, capture.height))
+        } else {
+            attributes.with_inner_size(winit::dpi::LogicalSize::new(
                 INITIAL_WINDOW_WIDTH,
                 INITIAL_WINDOW_HEIGHT,
-            ));
+            ))
+        };
         let window = Arc::new(
             event_loop
                 .create_window(attributes)
                 .expect("failed to create window"),
         );
 
-        let gfx = GpuState::new(window.clone());
+        let capture_size = self
+            .capture
+            .as_ref()
+            .map(|capture| (capture.width, capture.height));
+        let gfx = GpuState::new(window.clone(), capture_size);
         let world_renderer = WorldRenderer::new(&gfx.device, &gfx.queue, gfx.config.format);
-        let egui = EguiLayer::new(&gfx.device, &window, gfx.config.format);
+        let pixels_per_point = self.capture.as_ref().map(|_| 1.0);
+        let egui = EguiLayer::new(&gfx.device, &window, gfx.config.format, pixels_per_point);
 
-        self.viewport.screen_pixel_width = gfx.config.width;
-        self.viewport.screen_pixel_height = gfx.config.height;
+        if self.capture.is_some() {
+            gfx.queue.submit(std::iter::empty());
+            if let Err(error) = gfx
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .context("initializing screenshot GPU resources")
+            {
+                if let Some(capture) = self.capture.as_mut() {
+                    capture.result = Some(Err(error));
+                }
+                self.controls.quit_requested = true;
+            }
+        }
+
+        if self.capture.is_none() {
+            self.viewport.screen_pixel_width = gfx.config.width;
+            self.viewport.screen_pixel_height = gfx.config.height;
+        }
 
         self.gfx = Some(gfx);
         self.world_renderer = Some(world_renderer);
@@ -286,8 +438,10 @@ impl ApplicationHandler for App {
                 if let Some(gfx) = self.gfx.as_mut() {
                     gfx.resize(size.width, size.height);
                 }
-                self.viewport.screen_pixel_width = size.width;
-                self.viewport.screen_pixel_height = size.height;
+                if self.capture.is_none() {
+                    self.viewport.screen_pixel_width = size.width;
+                    self.viewport.screen_pixel_height = size.height;
+                }
             }
             WindowEvent::RedrawRequested => self.redraw(),
             other => {
@@ -361,4 +515,98 @@ impl ApplicationHandler for App {
         let wake_at = next_sim.min(next_render);
         event_loop.set_control_flow(ControlFlow::WaitUntil(wake_at));
     }
+}
+
+fn encode_capture(
+    gfx: &GpuState,
+    texture: &wgpu::Texture,
+    encoder: &mut wgpu::CommandEncoder,
+) -> CaptureBuffer {
+    let width = texture.width();
+    let height = texture.height();
+    let unpadded_bytes_per_row = width * 4;
+    let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(alignment) * alignment;
+    let buffer = gfx.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("screenshot readback"),
+        size: u64::from(padded_bytes_per_row) * u64::from(height),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded_bytes_per_row),
+                rows_per_image: None,
+            },
+        },
+        texture.size(),
+    );
+
+    CaptureBuffer {
+        buffer,
+        padded_bytes_per_row,
+        unpadded_bytes_per_row,
+        width,
+        height,
+    }
+}
+
+fn save_capture(
+    gfx: &GpuState,
+    capture: CaptureBuffer,
+    path: &std::path::Path,
+) -> anyhow::Result<()> {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    capture
+        .buffer
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+    gfx.device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .context("waiting for screenshot GPU readback")?;
+    receiver
+        .recv()
+        .context("receiving screenshot GPU readback")?
+        .context("mapping screenshot GPU buffer")?;
+
+    let channel_order = match gfx.config.format {
+        wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => [0, 1, 2, 3],
+        wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => [2, 1, 0, 3],
+        format => return Err(anyhow!("unsupported screenshot surface format {format:?}")),
+    };
+    let mapped = capture.buffer.slice(..).get_mapped_range();
+    let mut rgba = Vec::with_capacity((capture.width * capture.height * 4) as usize);
+    for padded_row in mapped.chunks(capture.padded_bytes_per_row as usize) {
+        let row = &padded_row[..capture.unpadded_bytes_per_row as usize];
+        for color in row.chunks_exact(4) {
+            rgba.extend(channel_order.map(|index| color[index]));
+        }
+    }
+    drop(mapped);
+    capture.buffer.unmap();
+
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating screenshot directory {}", parent.display()))?;
+    }
+    image::save_buffer(
+        path,
+        &rgba,
+        capture.width,
+        capture.height,
+        image::ColorType::Rgba8,
+    )
+    .with_context(|| format!("saving screenshot to {}", path.display()))?;
+    info!(path = %path.display(), width = capture.width, height = capture.height, "saved screenshot");
+    Ok(())
 }
