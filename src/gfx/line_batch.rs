@@ -47,6 +47,16 @@ const ORBIT_SEGMENTS: usize = 48;
 const PLANET_ORBIT_MIN_ZOOM: f64 = 0.4;
 /// minimum zoom for moon orbit rings.
 const MOON_ORBIT_MIN_ZOOM: f64 = 1.0;
+/// screen-space clearance between an orbital body and its orbit line.
+const ORBIT_GAP_PADDING_PX: f64 = 5.0;
+/// screen-space clearance between a selected object and its reticle.
+const RETICLE_PADDING_PX: f64 = 4.0;
+/// shortest visible arm of a reticle corner.
+const RETICLE_MIN_ARM_PX: f64 = 3.0;
+/// longest visible arm of a reticle corner.
+const RETICLE_MAX_ARM_PX: f64 = 12.0;
+
+type LineSegment = ((f64, f64), (f64, f64));
 
 impl LineBatch {
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
@@ -243,9 +253,20 @@ impl LineBatch {
                 continue;
             };
             let radius = info.radius * scale;
+            let Some(entity_pos) = world.get_location_f64(entity) else {
+                continue;
+            };
+            let entity_center = viewport.world_to_screen_px(entity_pos.x, entity_pos.y);
+            let entity_size = (world.get_render_size(entity) * scale).max(2.0);
+            let clearance = entity_size / 2.0 + ORBIT_GAP_PADDING_PX;
+            let Some((start_angle, sweep)) =
+                orbit_visible_arc(center, entity_center, radius, clearance)
+            else {
+                continue;
+            };
             let mut prev: Option<(f64, f64)> = None;
             for i in 0..=ORBIT_SEGMENTS {
-                let theta = (i as f64 / ORBIT_SEGMENTS as f64) * std::f64::consts::TAU;
+                let theta = start_angle + (i as f64 / ORBIT_SEGMENTS as f64) * sweep;
                 let point = (
                     center.0 + radius * theta.cos(),
                     center.1 + radius * theta.sin(),
@@ -291,18 +312,14 @@ impl LineBatch {
 
     fn push_selection(&mut self, world: &World, viewport: &Viewport, controls: &ControlState) {
         let scale = viewport.world_tile_pixel_size_on_screen();
-        let color = rgba(palette::YELLOW, 1.0);
+        let color = rgba(palette::WHITE, 1.0);
         for &id in &controls.selection {
             if let Some(pos) = world.get_location_f64(id) {
                 let center = viewport.world_to_screen_px(pos.x, pos.y);
                 let size = (world.get_render_size(id) * scale).max(2.0);
-                self.rect(
-                    center.0 - size / 2.0 - 2.0,
-                    center.1 - size / 2.0 - 2.0,
-                    size + 4.0,
-                    size + 4.0,
-                    color,
-                );
+                for (start, end) in reticle_segments(center, size) {
+                    self.line(start, end, color);
+                }
             }
         }
     }
@@ -353,6 +370,46 @@ fn orbit_is_visible(entity_type: EntityType, zoom: f64) -> bool {
         EntityType::Moon => zoom >= MOON_ORBIT_MIN_ZOOM,
         EntityType::Star | EntityType::Ship => false,
     }
+}
+
+fn orbit_visible_arc(
+    anchor: (f64, f64),
+    entity: (f64, f64),
+    radius: f64,
+    clearance: f64,
+) -> Option<(f64, f64)> {
+    if radius <= 0.0 || clearance >= radius * 2.0 {
+        return None;
+    }
+
+    let entity_angle = (entity.1 - anchor.1).atan2(entity.0 - anchor.0);
+    let half_gap = 2.0 * (clearance / (radius * 2.0)).asin();
+    Some((
+        entity_angle + half_gap,
+        std::f64::consts::TAU - 2.0 * half_gap,
+    ))
+}
+
+fn reticle_segments(center: (f64, f64), object_size: f64) -> [LineSegment; 8] {
+    let half_extent = object_size / 2.0 + RETICLE_PADDING_PX;
+    let arm = (half_extent / 2.0)
+        .clamp(RETICLE_MIN_ARM_PX, RETICLE_MAX_ARM_PX)
+        .min(half_extent);
+    let left = center.0 - half_extent;
+    let right = center.0 + half_extent;
+    let top = center.1 - half_extent;
+    let bottom = center.1 + half_extent;
+
+    [
+        ((left, top + arm), (left, top)),
+        ((left, top), (left + arm, top)),
+        ((right - arm, top), (right, top)),
+        ((right, top), (right, top + arm)),
+        ((right, bottom - arm), (right, bottom)),
+        ((right, bottom), (right - arm, bottom)),
+        ((left + arm, bottom), (left, bottom)),
+        ((left, bottom), (left, bottom - arm)),
+    ]
 }
 
 fn lane_world_endpoints(
@@ -426,6 +483,36 @@ mod tests {
         assert!(!orbit_is_visible(EntityType::Moon, 0.999));
         assert!(!orbit_is_visible(EntityType::Star, 10.0));
         assert!(!orbit_is_visible(EntityType::Ship, 10.0));
+    }
+
+    #[test]
+    fn orbit_arc_leaves_screen_space_around_orbiter() {
+        let radius = 100.0;
+        let clearance = 8.0;
+        let (start, sweep) =
+            orbit_visible_arc((0.0, 0.0), (radius, 0.0), radius, clearance).unwrap();
+        let end = start + sweep;
+        let start_point = (radius * start.cos(), radius * start.sin());
+        let end_point = (radius * end.cos(), radius * end.sin());
+
+        assert!((start_point.0 - radius).hypot(start_point.1) >= clearance - 1e-9);
+        assert!((end_point.0 - radius).hypot(end_point.1) >= clearance - 1e-9);
+        assert!(sweep < std::f64::consts::TAU);
+    }
+
+    #[test]
+    fn reticle_has_four_separate_right_angle_corners() {
+        let segments = reticle_segments((50.0, 40.0), 10.0);
+
+        assert_eq!(segments.len(), 8);
+        assert_eq!(segments[0].1, segments[1].0);
+        assert_eq!(segments[2].1, segments[3].0);
+        assert_eq!(segments[4].1, segments[5].0);
+        assert_eq!(segments[6].1, segments[7].0);
+        assert_ne!(segments[1].1, segments[2].0);
+        assert_ne!(segments[3].1, segments[4].0);
+        assert_ne!(segments[5].1, segments[6].0);
+        assert_ne!(segments[7].1, segments[0].0);
     }
 
     #[test]
