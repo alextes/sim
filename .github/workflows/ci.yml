@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: cache cargo registry and target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -25,9 +25,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
-      - name: install sdl2 dependencies
-        run: sudo apt-get install -y libsdl2-dev libsdl2-image-dev
 
       - name: install rust toolchain
         uses: dtolnay/rust-toolchain@stable
