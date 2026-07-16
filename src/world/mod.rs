@@ -11,7 +11,9 @@ use std::collections::VecDeque;
 use crate::ships::ShipType;
 use crate::world::components::{Cargo, CivilianShipAI, MiningRoute};
 use crate::world::types::{
-    BodyProfile, CelestialBodyData, Color, EntityType, MOON_COLORS, PLANET_COLORS, STAR_COLORS,
+    BodyProfile, CelestialBodyData, Color, EntityType, InfrastructureType, Spaceport,
+    SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS,
+    PLAYER_BUILDABLE_INFRASTRUCTURE, STAR_COLORS,
 };
 
 mod civ_economy;
@@ -256,7 +258,7 @@ impl World {
         }
     }
 
-    fn find_star_for_entity(&self, entity_id: EntityId) -> Option<EntityId> {
+    pub fn find_star_for_entity(&self, entity_id: EntityId) -> Option<EntityId> {
         if let Some(EntityType::Star) = self.get_entity_type(entity_id) {
             return Some(entity_id);
         }
@@ -281,6 +283,72 @@ impl World {
             }
         }
         None
+    }
+
+    /// counts moons directly orbiting a planet.
+    pub fn direct_moon_count(&self, planet_id: EntityId) -> usize {
+        if self.get_entity_type(planet_id) != Some(EntityType::Planet) {
+            return 0;
+        }
+
+        self.iter_orbitals()
+            .filter(|(entity, info)| {
+                info.anchor == planet_id && self.get_entity_type(*entity) == Some(EntityType::Moon)
+            })
+            .count()
+    }
+
+    /// returns the completed spaceport represented by a planet's infrastructure units.
+    pub fn spaceport_for_planet(&self, planet_id: EntityId) -> Option<Spaceport> {
+        if self.get_entity_type(planet_id) != Some(EntityType::Planet) {
+            return None;
+        }
+        let units = self
+            .infrastructure
+            .get(&planet_id)?
+            .get_count(InfrastructureType::Spaceport);
+        let size = SpaceportSize::from_completed_units(units)?;
+        let planet_name = self.get_entity_name(planet_id)?;
+        Some(Spaceport {
+            name: format!("{planet_name} spaceport"),
+            size,
+        })
+    }
+
+    /// current abstract energy generation from completed orbital solar panels.
+    pub fn energy_generation_for_body(&self, entity_id: EntityId) -> f32 {
+        self.infrastructure
+            .get(&entity_id)
+            .map(|infrastructure| infrastructure.get_count(InfrastructureType::SolarPanel) as f32)
+            .unwrap_or(0.0)
+    }
+
+    /// remaining spaceport units after completed and queued construction.
+    pub fn remaining_spaceport_units(&self, planet_id: EntityId) -> u32 {
+        let Some(infrastructure) = self.infrastructure.get(&planet_id) else {
+            return 0;
+        };
+        let allocated = infrastructure
+            .get_count(InfrastructureType::Spaceport)
+            .saturating_add(infrastructure.get_queued_count(InfrastructureType::Spaceport));
+        MAX_SPACEPORT_UNITS.saturating_sub(allocated)
+    }
+
+    /// whether a player build command is eligible before checking its resource cost.
+    pub fn can_queue_player_infrastructure(
+        &self,
+        planet_id: EntityId,
+        infrastructure: InfrastructureType,
+        amount: u32,
+    ) -> bool {
+        amount > 0
+            && self.is_player_controlled(planet_id)
+            && self.get_entity_type(planet_id) == Some(EntityType::Planet)
+            && self.celestial_data.contains_key(&planet_id)
+            && self.infrastructure.contains_key(&planet_id)
+            && PLAYER_BUILDABLE_INFRASTRUCTURE.contains(&infrastructure)
+            && (infrastructure != InfrastructureType::Spaceport
+                || amount <= self.remaining_spaceport_units(planet_id))
     }
 
     pub fn iter_orbitals(&self) -> impl Iterator<Item = (EntityId, OrbitalInfo)> + '_ {
@@ -545,6 +613,56 @@ mod tests {
                 second_planet
             ]
         );
+    }
+
+    #[test]
+    fn planet_queries_resolve_system_moons_spaceport_and_energy() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 1.0);
+        world.spawn_moon("moon".to_string(), planet_id, 2.0, 0.0, 1.0);
+        world.spawn_moon("luna-2".to_string(), planet_id, 3.0, 0.0, 1.0);
+        let infrastructure = world.infrastructure.get_mut(&planet_id).unwrap();
+        infrastructure
+            .infra
+            .insert(InfrastructureType::Spaceport, 2);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::SolarPanel, 4);
+        infrastructure.queue_build(InfrastructureType::Spaceport, 1);
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 3);
+
+        assert_eq!(world.find_star_for_entity(planet_id), Some(star_id));
+        assert_eq!(world.direct_moon_count(planet_id), 2);
+        assert_eq!(
+            world.spaceport_for_planet(planet_id),
+            Some(Spaceport {
+                name: "earth spaceport".to_string(),
+                size: SpaceportSize::Medium,
+            })
+        );
+        assert_eq!(world.energy_generation_for_body(planet_id), 4.0);
+        assert_eq!(world.remaining_spaceport_units(planet_id), 0);
+    }
+
+    #[test]
+    fn spaceport_size_maps_completed_units_and_labels() {
+        assert_eq!(SpaceportSize::from_completed_units(0), None);
+        assert_eq!(
+            SpaceportSize::from_completed_units(1),
+            Some(SpaceportSize::Small)
+        );
+        assert_eq!(
+            SpaceportSize::from_completed_units(2),
+            Some(SpaceportSize::Medium)
+        );
+        assert_eq!(
+            SpaceportSize::from_completed_units(3),
+            Some(SpaceportSize::Large)
+        );
+        assert_eq!(SpaceportSize::Small.label(), "small");
+        assert_eq!(SpaceportSize::Medium.label(), "medium");
+        assert_eq!(SpaceportSize::Large.label(), "large");
     }
 
     /// full-sim reproducibility: with the world-owned rng seeded, generation

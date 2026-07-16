@@ -129,6 +129,9 @@ fn add_sol_system(world: &mut World) -> EntityId {
         earth_infrastructure
             .infra
             .insert(InfrastructureType::ConstructionFactory, 1);
+        earth_infrastructure
+            .infra
+            .insert(InfrastructureType::Spaceport, 1);
     }
 
     if let Some(earth_pos) = world.get_location(earth_id) {
@@ -333,6 +336,13 @@ mod tests {
         assert!(infrastructure.get_count(InfrastructureType::Farm) > 0);
         assert!(infrastructure.get_count(InfrastructureType::FuelCellCracker) > 0);
         assert!(infrastructure.get_count(InfrastructureType::Shipyard) > 0);
+        assert_eq!(
+            world.spaceport_for_planet(earth_id),
+            Some(crate::world::types::Spaceport {
+                name: "earth spaceport".to_string(),
+                size: crate::world::types::SpaceportSize::Small,
+            })
+        );
     }
 
     #[test]

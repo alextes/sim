@@ -10,6 +10,12 @@ this doc parks ideas that are promising but not ready for implementation design.
 - orbital mining bases exploit resource-rich uninhabited bodies without consuming ship fuel.
 - imperial policy includes taxes, tariffs, subsidies, embargoes, and convoy escorts.
 
+## energy
+
+- energy should eventually be modeled as generation serving ongoing demand rather than as an ordinary stockpiled resource.
+- limited storage can buffer short consumption spikes and temporary generation gaps, but should not bank years of surplus to cover sustained overconsumption.
+- sustained generation deficits should have explicit consequences. the behavior when the short-term buffer reaches zero, including load shedding or reduced production, still needs design.
+
 ## research
 
 - research grants, breakthroughs, and captured data cores can accelerate progress.

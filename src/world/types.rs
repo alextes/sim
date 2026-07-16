@@ -246,5 +246,63 @@ pub enum InfrastructureType {
     Shipyard,
     ConstructionFactory,
     // orbital
+    Spaceport,
     SolarPanel,
+}
+
+/// infrastructure types currently available through the player build flow.
+pub const PLAYER_BUILDABLE_INFRASTRUCTURE: &[InfrastructureType] = &[
+    InfrastructureType::Spaceport,
+    InfrastructureType::SolarPanel,
+];
+
+pub const MAX_SPACEPORT_UNITS: u32 = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpaceportSize {
+    Small,
+    Medium,
+    Large,
+}
+
+impl SpaceportSize {
+    pub fn from_completed_units(units: u32) -> Option<Self> {
+        match units {
+            0 => None,
+            1 => Some(Self::Small),
+            2 => Some(Self::Medium),
+            _ => Some(Self::Large),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Small => "small",
+            Self::Medium => "medium",
+            Self::Large => "large",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Spaceport {
+    pub name: String,
+    pub size: SpaceportSize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn player_buildable_infrastructure_is_limited_and_ordered() {
+        assert_eq!(
+            PLAYER_BUILDABLE_INFRASTRUCTURE,
+            &[
+                InfrastructureType::Spaceport,
+                InfrastructureType::SolarPanel
+            ]
+        );
+        assert!(!PLAYER_BUILDABLE_INFRASTRUCTURE.contains(&InfrastructureType::Mine));
+    }
 }

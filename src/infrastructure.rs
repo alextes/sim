@@ -38,6 +38,15 @@ impl EntityInfrastructure {
         self.infra.get(&infrastructure).copied().unwrap_or(0)
     }
 
+    /// gets the queued count of a specific infrastructure type.
+    pub fn get_queued_count(&self, infrastructure: InfrastructureType) -> u32 {
+        self.build_queue
+            .iter()
+            .filter(|(queued, _)| *queued == infrastructure)
+            .map(|(_, count)| *count)
+            .sum()
+    }
+
     /// processes the construction queue for a given time step.
     pub fn process_construction(&mut self, dt: f32) {
         if self.build_queue.is_empty() {
@@ -92,6 +101,9 @@ impl EntityInfrastructure {
     pub fn get_build_cost(infrastructure_type: InfrastructureType) -> HashMap<Storable, f32> {
         let mut costs = HashMap::new();
         match infrastructure_type {
+            InfrastructureType::Spaceport => {
+                costs.insert(Storable::Raw(RawResource::Metals), 100.0);
+            }
             InfrastructureType::SolarPanel => {
                 costs.insert(Storable::Raw(RawResource::Metals), 10.0);
                 costs.insert(Storable::Raw(RawResource::Crystals), 20.0);
@@ -125,7 +137,8 @@ impl EntityInfrastructure {
             InfrastructureType::Farm => "farm",
             InfrastructureType::Shipyard => "shipyard",
             InfrastructureType::ConstructionFactory => "construction factory",
-            InfrastructureType::SolarPanel => "solar panel",
+            InfrastructureType::Spaceport => "spaceport",
+            InfrastructureType::SolarPanel => "orbital solar panel",
         }
     }
 }
@@ -159,7 +172,11 @@ mod tests {
         );
         assert_eq!(
             EntityInfrastructure::infrastructure_name(InfrastructureType::SolarPanel),
-            "solar panel"
+            "orbital solar panel"
+        );
+        assert_eq!(
+            EntityInfrastructure::infrastructure_name(InfrastructureType::Spaceport),
+            "spaceport"
         );
     }
 
@@ -219,6 +236,27 @@ mod tests {
         assert_eq!(
             costs.get(&Storable::Raw(RawResource::Organics)),
             Some(&50.0)
+        );
+
+        let costs = EntityInfrastructure::get_build_cost(InfrastructureType::Spaceport);
+        assert_eq!(costs.len(), 1);
+        assert_eq!(costs.get(&Storable::Raw(RawResource::Metals)), Some(&100.0));
+    }
+
+    #[test]
+    fn queued_count_sums_matching_queue_entries() {
+        let mut infrastructure = EntityInfrastructure::new("test");
+        infrastructure.queue_build(InfrastructureType::Spaceport, 1);
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 4);
+        infrastructure.queue_build(InfrastructureType::Spaceport, 2);
+
+        assert_eq!(
+            infrastructure.get_queued_count(InfrastructureType::Spaceport),
+            3
+        );
+        assert_eq!(
+            infrastructure.get_queued_count(InfrastructureType::SolarPanel),
+            4
         );
     }
 }

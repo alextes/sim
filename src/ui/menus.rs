@@ -2,8 +2,6 @@
 //! drive the `GameState` machine and issue world commands, replacing the old
 //! sdl key handlers.
 
-use strum::IntoEnumIterator;
-
 use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
 use crate::command::Command;
 use crate::control_state::ControlState;
@@ -11,7 +9,9 @@ use crate::infrastructure::EntityInfrastructure;
 use crate::palette;
 use crate::ships::{buildable_ships, ShipBuildShortfall, ShipBuildable};
 use crate::world::components::MiningRoute;
-use crate::world::types::{EntityType, InfrastructureType, RawResource};
+use crate::world::types::{
+    EntityType, InfrastructureType, RawResource, PLAYER_BUILDABLE_INFRASTRUCTURE,
+};
 use crate::world::{EntityId, World};
 
 use super::{centered_window, raw_resource_display, storable_display};
@@ -76,7 +76,11 @@ pub fn planet_overview(
                         planet_detail(ui, world, body);
                         ui.separator();
                         ui.horizontal(|ui| {
-                            if ui.button("build").clicked() {
+                            let can_build = world.get_entity_type(body) == Some(EntityType::Planet);
+                            if ui
+                                .add_enabled(can_build, egui::Button::new("build"))
+                                .clicked()
+                            {
                                 controls.selection = vec![body];
                                 *game_state = GameState::BuildMenu {
                                     mode: BuildMenuMode::Main,
@@ -193,17 +197,30 @@ pub fn build_menu(
         *game_state = GameState::Playing;
         return;
     };
+    if !world.is_player_controlled(entity_id)
+        || world.get_entity_type(entity_id) != Some(EntityType::Planet)
+    {
+        *game_state = GameState::Playing;
+        return;
+    }
     let name = world.get_entity_name(entity_id).unwrap_or_default();
 
     centered_window(ctx, "build menu", |ui| {
         ui.heading(name.as_str());
         match mode {
             BuildMenuMode::Main => build_main(ui, world, game_state, entity_id),
-            BuildMenuMode::SelectInfrastructure => build_select(ui, game_state),
+            BuildMenuMode::SelectInfrastructure => build_select(ui, world, game_state, entity_id),
             BuildMenuMode::EnterQuantity {
                 infrastructure,
                 quantity_string,
-            } => build_quantity(ui, game_state, *infrastructure, quantity_string),
+            } => build_quantity(
+                ui,
+                world,
+                game_state,
+                entity_id,
+                *infrastructure,
+                quantity_string,
+            ),
             BuildMenuMode::ConfirmQuote {
                 infrastructure,
                 amount,
@@ -238,11 +255,17 @@ fn build_main(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, enti
     }
 }
 
-fn build_select(ui: &mut egui::Ui, game_state: &mut GameState) {
-    ui.label("select infrastructure:");
-    for infrastructure in InfrastructureType::iter() {
+fn build_select(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, entity_id: EntityId) {
+    ui.label("select orbital infrastructure:");
+    for &infrastructure in PLAYER_BUILDABLE_INFRASTRUCTURE {
+        let available = world.can_queue_player_infrastructure(entity_id, infrastructure, 1);
+        let label = if infrastructure == InfrastructureType::Spaceport && !available {
+            "spaceport (maximum size)"
+        } else {
+            EntityInfrastructure::infrastructure_name(infrastructure)
+        };
         if ui
-            .button(EntityInfrastructure::infrastructure_name(infrastructure))
+            .add_enabled(available, egui::Button::new(label))
             .clicked()
         {
             *game_state = GameState::BuildMenu {
@@ -262,7 +285,9 @@ fn build_select(ui: &mut egui::Ui, game_state: &mut GameState) {
 
 fn build_quantity(
     ui: &mut egui::Ui,
+    world: &World,
     game_state: &mut GameState,
+    entity_id: EntityId,
     infrastructure: InfrastructureType,
     quantity_string: &str,
 ) {
@@ -270,12 +295,27 @@ fn build_quantity(
         "infrastructure: {}",
         EntityInfrastructure::infrastructure_name(infrastructure)
     ));
+    if infrastructure == InfrastructureType::Spaceport {
+        ui.label(format!(
+            "units available before large: {}",
+            world.remaining_spaceport_units(entity_id)
+        ));
+    }
     let mut qty = quantity_string.to_string();
     let response = ui.add(egui::TextEdit::singleline(&mut qty).hint_text("quantity"));
     let amount = qty.trim().parse::<u32>().ok().filter(|n| *n > 0);
+    let eligible = amount.is_some_and(|amount| {
+        world.can_queue_player_infrastructure(entity_id, infrastructure, amount)
+    });
+    if infrastructure == InfrastructureType::Spaceport && amount.is_some() && !eligible {
+        ui.colored_label(
+            palette::RED,
+            "quantity exceeds the available spaceport size",
+        );
+    }
     let enter = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
     let confirm = ui
-        .add_enabled(amount.is_some(), egui::Button::new("confirm"))
+        .add_enabled(eligible, egui::Button::new("confirm"))
         .clicked();
     let cancel = ui.button("cancel").clicked();
 
@@ -283,7 +323,7 @@ fn build_quantity(
         *game_state = GameState::BuildMenu {
             mode: BuildMenuMode::Main,
         };
-    } else if (enter || confirm) && amount.is_some() {
+    } else if (enter || confirm) && eligible {
         *game_state = GameState::BuildMenu {
             mode: BuildMenuMode::ConfirmQuote {
                 infrastructure,
@@ -332,7 +372,8 @@ fn build_confirm(
         ui.colored_label(color, format!("  {cost:.1} {storable} (have {have:.1})"));
     }
     ui.horizontal(|ui| {
-        if ui.button("yes").clicked() {
+        let eligible = world.can_queue_player_infrastructure(entity_id, infrastructure, amount);
+        if ui.add_enabled(eligible, egui::Button::new("yes")).clicked() {
             world.add_command(Command::Build {
                 entity_id,
                 infrastructure_type: infrastructure,
