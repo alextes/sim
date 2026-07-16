@@ -243,7 +243,10 @@ fn open_planet_overview(world: &World, controls: &ControlState, game_state: &mut
 /// (b) open the build menu if the selection is a player-controlled body.
 fn open_build_menu(world: &World, controls: &ControlState, game_state: &mut GameState) {
     if let Some(&id) = controls.selection.first() {
-        if world.is_player_controlled(id) && world.infrastructure.contains_key(&id) {
+        if world.is_player_controlled(id)
+            && world.get_entity_type(id) == Some(EntityType::Planet)
+            && world.infrastructure.contains_key(&id)
+        {
             *game_state = GameState::BuildMenu {
                 mode: BuildMenuMode::Main,
             };

@@ -123,6 +123,16 @@ impl World {
                 infrastructure_type,
                 amount,
             } => {
+                if !self.can_queue_player_infrastructure(entity_id, infrastructure_type, amount) {
+                    tracing::warn!(
+                        "entity {} cannot queue {:?} x{}",
+                        self.get_entity_name(entity_id).unwrap_or_default(),
+                        infrastructure_type,
+                        amount
+                    );
+                    return;
+                }
+
                 let costs = EntityInfrastructure::get_build_costs(infrastructure_type, amount);
                 let can_afford = {
                     if let Some(cd) = self.celestial_data.get(&entity_id) {
@@ -175,7 +185,7 @@ mod tests {
     use super::*;
     use crate::command::Command;
     use crate::location::Point;
-    use crate::world::types::{CelestialBodyData, RawResource, Storable};
+    use crate::world::types::{CelestialBodyData, InfrastructureType, RawResource, Storable};
     use std::collections::HashMap;
 
     #[test]
@@ -231,5 +241,102 @@ mod tests {
         assert_eq!(stocks[&Storable::Raw(RawResource::Crystals)], 0.0);
         assert_eq!(world.celestial_data[&shipyard_id].credits, 0.0);
         assert_eq!(world.ships.len(), 1);
+    }
+
+    fn build_test_planet() -> (World, u32) {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.set_player_controlled(planet_id);
+        world
+            .celestial_data
+            .get_mut(&planet_id)
+            .unwrap()
+            .stocks
+            .insert(Storable::Raw(RawResource::Metals), 1_000.0);
+        (world, planet_id)
+    }
+
+    #[test]
+    fn hidden_ground_infrastructure_build_is_rejected_without_charging() {
+        let (mut world, planet_id) = build_test_planet();
+
+        world.add_command(Command::Build {
+            entity_id: planet_id,
+            infrastructure_type: InfrastructureType::Mine,
+            amount: 1,
+        });
+        world.process_commands();
+
+        assert_eq!(
+            world.celestial_data[&planet_id].stocks[&Storable::Raw(RawResource::Metals)],
+            1_000.0
+        );
+        assert!(world.infrastructure[&planet_id].build_queue.is_empty());
+    }
+
+    #[test]
+    fn fourth_spaceport_unit_is_rejected_without_charging() {
+        let (mut world, planet_id) = build_test_planet();
+        let infrastructure = world.infrastructure.get_mut(&planet_id).unwrap();
+        infrastructure
+            .infra
+            .insert(InfrastructureType::Spaceport, 2);
+        infrastructure.queue_build(InfrastructureType::Spaceport, 1);
+
+        world.add_command(Command::Build {
+            entity_id: planet_id,
+            infrastructure_type: InfrastructureType::Spaceport,
+            amount: 1,
+        });
+        world.process_commands();
+
+        assert_eq!(
+            world.celestial_data[&planet_id].stocks[&Storable::Raw(RawResource::Metals)],
+            1_000.0
+        );
+        assert_eq!(
+            world.infrastructure[&planet_id].get_queued_count(InfrastructureType::Spaceport),
+            1
+        );
+    }
+
+    #[test]
+    fn accepted_spaceport_build_charges_queues_and_updates_size_after_completion() {
+        let (mut world, planet_id) = build_test_planet();
+        world
+            .infrastructure
+            .get_mut(&planet_id)
+            .unwrap()
+            .infra
+            .insert(InfrastructureType::ConstructionFactory, 1);
+
+        world.add_command(Command::Build {
+            entity_id: planet_id,
+            infrastructure_type: InfrastructureType::Spaceport,
+            amount: 2,
+        });
+        world.process_commands();
+
+        assert_eq!(
+            world.celestial_data[&planet_id].stocks[&Storable::Raw(RawResource::Metals)],
+            800.0
+        );
+        assert_eq!(
+            world.infrastructure[&planet_id].get_queued_count(InfrastructureType::Spaceport),
+            2
+        );
+        assert!(world.spaceport_for_planet(planet_id).is_none());
+
+        world
+            .infrastructure
+            .get_mut(&planet_id)
+            .unwrap()
+            .process_construction(2.0);
+
+        assert_eq!(
+            world.spaceport_for_planet(planet_id).unwrap().size,
+            crate::world::types::SpaceportSize::Medium
+        );
     }
 }

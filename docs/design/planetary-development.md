@@ -66,6 +66,13 @@ orbital build capability:
 - orbital infrastructure should not be hidden inside ground infrastructure, because it affects logistics and shipyard access differently.
 - solar panels are the first obvious orbital energy infrastructure.
 
+current prototype:
+
+- orbital infrastructure is built from and stored on its parent planet rather than represented as a separate entity.
+- the player can currently queue spaceports and orbital solar panels; existing ground infrastructure remains active but cannot be newly queued.
+- spaceports have no effect yet. completed orbital solar panels contribute to an informational energy-generation value.
+- this representation is intentionally temporary while orbital entities, logistics, and the full energy model remain open design topics.
+
 ## maybe later
 
 - districts, jobs, housing, amenities, and detailed workforce allocation.
@@ -78,6 +85,6 @@ orbital build capability:
 
 - should the first overview be opened from a keybind, a hud button, or both?
 - should overview selection replace the current world selection or mirror it?
-- should orbital infrastructure live on the planet record, on separate orbital entities, or both?
+- should the current planet-owned orbital infrastructure eventually move to separate orbital entities, or should both representations coexist?
 - how visible should exact efficiency modifiers be in the v1 ui?
 - should capacity be one shared budget or separate budgets for ground, orbit, and launch/logistics?

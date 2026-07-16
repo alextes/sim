@@ -4,15 +4,20 @@
 
 mod menus;
 
-use egui::{Align2, Color32, Vec2};
+use egui::{Align2, Color32, Pos2, Rect, Vec2};
 
 use crate::app::GameState;
 use crate::control_state::ControlState;
 use crate::palette;
 use crate::sim_clock::SimClock;
 use crate::viewport::Viewport;
-use crate::world::types::{Good, RawResource, Storable};
-use crate::world::World;
+use crate::world::types::{EntityType, Good, RawResource, Spaceport, Storable};
+use crate::world::{EntityId, World};
+
+const PLANET_PANEL_WIDTH: f32 = 240.0;
+const PLANET_PANEL_ESTIMATED_HEIGHT: f32 = 240.0;
+const PLANET_PANEL_GAP: f32 = 24.0;
+const PLANET_PANEL_MARGIN: f32 = 8.0;
 
 /// build the whole frame's ui.
 pub fn build_ui(
@@ -28,7 +33,7 @@ pub fn build_ui(
     // hud is shown over the world in every in-game state.
     if shows_world(&state) {
         hud_panels(ctx, world, controls, clock, viewport);
-        selected_object_panel(ctx, world, controls);
+        selected_object_panel(ctx, world, controls, viewport);
     }
 
     match state {
@@ -94,10 +99,28 @@ fn hud_panels(
         });
 }
 
-fn selected_object_panel(ctx: &egui::Context, world: &World, controls: &ControlState) {
+fn selected_object_panel(
+    ctx: &egui::Context,
+    world: &World,
+    controls: &ControlState,
+    viewport: &Viewport,
+) {
     if controls.selection.is_empty() {
         return;
     }
+
+    if controls.selection.len() == 1 {
+        let selected = controls.selection[0];
+        if world.get_entity_type(selected) == Some(EntityType::Planet) {
+            if let Some(screen_position) =
+                visible_entity_screen_position(ctx, world, viewport, selected)
+            {
+                floating_planet_panel(ctx, world, controls, selected, screen_position);
+                return;
+            }
+        }
+    }
+
     egui::Area::new("selected_object".into())
         .anchor(Align2::LEFT_BOTTOM, Vec2::new(8.0, -8.0))
         .show(ctx, |ui| {
@@ -115,6 +138,157 @@ fn selected_object_panel(ctx: &egui::Context, world: &World, controls: &ControlS
                     if ships > 0 {
                         ui.colored_label(palette::GRAY, format!("- {ships} ships"));
                     }
+                }
+            });
+        });
+}
+
+#[derive(Debug, PartialEq)]
+struct PlanetPanelData {
+    name: String,
+    system_name: String,
+    moon_count: usize,
+    resources: Vec<(RawResource, f32)>,
+    energy_generation: f32,
+    solar_panel_count: u32,
+    spaceport: Option<Spaceport>,
+}
+
+fn planet_panel_data(world: &World, planet_id: EntityId) -> Option<PlanetPanelData> {
+    if world.get_entity_type(planet_id) != Some(EntityType::Planet) {
+        return None;
+    }
+
+    let name = world.get_entity_name(planet_id)?;
+    let system_name = world
+        .find_star_for_entity(planet_id)
+        .and_then(|star_id| world.get_entity_name(star_id))
+        .unwrap_or_else(|| "unknown".to_string());
+    let mut resources: Vec<_> = world
+        .celestial_data
+        .get(&planet_id)
+        .map(|data| {
+            data.yields
+                .iter()
+                .map(|(&resource, &grade)| (resource, grade))
+                .collect()
+        })
+        .unwrap_or_default();
+    resources.sort_by_key(|(resource, _)| *resource);
+    let solar_panel_count = world
+        .infrastructure
+        .get(&planet_id)
+        .map(|infrastructure| {
+            infrastructure.get_count(crate::world::types::InfrastructureType::SolarPanel)
+        })
+        .unwrap_or(0);
+
+    Some(PlanetPanelData {
+        name,
+        system_name,
+        moon_count: world.direct_moon_count(planet_id),
+        resources,
+        energy_generation: world.energy_generation_for_body(planet_id),
+        solar_panel_count,
+        spaceport: world.spaceport_for_planet(planet_id),
+    })
+}
+
+fn visible_entity_screen_position(
+    ctx: &egui::Context,
+    world: &World,
+    viewport: &Viewport,
+    entity_id: EntityId,
+) -> Option<Pos2> {
+    let location = world.get_location_f64(entity_id)?;
+    let (screen_x, screen_y) = viewport.world_to_screen_px(location.x, location.y);
+    if screen_x < 0.0
+        || screen_y < 0.0
+        || screen_x > viewport.screen_pixel_width as f64
+        || screen_y > viewport.screen_pixel_height as f64
+    {
+        return None;
+    }
+
+    let pixels_per_point = ctx.pixels_per_point();
+    Some(Pos2::new(
+        screen_x as f32 / pixels_per_point,
+        screen_y as f32 / pixels_per_point,
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PlanetPanelPlacement {
+    position: Pos2,
+    pivot: Align2,
+}
+
+fn planet_panel_placement(planet: Pos2, screen: Rect) -> PlanetPanelPlacement {
+    let fits_left =
+        planet.x - PLANET_PANEL_GAP - PLANET_PANEL_WIDTH >= screen.left() + PLANET_PANEL_MARGIN;
+    let (position_x, pivot) = if fits_left {
+        (planet.x - PLANET_PANEL_GAP, Align2::RIGHT_CENTER)
+    } else {
+        (planet.x + PLANET_PANEL_GAP, Align2::LEFT_CENTER)
+    };
+    let half_height = PLANET_PANEL_ESTIMATED_HEIGHT / 2.0;
+    let min_y = screen.top() + PLANET_PANEL_MARGIN + half_height;
+    let max_y = screen.bottom() - PLANET_PANEL_MARGIN - half_height;
+    let position_y = if min_y <= max_y {
+        planet.y.clamp(min_y, max_y)
+    } else {
+        screen.center().y
+    };
+
+    PlanetPanelPlacement {
+        position: Pos2::new(position_x, position_y),
+        pivot,
+    }
+}
+
+fn floating_planet_panel(
+    ctx: &egui::Context,
+    world: &World,
+    controls: &ControlState,
+    planet_id: EntityId,
+    screen_position: Pos2,
+) {
+    let Some(data) = planet_panel_data(world, planet_id) else {
+        return;
+    };
+    let screen = ctx.content_rect();
+    let placement = planet_panel_placement(screen_position, screen);
+
+    egui::Area::new("selected_planet".into())
+        .fixed_pos(placement.position)
+        .pivot(placement.pivot)
+        .constrain_to(screen)
+        .show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.set_width(PLANET_PANEL_WIDTH);
+                if controls.track_mode {
+                    ui.colored_label(palette::WHITE, "tracking");
+                }
+                ui.heading(data.name);
+                ui.label(format!("system: {}", data.system_name));
+                ui.label(format!("moons: {}", data.moon_count));
+                ui.separator();
+                ui.label("available resources");
+                if data.resources.is_empty() {
+                    ui.colored_label(palette::DGRAY, "  (none)");
+                } else {
+                    for (resource, grade) in data.resources {
+                        let (label, color) = raw_resource_display(resource);
+                        ui.colored_label(color, format!("  {label}: {grade:.2}"));
+                    }
+                }
+                ui.separator();
+                ui.label(format!("energy generation: {:.0}", data.energy_generation));
+                ui.label(format!("orbital solar panels: {}", data.solar_panel_count));
+                if let Some(spaceport) = data.spaceport {
+                    ui.separator();
+                    ui.label(format!("spaceport: {}", spaceport.name));
+                    ui.label(format!("size: {}", spaceport.size.label()));
                 }
             });
         });
@@ -257,5 +431,66 @@ fn storable_display(storable: Storable) -> (&'static str, Color32) {
         Storable::Raw(r) => raw_resource_display(r),
         Storable::Good(Good::FuelCells) => ("fuel cells", palette::RED),
         Storable::Good(Good::Food) => ("food", palette::GREEN),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::location::Point;
+    use crate::world::types::{InfrastructureType, RawResource, SpaceportSize};
+
+    #[test]
+    fn planet_panel_data_is_sorted_and_uses_completed_orbital_infrastructure() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.spawn_moon("moon".to_string(), planet_id, 2.0, 0.0, 0.0);
+        let body = world.celestial_data.get_mut(&planet_id).unwrap();
+        body.yields.clear();
+        body.yields.insert(RawResource::Crystals, 2.0);
+        body.yields.insert(RawResource::Metals, 1.0);
+        let infrastructure = world.infrastructure.get_mut(&planet_id).unwrap();
+        infrastructure
+            .infra
+            .insert(InfrastructureType::Spaceport, 1);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::SolarPanel, 2);
+        infrastructure.queue_build(InfrastructureType::Spaceport, 2);
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 3);
+
+        let data = planet_panel_data(&world, planet_id).unwrap();
+
+        assert_eq!(data.name, "earth");
+        assert_eq!(data.system_name, "sol");
+        assert_eq!(data.moon_count, 1);
+        assert_eq!(
+            data.resources,
+            vec![(RawResource::Metals, 1.0), (RawResource::Crystals, 2.0)]
+        );
+        assert_eq!(data.energy_generation, 2.0);
+        assert_eq!(data.solar_panel_count, 2);
+        assert_eq!(
+            data.spaceport,
+            Some(Spaceport {
+                name: "earth spaceport".to_string(),
+                size: SpaceportSize::Small,
+            })
+        );
+    }
+
+    #[test]
+    fn planet_panel_prefers_left_and_flips_near_left_edge() {
+        let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+
+        let left = planet_panel_placement(Pos2::new(500.0, 300.0), screen);
+        assert_eq!(left.pivot, Align2::RIGHT_CENTER);
+        assert_eq!(left.position, Pos2::new(476.0, 300.0));
+
+        let right = planet_panel_placement(Pos2::new(100.0, 20.0), screen);
+        assert_eq!(right.pivot, Align2::LEFT_CENTER);
+        assert_eq!(right.position.x, 124.0);
+        assert_eq!(right.position.y, 128.0);
     }
 }
