@@ -4,13 +4,21 @@ this is the main design index for sim. keep broad vision and links here; move de
 
 ## vision
 
-sim is a top-down 2d space empire builder. the player begins in the sol system and shares the galaxy with one ai-controlled empire. victory is achieved either by military conquest or by reaching a target prestige score first.
+sim is a top-down 2d space empire builder. the player begins in the sol system and initially shares the galaxy with one ai-controlled major faction. victory is achieved either by military conquest or by reaching a target prestige score first.
+
+the broader faction model distinguishes three kinds of independent power:
+
+- major factions are player-like, expansionist powers that grow territory, population, industry, technology, and military strength.
+- pirate factions are non-territorial predatory networks supported by hidden bases and risk-aware raiding fleets.
+- minor factions are bounded independent actors with their own interests, capabilities, and relationships, but no default goal of galactic expansion.
 
 ## design map
 
 - [planetary development](design/planetary-development.md): owned planet overview, planet traits, infrastructure units, and ground/orbit infrastructure.
 - [resources and construction](design/resources-and-construction.md): v1 raw resources, refining recipes, local construction material, layers, and capacity.
 - [surface orbit logistics](design/surface-orbit-logistics.md): surface and orbital stockpiles, launch capacity, space elevators, mass drivers, spaceports, and landing economics.
+- [pirate factions](design/pirate-factions.md): hidden bases, risk-aware raids, route security, discovery, and suppression.
+- [minor factions](design/minor-factions.md): bounded independent powers, specialized capabilities, diplomacy, and intermediary trade.
 - [open ideas](design/open-ideas.md): promising ideas that are not ready for implementation design.
 
 ## current priority areas
