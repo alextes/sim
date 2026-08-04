@@ -15,7 +15,9 @@ surface and orbit:
 
 - resources available on a planet surface are not automatically available in orbit.
 - resources delivered to an orbital station are not automatically available on the planet surface.
-- a future logistics model should distinguish surface stock availability from orbital stock availability.
+- solid bodies now distinguish primary surface stocks from orbital stocks; gas giants use an upper-atmosphere primary stockpile plus orbit.
+- construction consumes construction material only from the layer where the project exists.
+- transport between layers is not automatic. the first transport command and its throughput and fuel parameters remain to be designed.
 
 launch capacity:
 
@@ -54,6 +56,7 @@ landing economics:
 - gravity and atmosphere should influence landing and launch fuel costs.
 - landing without a spaceport should be expensive.
 - ships may eventually need special modules to land on bodies without proper ports.
+- interlayer transport should be physics-informed: gravity, atmosphere, payload, direction, infrastructure, and fuel should matter, without assuming an exact formula yet.
 
 ## maybe later
 
@@ -65,7 +68,6 @@ landing economics:
 
 ## open questions
 
-- should surface and orbit stocks be separate maps, separate entities, or a stock map keyed by location layer?
 - should early launch capacity be measured per day, per month, or per simulation tick?
 - should ground shipyards be allowed to build ships directly, or should all ship construction happen in orbit?
 - should mass drivers move only raw resources, or any nonliving cargo?

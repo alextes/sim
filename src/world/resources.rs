@@ -17,6 +17,29 @@ static SIMULATION_HZ: LazyLock<f64> = LazyLock::new(|| 1.0 / SIMULATION_DT.as_se
 // simulation_dt is 10ms (0.01s), so 100 ticks = 1.0 second.
 pub const RESOURCE_INTERVAL_SECONDS: f64 = 1.0; // update once per second
 
+fn process_recipe(
+    stocks: &mut HashMap<Storable, f32>,
+    inputs: &[(Storable, f32)],
+    output: Storable,
+    requested_batches: f32,
+) -> f32 {
+    let actual_batches = inputs
+        .iter()
+        .fold(requested_batches, |possible, (input, amount)| {
+            possible.min(stocks.get(input).copied().unwrap_or(0.0) / amount)
+        });
+
+    if actual_batches <= 0.0 {
+        return 0.0;
+    }
+
+    for (input, amount) in inputs {
+        *stocks.entry(*input).or_insert(0.0) -= actual_batches * amount;
+    }
+    *stocks.entry(output).or_insert(0.0) += actual_batches;
+    actual_batches
+}
+
 #[derive(Debug, Default)]
 pub struct ResourceSystem {
     // this system is now only responsible for ticking time forward for production.
@@ -86,45 +109,32 @@ impl ResourceSystem {
 
             if cracker_infra > 0.0 {
                 // recipe: 1 volatile + 0.1 metals -> 1 fuel cell
-                let volatiles_needed = 1.0 * cracker_infra * production_multiplier;
-                let metals_needed = 0.1 * cracker_infra * production_multiplier;
+                process_recipe(
+                    &mut celestial_data.stocks,
+                    &[
+                        (Storable::Raw(RawResource::Volatiles), 1.0),
+                        (Storable::Raw(RawResource::Metals), 0.1),
+                    ],
+                    Storable::Good(Good::FuelCells),
+                    cracker_infra * production_multiplier,
+                );
+            }
 
-                let available_volatiles = celestial_data
-                    .stocks
-                    .get(&Storable::Raw(RawResource::Volatiles))
-                    .copied()
-                    .unwrap_or(0.0);
-                let available_metals = celestial_data
-                    .stocks
-                    .get(&Storable::Raw(RawResource::Metals))
-                    .copied()
-                    .unwrap_or(0.0);
+            // construction factories refine the universal construction feedstock.
+            let construction_factory_infra =
+                infrastructure.get_count(InfrastructureType::ConstructionFactory) as f32;
 
-                let production_possible_by_volatiles = available_volatiles / 1.0;
-                let production_possible_by_metals = available_metals / 0.1;
-
-                let actual_production = volatiles_needed
-                    .min(metals_needed)
-                    .min(production_possible_by_volatiles)
-                    .min(production_possible_by_metals);
-
-                if actual_production > 0.0 {
-                    // consume resources
-                    *celestial_data
-                        .stocks
-                        .entry(Storable::Raw(RawResource::Volatiles))
-                        .or_insert(0.0) -= actual_production * 1.0;
-                    *celestial_data
-                        .stocks
-                        .entry(Storable::Raw(RawResource::Metals))
-                        .or_insert(0.0) -= actual_production * 0.1;
-
-                    // produce fuel cells
-                    *celestial_data
-                        .stocks
-                        .entry(Storable::Good(Good::FuelCells))
-                        .or_insert(0.0) += actual_production;
-                }
+            if construction_factory_infra > 0.0 {
+                // recipe: 1 metals + 1 crystals -> 1 construction material
+                process_recipe(
+                    &mut celestial_data.stocks,
+                    &[
+                        (Storable::Raw(RawResource::Metals), 1.0),
+                        (Storable::Raw(RawResource::Crystals), 1.0),
+                    ],
+                    Storable::Good(Good::ConstructionMaterials),
+                    construction_factory_infra * production_multiplier,
+                );
             }
 
             // handle food production from farms
@@ -132,26 +142,12 @@ impl ResourceSystem {
 
             if farm_infra > 0.0 {
                 // recipe: 1 organics -> 1 food
-                let organics_needed = 1.0 * farm_infra * production_multiplier;
-                let available_organics = celestial_data
-                    .stocks
-                    .get(&Storable::Raw(RawResource::Organics))
-                    .copied()
-                    .unwrap_or(0.0);
-                let actual_production = organics_needed.min(available_organics);
-
-                if actual_production > 0.0 {
-                    // consume organics
-                    *celestial_data
-                        .stocks
-                        .entry(Storable::Raw(RawResource::Organics))
-                        .or_insert(0.0) -= actual_production;
-                    // produce food
-                    *celestial_data
-                        .stocks
-                        .entry(Storable::Good(Good::Food))
-                        .or_insert(0.0) += actual_production;
-                }
+                process_recipe(
+                    &mut celestial_data.stocks,
+                    &[(Storable::Raw(RawResource::Organics), 1.0)],
+                    Storable::Good(Good::Food),
+                    farm_infra * production_multiplier,
+                );
             }
         }
     }
@@ -189,6 +185,15 @@ impl ResourceSystem {
                 // this is a simplified view. it does not account for input resource availability.
                 let production_rate = cracker_infra * 1.0; // assuming 1 fuel cell per second per cracker
                 *rates.entry(Storable::Good(Good::FuelCells)).or_insert(0.0) += production_rate;
+            }
+
+            let construction_factory_infra =
+                infrastructure.get_count(InfrastructureType::ConstructionFactory) as f32;
+
+            if construction_factory_infra > 0.0 {
+                *rates
+                    .entry(Storable::Good(Good::ConstructionMaterials))
+                    .or_insert(0.0) += construction_factory_infra;
             }
 
             let farm_infra = infrastructure.get_count(InfrastructureType::Farm) as f32;
@@ -254,6 +259,7 @@ pub fn get_resource_base_price(resource: Storable) -> f64 {
         },
         Storable::Good(good) => match good {
             Good::FuelCells => 2.0,
+            Good::ConstructionMaterials => 6.0,
             Good::Food => 2.5,
         },
     }
@@ -295,9 +301,7 @@ mod tests {
             CelestialBodyData {
                 population: 1_000_000.0,
                 yields,
-                stocks: HashMap::new(),
-                demands: HashMap::new(),
-                credits: 0.0,
+                ..Default::default()
             },
         );
 
@@ -333,5 +337,43 @@ mod tests {
             *stocks.get(&Storable::Raw(RawResource::Organics)).unwrap(),
             1.0 * 1.0 * 0.8 * interval_f32
         );
+    }
+
+    #[test]
+    fn v1_refining_recipes_consume_inputs_and_produce_goods() {
+        let (entity_types, mut infrastructure, mut celestial_data) = create_test_data(0);
+        let body_infrastructure = infrastructure.get_mut(&1).unwrap();
+        body_infrastructure
+            .infra
+            .insert(InfrastructureType::FuelCellCracker, 1);
+        body_infrastructure
+            .infra
+            .insert(InfrastructureType::ConstructionFactory, 1);
+        body_infrastructure
+            .infra
+            .insert(InfrastructureType::Farm, 1);
+        celestial_data.get_mut(&1).unwrap().stocks = HashMap::from([
+            (Storable::Raw(RawResource::Volatiles), 1.0),
+            (Storable::Raw(RawResource::Metals), 1.1),
+            (Storable::Raw(RawResource::Crystals), 1.0),
+            (Storable::Raw(RawResource::Organics), 1.0),
+        ]);
+        let mut resource_system = ResourceSystem::default();
+
+        resource_system.update(
+            RESOURCE_INTERVAL_SECONDS,
+            &entity_types,
+            &infrastructure,
+            &mut celestial_data,
+        );
+
+        let stocks = &celestial_data[&1].stocks;
+        assert_eq!(stocks[&Storable::Raw(RawResource::Volatiles)], 0.0);
+        assert_eq!(stocks[&Storable::Raw(RawResource::Metals)], 0.0);
+        assert_eq!(stocks[&Storable::Raw(RawResource::Crystals)], 0.0);
+        assert_eq!(stocks[&Storable::Raw(RawResource::Organics)], 0.0);
+        assert_eq!(stocks[&Storable::Good(Good::FuelCells)], 1.0);
+        assert_eq!(stocks[&Storable::Good(Good::ConstructionMaterials)], 1.0);
+        assert_eq!(stocks[&Storable::Good(Good::Food)], 1.0);
     }
 }

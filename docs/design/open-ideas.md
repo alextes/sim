@@ -10,6 +10,11 @@ this doc parks ideas that are promising but not ready for implementation design.
 - orbital mining bases exploit resource-rich uninhabited bodies without consuming ship fuel.
 - imperial policy includes taxes, tariffs, subsidies, embargoes, and convoy escorts.
 
+## anchor entities and regions
+
+- planetary belts and system belts are later anchor-entity types rather than part of the v1 body set.
+- the kuiper belt and oort cloud are later regional or system constructs, not v1 anchor bodies.
+
 ## energy
 
 - energy should eventually be modeled as generation serving ongoing demand rather than as an ordinary stockpiled resource.

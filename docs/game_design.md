@@ -9,6 +9,7 @@ sim is a top-down 2d space empire builder. the player begins in the sol system a
 ## design map
 
 - [planetary development](design/planetary-development.md): owned planet overview, planet traits, infrastructure units, and ground/orbit infrastructure.
+- [resources and construction](design/resources-and-construction.md): v1 raw resources, refining recipes, local construction material, layers, and capacity.
 - [surface orbit logistics](design/surface-orbit-logistics.md): surface and orbital stockpiles, launch capacity, space elevators, mass drivers, spaceports, and landing economics.
 - [open ideas](design/open-ideas.md): promising ideas that are not ready for implementation design.
 
@@ -29,6 +30,8 @@ decided direction:
 - local resource prices should respond to stock relative to demand, with clamps to avoid extreme swings.
 - civilian mining ships should prefer profitable mining opportunities and sell back to populated worlds.
 - fuel cells are the standard in-system fuel and are produced by refining raw resources.
+- the active v1 raw resources are metals, organics, crystals, and volatiles; the wider catalogue is reserved for later progression.
+- metals and crystals refine into universal construction material, which must be present at the build location as work advances.
 
 candidate direction:
 
