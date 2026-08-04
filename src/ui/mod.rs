@@ -318,8 +318,21 @@ fn single_selection(ui: &mut egui::Ui, world: &World, controls: &ControlState, i
             }
         }
         if !data.stocks.is_empty() {
-            ui.label("stocks:");
+            let stock_label = match world.get_entity_type(id) {
+                Some(EntityType::GasGiant) => "upper-atmosphere stocks:",
+                _ => "surface stocks:",
+            };
+            ui.label(stock_label);
             let mut stocks: Vec<_> = data.stocks.iter().collect();
+            stocks.sort_by_key(|(s, _)| **s);
+            for (storable, amount) in stocks {
+                let (label, color) = storable_display(*storable);
+                ui.colored_label(color, format!("  {label}: {amount:.1}"));
+            }
+        }
+        if !data.orbital_stocks.is_empty() {
+            ui.label("orbital stocks:");
+            let mut stocks: Vec<_> = data.orbital_stocks.iter().collect();
             stocks.sort_by_key(|(s, _)| **s);
             for (storable, amount) in stocks {
                 let (label, color) = storable_display(*storable);
@@ -430,6 +443,7 @@ fn storable_display(storable: Storable) -> (&'static str, Color32) {
     match storable {
         Storable::Raw(r) => raw_resource_display(r),
         Storable::Good(Good::FuelCells) => ("fuel cells", palette::RED),
+        Storable::Good(Good::ConstructionMaterials) => ("construction materials", palette::LGRAY),
         Storable::Good(Good::Food) => ("food", palette::GREEN),
     }
 }

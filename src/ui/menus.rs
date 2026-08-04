@@ -136,8 +136,22 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                 }
                 if !data.stocks.is_empty() {
                     ui.separator();
-                    ui.label("stocks");
+                    let stock_label = match world.get_entity_type(body) {
+                        Some(EntityType::GasGiant) => "upper-atmosphere stocks",
+                        _ => "surface stocks",
+                    };
+                    ui.label(stock_label);
                     let mut stocks: Vec<_> = data.stocks.iter().collect();
+                    stocks.sort_by_key(|(storable, _)| **storable);
+                    for (storable, amount) in stocks {
+                        let (label, color) = storable_display(*storable);
+                        ui.colored_label(color, format!("{label}: {amount:.1}"));
+                    }
+                }
+                if !data.orbital_stocks.is_empty() {
+                    ui.separator();
+                    ui.label("orbital stocks");
+                    let mut stocks: Vec<_> = data.orbital_stocks.iter().collect();
                     stocks.sort_by_key(|(storable, _)| **storable);
                     for (storable, amount) in stocks {
                         let (label, color) = storable_display(*storable);
@@ -355,13 +369,19 @@ fn build_confirm(
     ));
     ui.label("cost:");
     let costs = EntityInfrastructure::get_build_costs(infrastructure, amount);
+    let build_layer = world
+        .get_entity_type(entity_id)
+        .and_then(|entity_type| infrastructure.construction_layer(entity_type));
+    if let Some(layer) = build_layer {
+        ui.label(format!("required at: {layer}"));
+    }
     let mut items: Vec<_> = costs.into_iter().collect();
     items.sort_by_key(|(storable, _)| format!("{storable}"));
     for (storable, cost) in &items {
         let have = world
             .celestial_data
             .get(&entity_id)
-            .and_then(|d| d.stocks.get(storable))
+            .and_then(|data| build_layer.and_then(|layer| data.stocks_at(layer).get(storable)))
             .copied()
             .unwrap_or(0.0);
         let color = if have < *cost {

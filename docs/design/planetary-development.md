@@ -38,6 +38,8 @@ infrastructure:
 - domains start as ground and orbit.
 - first categories are energy, mining, research, shipbuilding, and manufacturing.
 - manufacturing is the v1 home for refining raw materials unless a later design splits refining into its own category.
+- construction throughput comes from biological population and/or robots; it is separate from infrastructure footprint capacity.
+- infrastructure projects consume universal construction material from the exact surface, upper-atmosphere, or orbital layer where they are being built.
 
 ## candidate
 
@@ -87,4 +89,4 @@ current prototype:
 - should overview selection replace the current world selection or mirror it?
 - should the current planet-owned orbital infrastructure eventually move to separate orbital entities, or should both representations coexist?
 - how visible should exact efficiency modifiers be in the v1 ui?
-- should capacity be one shared budget or separate budgets for ground, orbit, and launch/logistics?
+- should infrastructure footprint capacity be one shared budget or separate budgets for ground, orbit, and launch/logistics?

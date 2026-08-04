@@ -24,6 +24,8 @@ pub enum RawResource {
 pub enum Good {
     /// synthetic fuel for standard ship drives.
     FuelCells,
+    /// universal feedstock consumed by local construction projects.
+    ConstructionMaterials,
     Food,
 }
 
@@ -61,6 +63,45 @@ pub enum EntityType {
     Moon,
     GasGiant,
     Ship,
+}
+
+/// environment-local layers that can hold stocks and host construction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ConstructionLayer {
+    Surface,
+    UpperAtmosphere,
+    Orbit,
+}
+
+impl ConstructionLayer {
+    /// returns the layers where construction can exist for an anchor entity.
+    pub fn available_for(entity_type: EntityType) -> &'static [Self] {
+        match entity_type {
+            EntityType::Planet | EntityType::Moon => &[Self::Surface, Self::Orbit],
+            EntityType::GasGiant => &[Self::UpperAtmosphere, Self::Orbit],
+            EntityType::Star => &[Self::Orbit],
+            EntityType::Ship => &[],
+        }
+    }
+
+    /// returns the non-orbital layer used by local extraction and industry.
+    pub fn primary_for(entity_type: EntityType) -> Option<Self> {
+        match entity_type {
+            EntityType::Planet | EntityType::Moon => Some(Self::Surface),
+            EntityType::GasGiant => Some(Self::UpperAtmosphere),
+            EntityType::Star | EntityType::Ship => None,
+        }
+    }
+}
+
+impl fmt::Display for ConstructionLayer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Surface => write!(f, "surface"),
+            Self::UpperAtmosphere => write!(f, "upper atmosphere"),
+            Self::Orbit => write!(f, "orbit"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -146,20 +187,21 @@ impl BodyProfile {
     }
 }
 
+/// raw resources used by the v1 progression loop.
+pub const V1_RAW_RESOURCES: &[RawResource] = &[
+    RawResource::Metals,
+    RawResource::Organics,
+    RawResource::Crystals,
+    RawResource::Volatiles,
+];
+
 pub const PLANETARY_RESOURCES: &[RawResource] = &[
     RawResource::Metals,
     RawResource::Organics,
     RawResource::Crystals,
-    RawResource::Isotopes,
-    RawResource::Microbes,
 ];
 
-pub const GAS_GIANT_RESOURCES: &[RawResource] = &[
-    RawResource::Volatiles,
-    RawResource::RareExotics,
-    RawResource::DarkMatter,
-    RawResource::NobleGases,
-];
+pub const GAS_GIANT_RESOURCES: &[RawResource] = &[RawResource::Volatiles];
 
 /// data specific to celestial bodies, such as population and resource yields.
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -170,10 +212,41 @@ pub struct CelestialBodyData {
     pub population: f32,
     /// a map of resource types to their yield grades. the yield grade is a multiplier for resource extraction.
     pub yields: HashMap<RawResource, f32>,
-    /// a map of storable types to their current stock on the celestial body.
+    /// stocks in the body's primary layer: surface for solid bodies and upper atmosphere for gas giants.
     pub stocks: HashMap<Storable, f32>,
+    /// stocks delivered to this body's orbital layer.
+    #[serde(default)]
+    pub orbital_stocks: HashMap<Storable, f32>,
+    /// construction throughput supplied by robots, in material units per second.
+    #[serde(default)]
+    pub robotic_construction_capacity: f32,
     /// a map of raw resource types to their monthly demand on the celestial body.
     pub demands: HashMap<Storable, f32>,
+}
+
+impl CelestialBodyData {
+    /// biological and robotic construction throughput in material units per second.
+    pub fn construction_capacity(&self) -> f32 {
+        const POPULATION_PER_CAPACITY: f32 = 1_000_000.0;
+        (self.population / POPULATION_PER_CAPACITY).max(0.0)
+            + self.robotic_construction_capacity.max(0.0)
+    }
+
+    /// returns stocks at an environment-local layer.
+    pub fn stocks_at(&self, layer: ConstructionLayer) -> &HashMap<Storable, f32> {
+        match layer {
+            ConstructionLayer::Surface | ConstructionLayer::UpperAtmosphere => &self.stocks,
+            ConstructionLayer::Orbit => &self.orbital_stocks,
+        }
+    }
+
+    /// returns mutable stocks at an environment-local layer.
+    pub fn stocks_at_mut(&mut self, layer: ConstructionLayer) -> &mut HashMap<Storable, f32> {
+        match layer {
+            ConstructionLayer::Surface | ConstructionLayer::UpperAtmosphere => &mut self.stocks,
+            ConstructionLayer::Orbit => &mut self.orbital_stocks,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -250,6 +323,23 @@ pub enum InfrastructureType {
     SolarPanel,
 }
 
+impl InfrastructureType {
+    /// returns the layer where this infrastructure is constructed.
+    pub fn construction_layer(self, anchor_type: EntityType) -> Option<ConstructionLayer> {
+        let layer = match self {
+            Self::Spaceport | Self::SolarPanel => ConstructionLayer::Orbit,
+            Self::Mine
+            | Self::FuelCellCracker
+            | Self::Farm
+            | Self::Shipyard
+            | Self::ConstructionFactory => ConstructionLayer::primary_for(anchor_type)?,
+        };
+        ConstructionLayer::available_for(anchor_type)
+            .contains(&layer)
+            .then_some(layer)
+    }
+}
+
 /// infrastructure types currently available through the player build flow.
 pub const PLAYER_BUILDABLE_INFRASTRUCTURE: &[InfrastructureType] = &[
     InfrastructureType::Spaceport,
@@ -304,5 +394,41 @@ mod tests {
             ]
         );
         assert!(!PLAYER_BUILDABLE_INFRASTRUCTURE.contains(&InfrastructureType::Mine));
+    }
+
+    #[test]
+    fn v1_resources_and_environment_layers_are_explicit() {
+        assert_eq!(
+            V1_RAW_RESOURCES,
+            &[
+                RawResource::Metals,
+                RawResource::Organics,
+                RawResource::Crystals,
+                RawResource::Volatiles,
+            ]
+        );
+        assert_eq!(
+            ConstructionLayer::available_for(EntityType::Planet),
+            &[ConstructionLayer::Surface, ConstructionLayer::Orbit]
+        );
+        assert_eq!(
+            ConstructionLayer::available_for(EntityType::GasGiant),
+            &[ConstructionLayer::UpperAtmosphere, ConstructionLayer::Orbit]
+        );
+        assert_eq!(
+            ConstructionLayer::available_for(EntityType::Star),
+            &[ConstructionLayer::Orbit]
+        );
+    }
+
+    #[test]
+    fn construction_capacity_combines_population_and_robots() {
+        let body = CelestialBodyData {
+            population: 2_000_000.0,
+            robotic_construction_capacity: 3.5,
+            ..Default::default()
+        };
+
+        assert_eq!(body.construction_capacity(), 5.5);
     }
 }

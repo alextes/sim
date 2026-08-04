@@ -253,8 +253,24 @@ impl World {
     }
 
     fn process_construction(&mut self, dt: f64) {
-        for infrastructure in self.infrastructure.values_mut() {
-            infrastructure.process_construction(dt as f32);
+        let entity_ids: Vec<_> = self.infrastructure.keys().copied().collect();
+        for entity_id in entity_ids {
+            let Some(entity_type) = self.entity_types.get(&entity_id).copied() else {
+                continue;
+            };
+            let Some(body_data) = self.celestial_data.get_mut(&entity_id) else {
+                continue;
+            };
+            let construction_capacity = body_data.construction_capacity();
+            let Some(infrastructure) = self.infrastructure.get_mut(&entity_id) else {
+                continue;
+            };
+            infrastructure.process_construction(
+                dt as f32,
+                construction_capacity,
+                entity_type,
+                body_data,
+            );
         }
     }
 
@@ -334,7 +350,7 @@ impl World {
         MAX_SPACEPORT_UNITS.saturating_sub(allocated)
     }
 
-    /// whether a player build command is eligible before checking its resource cost.
+    /// whether a player build command can enter the queue.
     pub fn can_queue_player_infrastructure(
         &self,
         planet_id: EntityId,

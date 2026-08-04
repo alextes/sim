@@ -1,5 +1,4 @@
 use crate::command::Command;
-use crate::infrastructure::EntityInfrastructure;
 use crate::location::Point;
 use crate::location::PointF64;
 use crate::ships::{buildable_ship, ShipType};
@@ -133,47 +132,14 @@ impl World {
                     return;
                 }
 
-                let costs = EntityInfrastructure::get_build_costs(infrastructure_type, amount);
-                let can_afford = {
-                    if let Some(cd) = self.celestial_data.get(&entity_id) {
-                        costs.iter().all(|(resource, &cost)| {
-                            let stock = cd.stocks.get(resource).copied().unwrap_or(0.0);
-                            if stock < cost {
-                                tracing::warn!(
-                                    "entity {} cannot afford to build {:?} x{}: not enough {:?} (needs {}, has {})",
-                                    self.get_entity_name(entity_id).unwrap_or_default(),
-                                    infrastructure_type,
-                                    amount,
-                                    resource,
-                                    cost,
-                                    stock
-                                );
-                                false
-                            } else {
-                                true
-                            }
-                        })
-                    } else {
-                        false
-                    }
-                };
-
-                if can_afford {
-                    if let Some(cd) = self.celestial_data.get_mut(&entity_id) {
-                        for (resource, cost) in costs {
-                            *cd.stocks.entry(resource).or_insert(0.0) -= cost;
-                        }
-                    }
-
-                    if let Some(infrastructure) = self.infrastructure.get_mut(&entity_id) {
-                        infrastructure.queue_build(infrastructure_type, amount);
-                        tracing::info!(
-                            "queued build of {:?} x{} on entity {}",
-                            infrastructure_type,
-                            amount,
-                            self.get_entity_name(entity_id).unwrap_or_default()
-                        );
-                    }
+                if let Some(infrastructure) = self.infrastructure.get_mut(&entity_id) {
+                    infrastructure.queue_build(infrastructure_type, amount);
+                    tracing::info!(
+                        "queued build of {:?} x{} on entity {}",
+                        infrastructure_type,
+                        amount,
+                        self.get_entity_name(entity_id).unwrap_or_default()
+                    );
                 }
             }
         }
@@ -185,7 +151,9 @@ mod tests {
     use super::*;
     use crate::command::Command;
     use crate::location::Point;
-    use crate::world::types::{CelestialBodyData, InfrastructureType, RawResource, Storable};
+    use crate::world::types::{
+        CelestialBodyData, ConstructionLayer, Good, InfrastructureType, RawResource, Storable,
+    };
     use std::collections::HashMap;
 
     #[test]
@@ -302,14 +270,12 @@ mod tests {
     }
 
     #[test]
-    fn accepted_spaceport_build_charges_queues_and_updates_size_after_completion() {
+    fn accepted_spaceport_build_queues_then_consumes_local_material() {
         let (mut world, planet_id) = build_test_planet();
-        world
-            .infrastructure
-            .get_mut(&planet_id)
-            .unwrap()
-            .infra
-            .insert(InfrastructureType::ConstructionFactory, 1);
+        let body = world.celestial_data.get_mut(&planet_id).unwrap();
+        body.population = 1_000_000.0;
+        body.orbital_stocks
+            .insert(Storable::Good(Good::ConstructionMaterials), 200.0);
 
         world.add_command(Command::Build {
             entity_id: planet_id,
@@ -320,7 +286,7 @@ mod tests {
 
         assert_eq!(
             world.celestial_data[&planet_id].stocks[&Storable::Raw(RawResource::Metals)],
-            800.0
+            1_000.0
         );
         assert_eq!(
             world.infrastructure[&planet_id].get_queued_count(InfrastructureType::Spaceport),
@@ -328,15 +294,16 @@ mod tests {
         );
         assert!(world.spaceport_for_planet(planet_id).is_none());
 
-        world
-            .infrastructure
-            .get_mut(&planet_id)
-            .unwrap()
-            .process_construction(2.0);
+        world.process_construction(200.0);
 
         assert_eq!(
             world.spaceport_for_planet(planet_id).unwrap().size,
             crate::world::types::SpaceportSize::Medium
+        );
+        assert_eq!(
+            world.celestial_data[&planet_id].stocks_at(ConstructionLayer::Orbit)
+                [&Storable::Good(Good::ConstructionMaterials)],
+            0.0
         );
     }
 }

@@ -106,8 +106,21 @@ fn add_sol_system(world: &mut World) -> EntityId {
             1000.0,
         );
         data.stocks.insert(
+            crate::world::types::Storable::Raw(crate::world::types::RawResource::Crystals),
+            100.0,
+        );
+        data.stocks.insert(
+            crate::world::types::Storable::Raw(crate::world::types::RawResource::Volatiles),
+            100.0,
+        );
+        data.stocks.insert(
             crate::world::types::Storable::Good(crate::world::types::Good::Food),
             500.0,
+        );
+        // bootstrap stock already delivered to orbit until interlayer transport is implemented.
+        data.orbital_stocks.insert(
+            crate::world::types::Storable::Good(crate::world::types::Good::ConstructionMaterials),
+            300.0,
         );
         data.credits = 5000.0;
     }
@@ -378,6 +391,10 @@ mod tests {
                 )
             ) {
                 assert!(world.body_profiles.contains_key(&entity));
+                assert!(world.celestial_data[&entity]
+                    .yields
+                    .keys()
+                    .all(|resource| crate::world::types::V1_RAW_RESOURCES.contains(resource)));
             }
         }
 

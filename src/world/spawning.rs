@@ -6,6 +6,7 @@ use crate::world::components::CivilianShipState;
 use crate::world::components::{Cargo, CivilianShipAI};
 use crate::world::types::{
     BodyProfile, CelestialBodyData, EntityType, GAS_GIANT_RESOURCES, PLANETARY_RESOURCES,
+    V1_RAW_RESOURCES,
 };
 use rand::prelude::*;
 use std::collections::HashMap;
@@ -64,6 +65,7 @@ pub fn spawn_planet(
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
+        debug_assert!(V1_RAW_RESOURCES.contains(&resource));
         yields.insert(resource, world.rng.0.random_range(50.0..150.0));
     }
 
@@ -119,6 +121,7 @@ pub fn spawn_moon(
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
+        debug_assert!(V1_RAW_RESOURCES.contains(&resource));
         yields.insert(resource, world.rng.0.random_range(20.0..80.0));
     }
 
@@ -187,7 +190,7 @@ pub fn spawn_gas_giant(
     world.entity_names.insert(id, name.clone());
     world.entity_types.insert(id, EntityType::GasGiant);
     world.render_glyphs.insert(id, 'g');
-    let color = PLANET_COLORS.iter().choose(&mut world.rng.0).unwrap(); // Reuse planet colors for now
+    let color = PLANET_COLORS.iter().choose(&mut world.rng.0).unwrap(); // reuse planet colors for now
     world.entity_colors.insert(id, *color);
     world
         .locations
@@ -205,17 +208,15 @@ pub fn spawn_gas_giant(
         .cloned()
         .collect::<Vec<_>>();
     for resource in chosen_resources {
+        debug_assert!(V1_RAW_RESOURCES.contains(&resource));
         yields.insert(resource, world.rng.0.random_range(80.0..200.0));
     }
 
     world.celestial_data.insert(
         id,
         CelestialBodyData {
-            credits: 0.0,
-            population: 0.0, // No population on gas giants
             yields,
-            stocks: HashMap::new(),
-            demands: HashMap::new(),
+            ..Default::default()
         },
     );
     id

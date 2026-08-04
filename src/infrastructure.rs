@@ -1,6 +1,6 @@
 #![allow(dead_code)] // TODO remove later
 
-use crate::world::types::{InfrastructureType, RawResource, Storable};
+use crate::world::types::{CelestialBodyData, EntityType, Good, InfrastructureType, Storable};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
@@ -47,21 +47,51 @@ impl EntityInfrastructure {
             .sum()
     }
 
-    /// processes the construction queue for a given time step.
-    pub fn process_construction(&mut self, dt: f32) {
+    /// processes the construction queue using capacity and material at the build layer.
+    pub fn process_construction(
+        &mut self,
+        dt: f32,
+        construction_capacity: f32,
+        anchor_type: EntityType,
+        body_data: &mut CelestialBodyData,
+    ) {
         if self.build_queue.is_empty() {
             return;
         }
 
-        let construction_rate = self.get_count(InfrastructureType::ConstructionFactory) as f32;
-        if construction_rate == 0.0 {
-            return; // no construction capacity
+        let mut remaining_capacity = construction_capacity.max(0.0) * dt.max(0.0);
+        if remaining_capacity == 0.0 {
+            return;
         }
 
-        self.construction_progress += construction_rate * dt;
+        while remaining_capacity > 0.0 {
+            let Some(&(infrastructure_type, _)) = self.build_queue.front() else {
+                break;
+            };
+            let Some(layer) = infrastructure_type.construction_layer(anchor_type) else {
+                break;
+            };
+            let material_cost = Self::construction_material_cost(infrastructure_type);
+            let material = body_data
+                .stocks_at_mut(layer)
+                .entry(Storable::Good(Good::ConstructionMaterials))
+                .or_insert(0.0);
+            let material_needed = (material_cost - self.construction_progress).max(0.0);
+            let progress = remaining_capacity.min(*material).min(material_needed);
 
-        while self.construction_progress >= 1.0 {
-            self.construction_progress -= 1.0;
+            if progress == 0.0 {
+                break;
+            }
+
+            *material -= progress;
+            remaining_capacity -= progress;
+            self.construction_progress += progress;
+
+            if self.construction_progress < material_cost {
+                break;
+            }
+
+            self.construction_progress = 0.0;
 
             if let Some((infrastructure, count)) = self.build_queue.front_mut() {
                 *self.infra.entry(*infrastructure).or_insert(0) += 1;
@@ -79,8 +109,21 @@ impl EntityInfrastructure {
                     self.build_queue.pop_front();
                 }
             } else {
-                break; // queue is empty
+                break;
             }
+        }
+    }
+
+    /// returns construction material needed for one infrastructure unit.
+    pub fn construction_material_cost(infrastructure_type: InfrastructureType) -> f32 {
+        match infrastructure_type {
+            InfrastructureType::Spaceport => 100.0,
+            InfrastructureType::SolarPanel => 30.0,
+            InfrastructureType::Mine => 50.0,
+            InfrastructureType::Shipyard => 200.0,
+            InfrastructureType::FuelCellCracker => 175.0,
+            InfrastructureType::Farm => 70.0,
+            InfrastructureType::ConstructionFactory => 150.0,
         }
     }
 
@@ -99,34 +142,10 @@ impl EntityInfrastructure {
 
     /// returns the base cost for a single unit of an infrastructure type.
     pub fn get_build_cost(infrastructure_type: InfrastructureType) -> HashMap<Storable, f32> {
-        let mut costs = HashMap::new();
-        match infrastructure_type {
-            InfrastructureType::Spaceport => {
-                costs.insert(Storable::Raw(RawResource::Metals), 100.0);
-            }
-            InfrastructureType::SolarPanel => {
-                costs.insert(Storable::Raw(RawResource::Metals), 10.0);
-                costs.insert(Storable::Raw(RawResource::Crystals), 20.0);
-            }
-            InfrastructureType::Mine => {
-                costs.insert(Storable::Raw(RawResource::Metals), 50.0);
-            }
-            InfrastructureType::Shipyard => {
-                costs.insert(Storable::Raw(RawResource::Metals), 200.0);
-            }
-            InfrastructureType::FuelCellCracker => {
-                costs.insert(Storable::Raw(RawResource::Metals), 100.0);
-                costs.insert(Storable::Raw(RawResource::Crystals), 75.0);
-            }
-            InfrastructureType::Farm => {
-                costs.insert(Storable::Raw(RawResource::Metals), 20.0);
-                costs.insert(Storable::Raw(RawResource::Organics), 50.0);
-            }
-            InfrastructureType::ConstructionFactory => {
-                costs.insert(Storable::Raw(RawResource::Metals), 150.0);
-            }
-        }
-        costs
+        HashMap::from([(
+            Storable::Good(Good::ConstructionMaterials),
+            Self::construction_material_cost(infrastructure_type),
+        )])
     }
 
     /// returns a display name for an infrastructure type.
@@ -146,7 +165,7 @@ impl EntityInfrastructure {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::types::{InfrastructureType, RawResource, Storable};
+    use crate::world::types::{ConstructionLayer, Good, InfrastructureType, Storable};
 
     #[test]
     fn test_infrastructure_name() {
@@ -204,43 +223,100 @@ mod tests {
     #[test]
     fn test_construction_queue() {
         let mut infrastructure = EntityInfrastructure::new("test");
-        infrastructure
-            .infra
-            .insert(InfrastructureType::ConstructionFactory, 1);
+        let mut body = CelestialBodyData {
+            orbital_stocks: HashMap::from([(Storable::Good(Good::ConstructionMaterials), 100.0)]),
+            ..Default::default()
+        };
 
-        infrastructure.queue_build(InfrastructureType::Mine, 2);
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 2);
         assert_eq!(infrastructure.build_queue.len(), 1);
 
-        infrastructure.process_construction(0.5);
-        assert_eq!(infrastructure.get_count(InfrastructureType::Mine), 0);
+        infrastructure.process_construction(0.5, 30.0, EntityType::Planet, &mut body);
+        assert_eq!(infrastructure.get_count(InfrastructureType::SolarPanel), 0);
         assert_eq!(infrastructure.build_queue.front().unwrap().1, 2);
+        assert_eq!(infrastructure.construction_progress, 15.0);
 
-        infrastructure.process_construction(0.5);
-        assert_eq!(infrastructure.get_count(InfrastructureType::Mine), 1);
+        infrastructure.process_construction(0.5, 30.0, EntityType::Planet, &mut body);
+        assert_eq!(infrastructure.get_count(InfrastructureType::SolarPanel), 1);
         assert_eq!(infrastructure.build_queue.front().unwrap().1, 1);
 
-        infrastructure.process_construction(1.0);
-        assert_eq!(infrastructure.get_count(InfrastructureType::Mine), 2);
+        infrastructure.process_construction(1.0, 30.0, EntityType::Planet, &mut body);
+        assert_eq!(infrastructure.get_count(InfrastructureType::SolarPanel), 2);
         assert!(infrastructure.build_queue.is_empty());
+        assert_eq!(
+            body.stocks_at(ConstructionLayer::Orbit)[&Storable::Good(Good::ConstructionMaterials)],
+            40.0
+        );
     }
 
     #[test]
     fn test_get_build_cost() {
         let costs = EntityInfrastructure::get_build_cost(InfrastructureType::Mine);
         assert_eq!(costs.len(), 1);
-        assert_eq!(costs.get(&Storable::Raw(RawResource::Metals)), Some(&50.0));
+        assert_eq!(
+            costs.get(&Storable::Good(Good::ConstructionMaterials)),
+            Some(&50.0)
+        );
 
         let costs = EntityInfrastructure::get_build_cost(InfrastructureType::Farm);
-        assert_eq!(costs.len(), 2);
-        assert_eq!(costs.get(&Storable::Raw(RawResource::Metals)), Some(&20.0));
+        assert_eq!(costs.len(), 1);
         assert_eq!(
-            costs.get(&Storable::Raw(RawResource::Organics)),
-            Some(&50.0)
+            costs.get(&Storable::Good(Good::ConstructionMaterials)),
+            Some(&70.0)
         );
 
         let costs = EntityInfrastructure::get_build_cost(InfrastructureType::Spaceport);
         assert_eq!(costs.len(), 1);
-        assert_eq!(costs.get(&Storable::Raw(RawResource::Metals)), Some(&100.0));
+        assert_eq!(
+            costs.get(&Storable::Good(Good::ConstructionMaterials)),
+            Some(&100.0)
+        );
+    }
+
+    #[test]
+    fn construction_only_consumes_material_from_the_exact_layer() {
+        let mut infrastructure = EntityInfrastructure::new("test");
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 1);
+        let mut body = CelestialBodyData {
+            population: 1_000_000.0,
+            stocks: HashMap::from([(Storable::Good(Good::ConstructionMaterials), 100.0)]),
+            ..Default::default()
+        };
+
+        infrastructure.process_construction(30.0, 1.0, EntityType::Planet, &mut body);
+
+        assert_eq!(infrastructure.get_count(InfrastructureType::SolarPanel), 0);
+        assert_eq!(
+            body.stocks[&Storable::Good(Good::ConstructionMaterials)],
+            100.0
+        );
+        assert_eq!(infrastructure.construction_progress, 0.0);
+    }
+
+    #[test]
+    fn robots_can_construct_in_a_gas_giants_upper_atmosphere() {
+        let mut infrastructure = EntityInfrastructure::new("test");
+        infrastructure.queue_build(InfrastructureType::Mine, 1);
+        let mut body = CelestialBodyData {
+            robotic_construction_capacity: 10.0,
+            stocks: HashMap::from([(Storable::Good(Good::ConstructionMaterials), 50.0)]),
+            ..Default::default()
+        };
+
+        let construction_capacity = body.construction_capacity();
+        infrastructure.process_construction(
+            5.0,
+            construction_capacity,
+            EntityType::GasGiant,
+            &mut body,
+        );
+
+        assert_eq!(infrastructure.get_count(InfrastructureType::Mine), 1);
+        assert_eq!(
+            body.stocks_at(ConstructionLayer::UpperAtmosphere)
+                [&Storable::Good(Good::ConstructionMaterials)],
+            0.0
+        );
     }
 
     #[test]
