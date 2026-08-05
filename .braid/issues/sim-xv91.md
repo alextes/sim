@@ -3,12 +3,14 @@ schema_version: 9
 id: sim-xv91
 title: wire infrastructure categories and effects
 priority: P2
-status: open
+status: done
 deps:
 - sim-a80r
 - sim-r1kx
 owner: null
 created_at: 2026-06-30T22:12:09.809745Z
+started_at: 2026-08-05T11:05:19.612784Z
+completed_at: 2026-08-05T11:08:52.219907Z
 acceptance:
 - resource production uses catalog effects or categories for mine, farm, and fuel/refining behavior without changing existing outputs intentionally
 - construction capacity uses the catalog construction effect
