@@ -3,13 +3,15 @@ schema_version: 9
 id: sim-jtkh
 title: enforce infrastructure capacity
 priority: P2
-status: open
+status: done
 deps:
 - sim-je9s
 - sim-a80r
 - sim-r1kx
 owner: null
 created_at: 2026-06-30T22:12:01.278993Z
+started_at: 2026-08-05T11:00:55.302598Z
+completed_at: 2026-08-05T11:04:07.196811Z
 acceptance:
 - completed plus queued infrastructure capacity use is computed from the catalog
 - build command processing rejects over-capacity infrastructure builds
