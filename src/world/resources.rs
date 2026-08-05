@@ -20,6 +20,7 @@ pub const RESOURCE_INTERVAL_SECONDS: f64 = 1.0; // update once per second
 fn process_recipe(
     body: &mut CelestialBodyData,
     layer: crate::world::types::ConstructionLayer,
+    storage_capacity: f32,
     inputs: &[(Storable, f32)],
     output: Storable,
     requested_batches: f32,
@@ -37,8 +38,7 @@ fn process_recipe(
     for (input, amount) in inputs {
         body.withdraw_at(layer, *input, actual_batches * amount);
     }
-    body.deposit_unbounded_at(layer, output, actual_batches);
-    actual_batches
+    body.deposit_bounded_at(layer, output, actual_batches, storage_capacity)
 }
 
 #[derive(Debug, Default)]
@@ -90,6 +90,7 @@ impl ResourceSystem {
                 Some(infrastructure) => infrastructure,
                 None => continue,
             };
+            let storage_capacity = infrastructure.storage_capacity(layer);
 
             // handle raw resource extraction from mining effects
             let mining_rate = infrastructure.effect_rate(InfrastructureEffect::mining_rate);
@@ -106,10 +107,11 @@ impl ResourceSystem {
                         * mining_rate
                         * yield_grade
                         * production_multiplier;
-                    celestial_data.deposit_unbounded_at(
+                    celestial_data.deposit_bounded_at(
                         layer,
                         Storable::Raw(resource_type),
                         production,
+                        storage_capacity,
                     );
                 }
             }
@@ -123,6 +125,7 @@ impl ResourceSystem {
                 process_recipe(
                     celestial_data,
                     layer,
+                    storage_capacity,
                     &[
                         (Storable::Raw(RawResource::Volatiles), 1.0),
                         (Storable::Raw(RawResource::Metals), 0.1),
@@ -141,6 +144,7 @@ impl ResourceSystem {
                 process_recipe(
                     celestial_data,
                     layer,
+                    storage_capacity,
                     &[
                         (Storable::Raw(RawResource::Metals), 1.0),
                         (Storable::Raw(RawResource::Crystals), 1.0),
@@ -159,6 +163,7 @@ impl ResourceSystem {
                 process_recipe(
                     celestial_data,
                     layer,
+                    storage_capacity,
                     &[(Storable::Raw(RawResource::Organics), 1.0)],
                     Storable::Good(Good::Food),
                     food_production_rate * production_multiplier,
@@ -303,6 +308,9 @@ mod tests {
         infrastructure_data
             .infra
             .insert(InfrastructureType::Mine, mines);
+        infrastructure_data
+            .infra
+            .insert(InfrastructureType::SurfaceWarehouse, 1);
         infrastructure_map.insert(entity_id, infrastructure_data);
 
         let mut celestial_data_map = HashMap::new();
@@ -390,5 +398,44 @@ mod tests {
         assert_eq!(stocks[&Storable::Good(Good::FuelCells)], 1.0);
         assert_eq!(stocks[&Storable::Good(Good::ConstructionMaterials)], 1.0);
         assert_eq!(stocks[&Storable::Good(Good::Food)], 1.0);
+    }
+
+    #[test]
+    fn extraction_truncates_deterministically_at_storage_capacity() {
+        let (entity_types, infrastructure, mut celestial_data) = create_test_data(1);
+        let body = celestial_data.get_mut(&1).unwrap();
+        body.deposit_unbounded_at(
+            crate::world::types::ConstructionLayer::Surface,
+            Storable::Good(Good::Food),
+            999.0,
+        );
+        let mut resource_system = ResourceSystem::default();
+
+        resource_system.update(
+            RESOURCE_INTERVAL_SECONDS,
+            &entity_types,
+            &infrastructure,
+            &mut celestial_data,
+        );
+
+        let body = &celestial_data[&1];
+        assert_eq!(
+            body.stored_units_at(crate::world::types::ConstructionLayer::Surface),
+            1_000.0
+        );
+        assert_eq!(
+            body.amount_at(
+                crate::world::types::ConstructionLayer::Surface,
+                Storable::Raw(RawResource::Metals)
+            ),
+            1.0
+        );
+        assert_eq!(
+            body.amount_at(
+                crate::world::types::ConstructionLayer::Surface,
+                Storable::Raw(RawResource::Organics)
+            ),
+            0.0
+        );
     }
 }

@@ -393,16 +393,13 @@ impl World {
                     for (storable, amount) in &cargo.contents {
                         drained_cargo.push((*storable, *amount));
                     }
+                    drained_cargo.sort_by_key(|(storable, _)| *storable);
                     sales_to_process.push((ship_id, home_base_id, drained_cargo));
                 }
             }
         }
 
         for (ship_id, home_base_id, drained_cargo) in sales_to_process {
-            if let Some(cargo) = self.cargo.get_mut(&ship_id) {
-                cargo.clear();
-            }
-
             let prices: Vec<f64> = drained_cargo
                 .iter()
                 .map(|(storable, _)| resources::get_local_price(self, home_base_id, *storable))
@@ -412,14 +409,29 @@ impl World {
                 .get_entity_type(home_base_id)
                 .and_then(crate::world::types::ConstructionLayer::primary_for)
                 .unwrap_or(crate::world::types::ConstructionLayer::Orbit);
+            let storage_capacity = self
+                .infrastructure
+                .get(&home_base_id)
+                .map(|infrastructure| infrastructure.storage_capacity(layer))
+                .unwrap_or(0.0);
             if let Some(base_data) = self.celestial_data.get_mut(&home_base_id) {
                 let mut total_value = 0.0;
+                let mut accepted_cargo = Vec::new();
                 for ((storable, amount), price) in drained_cargo.iter().zip(prices.iter()) {
-                    base_data.deposit_unbounded_at(layer, *storable, *amount);
-                    total_value += *amount as f64 * *price;
+                    let accepted =
+                        base_data.deposit_bounded_at(layer, *storable, *amount, storage_capacity);
+                    if accepted > 0.0 {
+                        total_value += accepted as f64 * *price;
+                        accepted_cargo.push((*storable, accepted));
+                    }
+                }
+                if let Some(cargo) = self.cargo.get_mut(&ship_id) {
+                    for (storable, accepted) in &accepted_cargo {
+                        cargo.remove(*storable, *accepted);
+                    }
                 }
                 base_data.credits += total_value;
-                sales_info.push((ship_id, total_value, home_base_id, drained_cargo));
+                sales_info.push((ship_id, total_value, home_base_id, accepted_cargo));
             }
         }
 
@@ -454,5 +466,47 @@ mod tests {
 
         assert_eq!(world.celestial_data[&shipyard_id].credits, 1000.0);
         assert!(world.command_queue.is_empty());
+    }
+
+    #[test]
+    fn delivery_accepts_only_free_storage_and_keeps_remainder_aboard() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 0.0);
+        world
+            .infrastructure
+            .get_mut(&planet_id)
+            .unwrap()
+            .infra
+            .insert(InfrastructureType::SurfaceWarehouse, 1);
+        world
+            .celestial_data
+            .get_mut(&planet_id)
+            .unwrap()
+            .deposit_bounded_at(
+                crate::world::types::ConstructionLayer::Surface,
+                Storable::Good(crate::world::types::Good::Food),
+                995.0,
+                1_000.0,
+            );
+        let ship_id = world.spawn_mining_ship("miner".to_string(), Point { x: 0, y: 0 }, planet_id);
+        world.cargo.get_mut(&ship_id).unwrap().add(
+            Storable::Raw(crate::world::types::RawResource::Metals),
+            10.0,
+        );
+
+        let sales = world.process_ship_sales();
+
+        assert_eq!(sales.len(), 1);
+        assert_eq!(
+            sales[0].3,
+            vec![(Storable::Raw(crate::world::types::RawResource::Metals), 5.0)]
+        );
+        assert_eq!(world.cargo[&ship_id].current_load, 5.0);
+        assert_eq!(
+            world.celestial_data[&planet_id]
+                .stored_units_at(crate::world::types::ConstructionLayer::Surface),
+            1_000.0
+        );
     }
 }

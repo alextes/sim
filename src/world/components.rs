@@ -41,10 +41,23 @@ impl Cargo {
         amount - amount_to_add // returns leftover amount
     }
 
-    /// clears all cargo.
-    pub fn clear(&mut self) {
-        self.current_load = 0.0;
-        self.contents.clear();
+    /// removes up to the requested resource amount and returns what was removed.
+    pub fn remove(&mut self, resource: Storable, amount: f32) -> f32 {
+        let available = self.contents.get(&resource).copied().unwrap_or(0.0);
+        let removed = amount.max(0.0).min(available);
+        if removed > 0.0 {
+            let empty = if let Some(stored) = self.contents.get_mut(&resource) {
+                *stored -= removed;
+                *stored == 0.0
+            } else {
+                false
+            };
+            if empty {
+                self.contents.remove(&resource);
+            }
+            self.current_load -= removed;
+        }
+        removed
     }
 }
 

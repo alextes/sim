@@ -87,51 +87,7 @@ fn add_sol_system(world: &mut World) -> EntityId {
 
     world.set_player_controlled(earth_id);
 
-    // set starting population and resources for earth
-    let population_variation = world.rng.0.random_range(-0.2..0.2);
-    if let Some(data) = world.celestial_data.get_mut(&earth_id) {
-        data.population = (100_000_000.0 * (1.0 + population_variation)) as f32;
-        data.yields
-            .insert(crate::world::types::RawResource::Metals, 1.0);
-        data.yields
-            .insert(crate::world::types::RawResource::Organics, 0.7);
-        data.yields
-            .insert(crate::world::types::RawResource::Crystals, 0.4);
-        data.deposit_unbounded_at(
-            crate::world::types::ConstructionLayer::Surface,
-            crate::world::types::Storable::Raw(crate::world::types::RawResource::Metals),
-            500.0,
-        );
-        data.deposit_unbounded_at(
-            crate::world::types::ConstructionLayer::Surface,
-            crate::world::types::Storable::Raw(crate::world::types::RawResource::Organics),
-            1000.0,
-        );
-        data.deposit_unbounded_at(
-            crate::world::types::ConstructionLayer::Surface,
-            crate::world::types::Storable::Raw(crate::world::types::RawResource::Crystals),
-            100.0,
-        );
-        data.deposit_unbounded_at(
-            crate::world::types::ConstructionLayer::Surface,
-            crate::world::types::Storable::Raw(crate::world::types::RawResource::Volatiles),
-            100.0,
-        );
-        data.deposit_unbounded_at(
-            crate::world::types::ConstructionLayer::Surface,
-            crate::world::types::Storable::Good(crate::world::types::Good::Food),
-            500.0,
-        );
-        // bootstrap stock already delivered to orbit until interlayer transport is implemented.
-        data.deposit_unbounded_at(
-            crate::world::types::ConstructionLayer::Orbit,
-            crate::world::types::Storable::Good(crate::world::types::Good::ConstructionMaterials),
-            300.0,
-        );
-        data.credits = 5000.0;
-    }
-
-    // pre-build infrastructure on earth.
+    // pre-build infrastructure on earth, including explicit bootstrap storage.
     if let Some(earth_infrastructure) = world.infrastructure.get_mut(&earth_id) {
         earth_infrastructure
             .infra
@@ -160,6 +116,70 @@ fn add_sol_system(world: &mut World) -> EntityId {
         earth_infrastructure
             .infra
             .insert(InfrastructureType::OrbitalDock, 1);
+    }
+    let surface_capacity = world
+        .infrastructure
+        .get(&earth_id)
+        .map(|infrastructure| {
+            infrastructure.storage_capacity(crate::world::types::ConstructionLayer::Surface)
+        })
+        .unwrap_or(0.0);
+    let orbital_capacity = world
+        .infrastructure
+        .get(&earth_id)
+        .map(|infrastructure| {
+            infrastructure.storage_capacity(crate::world::types::ConstructionLayer::Orbit)
+        })
+        .unwrap_or(0.0);
+
+    // set starting population and resources for earth
+    let population_variation = world.rng.0.random_range(-0.2..0.2);
+    if let Some(data) = world.celestial_data.get_mut(&earth_id) {
+        data.population = (100_000_000.0 * (1.0 + population_variation)) as f32;
+        data.yields
+            .insert(crate::world::types::RawResource::Metals, 1.0);
+        data.yields
+            .insert(crate::world::types::RawResource::Organics, 0.7);
+        data.yields
+            .insert(crate::world::types::RawResource::Crystals, 0.4);
+        data.deposit_bounded_at(
+            crate::world::types::ConstructionLayer::Surface,
+            crate::world::types::Storable::Raw(crate::world::types::RawResource::Metals),
+            500.0,
+            surface_capacity,
+        );
+        data.deposit_bounded_at(
+            crate::world::types::ConstructionLayer::Surface,
+            crate::world::types::Storable::Raw(crate::world::types::RawResource::Organics),
+            1000.0,
+            surface_capacity,
+        );
+        data.deposit_bounded_at(
+            crate::world::types::ConstructionLayer::Surface,
+            crate::world::types::Storable::Raw(crate::world::types::RawResource::Crystals),
+            100.0,
+            surface_capacity,
+        );
+        data.deposit_bounded_at(
+            crate::world::types::ConstructionLayer::Surface,
+            crate::world::types::Storable::Raw(crate::world::types::RawResource::Volatiles),
+            100.0,
+            surface_capacity,
+        );
+        data.deposit_bounded_at(
+            crate::world::types::ConstructionLayer::Surface,
+            crate::world::types::Storable::Good(crate::world::types::Good::Food),
+            500.0,
+            surface_capacity,
+        );
+        // bootstrap stock already delivered to orbit until interlayer transport is implemented.
+        data.deposit_bounded_at(
+            crate::world::types::ConstructionLayer::Orbit,
+            crate::world::types::Storable::Good(crate::world::types::Good::ConstructionMaterials),
+            300.0,
+            orbital_capacity,
+        );
+        data.credits = 5000.0;
     }
 
     if let Some(earth_pos) = world.get_location(earth_id) {

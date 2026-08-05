@@ -284,6 +284,7 @@ impl CelestialBodyData {
     }
 
     /// deposits without a capacity limit for migrations and seeded state.
+    #[allow(dead_code)] // retained for focused fixtures that construct legacy states
     pub fn deposit_unbounded_at(
         &mut self,
         layer: ConstructionLayer,
