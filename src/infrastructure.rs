@@ -1,8 +1,228 @@
 #![allow(dead_code)] // TODO remove later
 
-use crate::world::types::{CelestialBodyData, EntityType, Good, InfrastructureType, Storable};
+use crate::world::types::{
+    CelestialBodyData, ConstructionLayer, EntityType, Good, InfrastructureType, Storable,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InfrastructureDomain {
+    Ground,
+    Orbit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InfrastructureCategory {
+    Energy,
+    Mining,
+    Research,
+    Shipbuilding,
+    Manufacturing,
+    Agriculture,
+    Construction,
+    Logistics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InfrastructureEffect {
+    Mining { rate_per_unit: f32 },
+    FuelCellRefining { rate_per_unit: f32 },
+    FoodProduction { rate_per_unit: f32 },
+    Shipbuilding,
+    ConstructionMaterialRefining { rate_per_unit: f32 },
+    ResearchGeneration { rate_per_unit: f32 },
+    Spaceport,
+    EnergyGeneration { rate_per_unit: f32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InfrastructureCost {
+    pub resource: Storable,
+    pub quantity: f32,
+}
+
+impl InfrastructureCost {
+    pub fn scaled(self, count: u32) -> Self {
+        Self {
+            resource: self.resource,
+            quantity: self.quantity * count as f32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InfrastructureDefinition {
+    pub infrastructure_type: InfrastructureType,
+    pub name: &'static str,
+    pub domain: InfrastructureDomain,
+    pub category: InfrastructureCategory,
+    pub costs: &'static [InfrastructureCost],
+    pub capacity_use: u32,
+    pub effect: InfrastructureEffect,
+    pub player_buildable: bool,
+}
+
+impl InfrastructureDefinition {
+    pub fn scaled_costs(self, count: u32) -> Vec<InfrastructureCost> {
+        self.costs.iter().map(|cost| cost.scaled(count)).collect()
+    }
+
+    pub fn construction_material_cost(self) -> f32 {
+        self.costs
+            .iter()
+            .find(|cost| cost.resource == Storable::Good(Good::ConstructionMaterials))
+            .map(|cost| cost.quantity)
+            .unwrap_or(0.0)
+    }
+}
+
+const MINE_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 50.0,
+}];
+const FUEL_CELL_CRACKER_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 175.0,
+}];
+const FARM_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 70.0,
+}];
+const SHIPYARD_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 200.0,
+}];
+const CONSTRUCTION_FACTORY_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 150.0,
+}];
+const RESEARCH_LAB_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 80.0,
+}];
+const SPACEPORT_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 100.0,
+}];
+const SOLAR_PANEL_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 30.0,
+}];
+
+const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::Mine,
+        name: "mine",
+        domain: InfrastructureDomain::Ground,
+        category: InfrastructureCategory::Mining,
+        costs: MINE_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::Mining { rate_per_unit: 1.0 },
+        player_buildable: false,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::FuelCellCracker,
+        name: "fuel cell cracker",
+        domain: InfrastructureDomain::Ground,
+        category: InfrastructureCategory::Manufacturing,
+        costs: FUEL_CELL_CRACKER_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::FuelCellRefining { rate_per_unit: 1.0 },
+        player_buildable: false,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::Farm,
+        name: "farm",
+        domain: InfrastructureDomain::Ground,
+        category: InfrastructureCategory::Agriculture,
+        costs: FARM_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::FoodProduction { rate_per_unit: 1.0 },
+        player_buildable: false,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::Shipyard,
+        name: "shipyard",
+        domain: InfrastructureDomain::Ground,
+        category: InfrastructureCategory::Shipbuilding,
+        costs: SHIPYARD_COSTS,
+        capacity_use: 2,
+        effect: InfrastructureEffect::Shipbuilding,
+        player_buildable: false,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::ConstructionFactory,
+        name: "construction factory",
+        domain: InfrastructureDomain::Ground,
+        category: InfrastructureCategory::Construction,
+        costs: CONSTRUCTION_FACTORY_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::ConstructionMaterialRefining { rate_per_unit: 1.0 },
+        player_buildable: false,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::ResearchLab,
+        name: "research lab",
+        domain: InfrastructureDomain::Ground,
+        category: InfrastructureCategory::Research,
+        costs: RESEARCH_LAB_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::ResearchGeneration { rate_per_unit: 1.0 },
+        player_buildable: false,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::Spaceport,
+        name: "spaceport",
+        domain: InfrastructureDomain::Orbit,
+        category: InfrastructureCategory::Logistics,
+        costs: SPACEPORT_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::Spaceport,
+        player_buildable: true,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::SolarPanel,
+        name: "orbital solar panel",
+        domain: InfrastructureDomain::Orbit,
+        category: InfrastructureCategory::Energy,
+        costs: SOLAR_PANEL_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::EnergyGeneration { rate_per_unit: 1.0 },
+        player_buildable: true,
+    },
+];
+
+pub fn infrastructure_definitions() -> &'static [InfrastructureDefinition] {
+    INFRASTRUCTURE_DEFINITIONS
+}
+
+pub fn player_buildable_infrastructure() -> impl Iterator<Item = &'static InfrastructureDefinition>
+{
+    INFRASTRUCTURE_DEFINITIONS
+        .iter()
+        .filter(|definition| definition.player_buildable)
+}
+
+impl InfrastructureType {
+    pub fn definition(self) -> &'static InfrastructureDefinition {
+        INFRASTRUCTURE_DEFINITIONS
+            .iter()
+            .find(|definition| definition.infrastructure_type == self)
+            .expect("every infrastructure type must have a definition")
+    }
+
+    /// returns the layer where this infrastructure is constructed.
+    pub fn construction_layer(self, anchor_type: EntityType) -> Option<ConstructionLayer> {
+        let layer = match self.definition().domain {
+            InfrastructureDomain::Ground => ConstructionLayer::primary_for(anchor_type)?,
+            InfrastructureDomain::Orbit => ConstructionLayer::Orbit,
+        };
+        ConstructionLayer::available_for(anchor_type)
+            .contains(&layer)
+            .then_some(layer)
+    }
+}
 
 /// represents the infrastructure on an entity.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -71,7 +291,9 @@ impl EntityInfrastructure {
             let Some(layer) = infrastructure_type.construction_layer(anchor_type) else {
                 break;
             };
-            let material_cost = Self::construction_material_cost(infrastructure_type);
+            let material_cost = infrastructure_type
+                .definition()
+                .construction_material_cost();
             let material = body_data
                 .stocks_at_mut(layer)
                 .entry(Storable::Good(Good::ConstructionMaterials))
@@ -113,53 +335,6 @@ impl EntityInfrastructure {
             }
         }
     }
-
-    /// returns construction material needed for one infrastructure unit.
-    pub fn construction_material_cost(infrastructure_type: InfrastructureType) -> f32 {
-        match infrastructure_type {
-            InfrastructureType::Spaceport => 100.0,
-            InfrastructureType::SolarPanel => 30.0,
-            InfrastructureType::Mine => 50.0,
-            InfrastructureType::Shipyard => 200.0,
-            InfrastructureType::FuelCellCracker => 175.0,
-            InfrastructureType::Farm => 70.0,
-            InfrastructureType::ConstructionFactory => 150.0,
-        }
-    }
-
-    /// returns the total cost to build a number of units of an infrastructure type.
-    pub fn get_build_costs(
-        infrastructure_type: InfrastructureType,
-        count: u32,
-    ) -> HashMap<Storable, f32> {
-        let mut costs = HashMap::new();
-        let base_costs = EntityInfrastructure::get_build_cost(infrastructure_type);
-        for (resource, cost) in base_costs {
-            costs.insert(resource, cost * count as f32);
-        }
-        costs
-    }
-
-    /// returns the base cost for a single unit of an infrastructure type.
-    pub fn get_build_cost(infrastructure_type: InfrastructureType) -> HashMap<Storable, f32> {
-        HashMap::from([(
-            Storable::Good(Good::ConstructionMaterials),
-            Self::construction_material_cost(infrastructure_type),
-        )])
-    }
-
-    /// returns a display name for an infrastructure type.
-    pub fn infrastructure_name(infrastructure: InfrastructureType) -> &'static str {
-        match infrastructure {
-            InfrastructureType::Mine => "mine",
-            InfrastructureType::FuelCellCracker => "fuel cell cracker",
-            InfrastructureType::Farm => "farm",
-            InfrastructureType::Shipyard => "shipyard",
-            InfrastructureType::ConstructionFactory => "construction factory",
-            InfrastructureType::Spaceport => "spaceport",
-            InfrastructureType::SolarPanel => "orbital solar panel",
-        }
-    }
 }
 
 #[cfg(test)]
@@ -168,35 +343,60 @@ mod tests {
     use crate::world::types::{ConstructionLayer, Good, InfrastructureType, Storable};
 
     #[test]
-    fn test_infrastructure_name() {
+    fn catalog_is_complete_and_deterministically_ordered() {
+        let infrastructure_types: Vec<_> = infrastructure_definitions()
+            .iter()
+            .map(|definition| definition.infrastructure_type)
+            .collect();
+
         assert_eq!(
-            EntityInfrastructure::infrastructure_name(InfrastructureType::Mine),
-            "mine"
+            infrastructure_types,
+            vec![
+                InfrastructureType::Mine,
+                InfrastructureType::FuelCellCracker,
+                InfrastructureType::Farm,
+                InfrastructureType::Shipyard,
+                InfrastructureType::ConstructionFactory,
+                InfrastructureType::ResearchLab,
+                InfrastructureType::Spaceport,
+                InfrastructureType::SolarPanel,
+            ]
         );
         assert_eq!(
-            EntityInfrastructure::infrastructure_name(InfrastructureType::FuelCellCracker),
-            "fuel cell cracker"
+            player_buildable_infrastructure()
+                .map(|definition| definition.infrastructure_type)
+                .collect::<Vec<_>>(),
+            vec![
+                InfrastructureType::Spaceport,
+                InfrastructureType::SolarPanel,
+            ]
+        );
+    }
+
+    #[test]
+    fn representative_definitions_include_domain_category_capacity_and_effect() {
+        let research_lab = InfrastructureType::ResearchLab.definition();
+        assert_eq!(research_lab.name, "research lab");
+        assert_eq!(research_lab.domain, InfrastructureDomain::Ground);
+        assert_eq!(research_lab.category, InfrastructureCategory::Research);
+        assert_eq!(research_lab.capacity_use, 1);
+        assert_eq!(
+            research_lab.effect,
+            InfrastructureEffect::ResearchGeneration { rate_per_unit: 1.0 }
         );
         assert_eq!(
-            EntityInfrastructure::infrastructure_name(InfrastructureType::Farm),
-            "farm"
+            InfrastructureType::ResearchLab.construction_layer(EntityType::Planet),
+            Some(ConstructionLayer::Surface)
         );
-        assert_eq!(
-            EntityInfrastructure::infrastructure_name(InfrastructureType::Shipyard),
-            "shipyard"
-        );
-        assert_eq!(
-            EntityInfrastructure::infrastructure_name(InfrastructureType::ConstructionFactory),
-            "construction factory"
-        );
-        assert_eq!(
-            EntityInfrastructure::infrastructure_name(InfrastructureType::SolarPanel),
-            "orbital solar panel"
-        );
-        assert_eq!(
-            EntityInfrastructure::infrastructure_name(InfrastructureType::Spaceport),
-            "spaceport"
-        );
+
+        let spaceport = InfrastructureType::Spaceport.definition();
+        assert_eq!(spaceport.domain, InfrastructureDomain::Orbit);
+        assert_eq!(spaceport.category, InfrastructureCategory::Logistics);
+        assert_eq!(spaceport.effect, InfrastructureEffect::Spaceport);
+
+        let shipyard = InfrastructureType::Shipyard.definition();
+        assert_eq!(shipyard.category, InfrastructureCategory::Shipbuilding);
+        assert_eq!(shipyard.capacity_use, 2);
     }
 
     #[test]
@@ -250,26 +450,22 @@ mod tests {
     }
 
     #[test]
-    fn test_get_build_cost() {
-        let costs = EntityInfrastructure::get_build_cost(InfrastructureType::Mine);
-        assert_eq!(costs.len(), 1);
+    fn catalog_costs_are_ordered_and_scalable() {
+        let costs = InfrastructureType::Mine.definition().costs;
         assert_eq!(
-            costs.get(&Storable::Good(Good::ConstructionMaterials)),
-            Some(&50.0)
+            costs,
+            &[InfrastructureCost {
+                resource: Storable::Good(Good::ConstructionMaterials),
+                quantity: 50.0,
+            }]
         );
 
-        let costs = EntityInfrastructure::get_build_cost(InfrastructureType::Farm);
-        assert_eq!(costs.len(), 1);
         assert_eq!(
-            costs.get(&Storable::Good(Good::ConstructionMaterials)),
-            Some(&70.0)
-        );
-
-        let costs = EntityInfrastructure::get_build_cost(InfrastructureType::Spaceport);
-        assert_eq!(costs.len(), 1);
-        assert_eq!(
-            costs.get(&Storable::Good(Good::ConstructionMaterials)),
-            Some(&100.0)
+            InfrastructureType::Spaceport.definition().scaled_costs(3),
+            vec![InfrastructureCost {
+                resource: Storable::Good(Good::ConstructionMaterials),
+                quantity: 300.0,
+            }]
         );
     }
 

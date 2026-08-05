@@ -4,7 +4,7 @@ use crate::location::OrbitalParameters;
 use crate::location::{LocationSystem, OrbitalInfo, Point};
 
 use crate::command::Command;
-use crate::infrastructure::EntityInfrastructure;
+use crate::infrastructure::{player_buildable_infrastructure, EntityInfrastructure};
 use crate::location::PointF64;
 use std::collections::VecDeque;
 
@@ -12,8 +12,7 @@ use crate::ships::ShipType;
 use crate::world::components::{Cargo, CivilianShipAI, MiningRoute};
 use crate::world::types::{
     BodyProfile, CelestialBodyData, Color, EntityType, InfrastructureType, Spaceport,
-    SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS,
-    PLAYER_BUILDABLE_INFRASTRUCTURE, STAR_COLORS,
+    SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS, STAR_COLORS,
 };
 
 mod civ_economy;
@@ -362,7 +361,8 @@ impl World {
             && self.get_entity_type(planet_id) == Some(EntityType::Planet)
             && self.celestial_data.contains_key(&planet_id)
             && self.infrastructure.contains_key(&planet_id)
-            && PLAYER_BUILDABLE_INFRASTRUCTURE.contains(&infrastructure)
+            && player_buildable_infrastructure()
+                .any(|definition| definition.infrastructure_type == infrastructure)
             && (infrastructure != InfrastructureType::Spaceport
                 || amount <= self.remaining_spaceport_units(planet_id))
     }

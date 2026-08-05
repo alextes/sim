@@ -5,13 +5,11 @@
 use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
 use crate::command::Command;
 use crate::control_state::ControlState;
-use crate::infrastructure::EntityInfrastructure;
+use crate::infrastructure::player_buildable_infrastructure;
 use crate::palette;
 use crate::ships::{buildable_ships, ShipBuildShortfall, ShipBuildable};
 use crate::world::components::MiningRoute;
-use crate::world::types::{
-    EntityType, InfrastructureType, RawResource, PLAYER_BUILDABLE_INFRASTRUCTURE,
-};
+use crate::world::types::{EntityType, InfrastructureType, RawResource};
 use crate::world::{EntityId, World};
 
 use super::{centered_window, raw_resource_display, storable_display};
@@ -169,7 +167,7 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                     let mut infra: Vec<_> = infrastructure.infra.iter().collect();
                     infra.sort_by_key(|(infrastructure, _)| format!("{infrastructure:?}"));
                     for (infrastructure, count) in infra {
-                        let name = EntityInfrastructure::infrastructure_name(*infrastructure);
+                        let name = infrastructure.definition().name;
                         ui.colored_label(palette::GRAY, format!("{name}: {count}"));
                     }
                 }
@@ -182,7 +180,7 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                     for (infrastructure_type, count) in &infrastructure.build_queue {
                         ui.label(format!(
                             "{} x{count}",
-                            EntityInfrastructure::infrastructure_name(*infrastructure_type)
+                            infrastructure_type.definition().name
                         ));
                     }
                 }
@@ -253,7 +251,7 @@ fn build_main(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, enti
             for (infrastructure_type, count) in &infrastructure.build_queue {
                 ui.label(format!(
                     "  - {} x{count}",
-                    EntityInfrastructure::infrastructure_name(*infrastructure_type)
+                    infrastructure_type.definition().name
                 ));
             }
         }
@@ -271,12 +269,13 @@ fn build_main(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, enti
 
 fn build_select(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, entity_id: EntityId) {
     ui.label("select orbital infrastructure:");
-    for &infrastructure in PLAYER_BUILDABLE_INFRASTRUCTURE {
+    for definition in player_buildable_infrastructure() {
+        let infrastructure = definition.infrastructure_type;
         let available = world.can_queue_player_infrastructure(entity_id, infrastructure, 1);
         let label = if infrastructure == InfrastructureType::Spaceport && !available {
             "spaceport (maximum size)"
         } else {
-            EntityInfrastructure::infrastructure_name(infrastructure)
+            definition.name
         };
         if ui
             .add_enabled(available, egui::Button::new(label))
@@ -307,7 +306,7 @@ fn build_quantity(
 ) {
     ui.label(format!(
         "infrastructure: {}",
-        EntityInfrastructure::infrastructure_name(infrastructure)
+        infrastructure.definition().name
     ));
     if infrastructure == InfrastructureType::Spaceport {
         ui.label(format!(
@@ -365,31 +364,33 @@ fn build_confirm(
 ) {
     ui.label(format!(
         "build {amount}x {}?",
-        EntityInfrastructure::infrastructure_name(infrastructure)
+        infrastructure.definition().name
     ));
     ui.label("cost:");
-    let costs = EntityInfrastructure::get_build_costs(infrastructure, amount);
+    let costs = infrastructure.definition().scaled_costs(amount);
     let build_layer = world
         .get_entity_type(entity_id)
         .and_then(|entity_type| infrastructure.construction_layer(entity_type));
     if let Some(layer) = build_layer {
         ui.label(format!("required at: {layer}"));
     }
-    let mut items: Vec<_> = costs.into_iter().collect();
-    items.sort_by_key(|(storable, _)| format!("{storable}"));
-    for (storable, cost) in &items {
+    for cost in costs {
+        let storable = cost.resource;
         let have = world
             .celestial_data
             .get(&entity_id)
-            .and_then(|data| build_layer.and_then(|layer| data.stocks_at(layer).get(storable)))
+            .and_then(|data| build_layer.and_then(|layer| data.stocks_at(layer).get(&storable)))
             .copied()
             .unwrap_or(0.0);
-        let color = if have < *cost {
+        let color = if have < cost.quantity {
             palette::RED
         } else {
             palette::WHITE
         };
-        ui.colored_label(color, format!("  {cost:.1} {storable} (have {have:.1})"));
+        ui.colored_label(
+            color,
+            format!("  {:.1} {storable} (have {have:.1})", cost.quantity),
+        );
     }
     ui.horizontal(|ui| {
         let eligible = world.can_queue_player_infrastructure(entity_id, infrastructure, amount);

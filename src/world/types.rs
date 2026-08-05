@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use strum::EnumIter;
 
 /// the types of resources that can be extracted from celestial bodies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -310,7 +309,7 @@ pub const MOON_COLORS: [Color; 3] = [
     }, // dark gray
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InfrastructureType {
     // ground
     Mine,
@@ -318,33 +317,11 @@ pub enum InfrastructureType {
     Farm,
     Shipyard,
     ConstructionFactory,
+    ResearchLab,
     // orbital
     Spaceport,
     SolarPanel,
 }
-
-impl InfrastructureType {
-    /// returns the layer where this infrastructure is constructed.
-    pub fn construction_layer(self, anchor_type: EntityType) -> Option<ConstructionLayer> {
-        let layer = match self {
-            Self::Spaceport | Self::SolarPanel => ConstructionLayer::Orbit,
-            Self::Mine
-            | Self::FuelCellCracker
-            | Self::Farm
-            | Self::Shipyard
-            | Self::ConstructionFactory => ConstructionLayer::primary_for(anchor_type)?,
-        };
-        ConstructionLayer::available_for(anchor_type)
-            .contains(&layer)
-            .then_some(layer)
-    }
-}
-
-/// infrastructure types currently available through the player build flow.
-pub const PLAYER_BUILDABLE_INFRASTRUCTURE: &[InfrastructureType] = &[
-    InfrastructureType::Spaceport,
-    InfrastructureType::SolarPanel,
-];
 
 pub const MAX_SPACEPORT_UNITS: u32 = 3;
 
@@ -383,18 +360,6 @@ pub struct Spaceport {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn player_buildable_infrastructure_is_limited_and_ordered() {
-        assert_eq!(
-            PLAYER_BUILDABLE_INFRASTRUCTURE,
-            &[
-                InfrastructureType::Spaceport,
-                InfrastructureType::SolarPanel
-            ]
-        );
-        assert!(!PLAYER_BUILDABLE_INFRASTRUCTURE.contains(&InfrastructureType::Mine));
-    }
 
     #[test]
     fn v1_resources_and_environment_layers_are_explicit() {

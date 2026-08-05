@@ -350,9 +350,7 @@ fn single_selection(ui: &mut egui::Ui, world: &World, controls: &ControlState, i
             let mut infra: Vec<_> = infrastructure.infra.iter().collect();
             infra.sort_by_key(|(bt, _)| format!("{bt:?}"));
             for (infrastructure_type, count) in infra {
-                let name = crate::infrastructure::EntityInfrastructure::infrastructure_name(
-                    *infrastructure_type,
-                );
+                let name = infrastructure_type.definition().name;
                 ui.colored_label(palette::GRAY, format!("  - {name}: {count}"));
             }
         }
