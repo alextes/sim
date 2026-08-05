@@ -545,18 +545,16 @@ impl EntityInfrastructure {
             let material_cost = infrastructure_type
                 .definition()
                 .construction_material_cost();
-            let material = body_data
-                .stocks_at_mut(layer)
-                .entry(Storable::Good(Good::ConstructionMaterials))
-                .or_insert(0.0);
+            let material_resource = Storable::Good(Good::ConstructionMaterials);
+            let material = body_data.amount_at(layer, material_resource);
             let material_needed = (material_cost - self.construction_progress).max(0.0);
-            let progress = remaining_capacity.min(*material).min(material_needed);
+            let progress = remaining_capacity.min(material).min(material_needed);
 
             if progress == 0.0 {
                 break;
             }
 
-            *material -= progress;
+            body_data.withdraw_at(layer, material_resource, progress);
             remaining_capacity -= progress;
             self.construction_progress += progress;
 

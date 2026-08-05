@@ -18,7 +18,8 @@ static SIMULATION_HZ: LazyLock<f64> = LazyLock::new(|| 1.0 / SIMULATION_DT.as_se
 pub const RESOURCE_INTERVAL_SECONDS: f64 = 1.0; // update once per second
 
 fn process_recipe(
-    stocks: &mut HashMap<Storable, f32>,
+    body: &mut CelestialBodyData,
+    layer: crate::world::types::ConstructionLayer,
     inputs: &[(Storable, f32)],
     output: Storable,
     requested_batches: f32,
@@ -26,7 +27,7 @@ fn process_recipe(
     let actual_batches = inputs
         .iter()
         .fold(requested_batches, |possible, (input, amount)| {
-            possible.min(stocks.get(input).copied().unwrap_or(0.0) / amount)
+            possible.min(body.amount_at(layer, *input) / amount)
         });
 
     if actual_batches <= 0.0 {
@@ -34,9 +35,9 @@ fn process_recipe(
     }
 
     for (input, amount) in inputs {
-        *stocks.entry(*input).or_insert(0.0) -= actual_batches * amount;
+        body.withdraw_at(layer, *input, actual_batches * amount);
     }
-    *stocks.entry(output).or_insert(0.0) += actual_batches;
+    body.deposit_unbounded_at(layer, output, actual_batches);
     actual_batches
 }
 
@@ -80,6 +81,10 @@ impl ResourceSystem {
                 }
                 _ => continue, // other types do not produce resources.
             }
+            let Some(layer) = crate::world::types::ConstructionLayer::primary_for(*entity_type)
+            else {
+                continue;
+            };
 
             let infrastructure = match infrastructure_map.get(entity_id) {
                 Some(infrastructure) => infrastructure,
@@ -90,16 +95,22 @@ impl ResourceSystem {
             let mining_rate = infrastructure.effect_rate(InfrastructureEffect::mining_rate);
 
             if mining_rate > 0.0 {
-                for (resource_type, yield_grade) in &celestial_data.yields {
+                let mut yields: Vec<_> = celestial_data
+                    .yields
+                    .iter()
+                    .map(|(resource, grade)| (*resource, *grade))
+                    .collect();
+                yields.sort_by_key(|(resource, _)| *resource);
+                for (resource_type, yield_grade) in yields {
                     let production = (celestial_data.population / 1_000_000.0)
                         * mining_rate
-                        * *yield_grade
+                        * yield_grade
                         * production_multiplier;
-                    let stock = celestial_data
-                        .stocks
-                        .entry(Storable::Raw(*resource_type))
-                        .or_insert(0.0);
-                    *stock += production;
+                    celestial_data.deposit_unbounded_at(
+                        layer,
+                        Storable::Raw(resource_type),
+                        production,
+                    );
                 }
             }
 
@@ -110,7 +121,8 @@ impl ResourceSystem {
             if fuel_cell_refining_rate > 0.0 {
                 // recipe: 1 volatile + 0.1 metals -> 1 fuel cell
                 process_recipe(
-                    &mut celestial_data.stocks,
+                    celestial_data,
+                    layer,
                     &[
                         (Storable::Raw(RawResource::Volatiles), 1.0),
                         (Storable::Raw(RawResource::Metals), 0.1),
@@ -127,7 +139,8 @@ impl ResourceSystem {
             if construction_material_refining_rate > 0.0 {
                 // recipe: 1 metals + 1 crystals -> 1 construction material
                 process_recipe(
-                    &mut celestial_data.stocks,
+                    celestial_data,
+                    layer,
                     &[
                         (Storable::Raw(RawResource::Metals), 1.0),
                         (Storable::Raw(RawResource::Crystals), 1.0),
@@ -144,7 +157,8 @@ impl ResourceSystem {
             if food_production_rate > 0.0 {
                 // recipe: 1 organics -> 1 food
                 process_recipe(
-                    &mut celestial_data.stocks,
+                    celestial_data,
+                    layer,
                     &[(Storable::Raw(RawResource::Organics), 1.0)],
                     Storable::Good(Good::Food),
                     food_production_rate * production_multiplier,
@@ -220,7 +234,7 @@ pub fn get_local_price(world: &World, entity_id: EntityId, resource: Storable) -
 
     let (stockpile, monthly_demand) = match resource {
         Storable::Raw(raw_resource) => (
-            celestial_data.stocks.get(&resource).copied().unwrap_or(0.0),
+            celestial_data.amount_at(crate::world::types::ConstructionLayer::Surface, resource),
             celestial_data
                 .demands
                 .get(&Storable::Raw(raw_resource))

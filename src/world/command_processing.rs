@@ -44,7 +44,9 @@ impl World {
                     return;
                 };
 
-                let shortfall = buildable.first_shortfall(&shipyard_data.stocks);
+                let shortfall = buildable.first_shortfall(
+                    shipyard_data.stocks_at(crate::world::types::ConstructionLayer::Surface),
+                );
                 if let Some(shortfall) = shortfall {
                     tracing::warn!(
                         "entity {} cannot afford ship {:?}: not enough {:?} (needs {}, has {})",
@@ -82,7 +84,11 @@ impl World {
                 // deduct the cost from the shipyard body's stocks.
                 if let Some(cd) = self.celestial_data.get_mut(&shipyard_entity_id) {
                     for cost in buildable.costs {
-                        *cd.stocks.entry(cost.resource).or_insert(0.0) -= cost.quantity;
+                        cd.withdraw_at(
+                            crate::world::types::ConstructionLayer::Surface,
+                            cost.resource,
+                            cost.quantity,
+                        );
                     }
                     if let Some(credit_cost) = civilian_credit_cost {
                         cd.credits -= credit_cost;

@@ -154,27 +154,30 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                         ui.colored_label(color, format!("{label}: {grade:.2}"));
                     }
                 }
-                if !data.stocks.is_empty() {
+                let primary_stocks = world
+                    .get_entity_type(body)
+                    .and_then(crate::world::types::ConstructionLayer::primary_for)
+                    .map(|layer| data.ordered_stocks_at(layer))
+                    .unwrap_or_default();
+                if !primary_stocks.is_empty() {
                     ui.separator();
                     let stock_label = match world.get_entity_type(body) {
                         Some(EntityType::GasGiant) => "upper-atmosphere stocks",
                         _ => "surface stocks",
                     };
                     ui.label(stock_label);
-                    let mut stocks: Vec<_> = data.stocks.iter().collect();
-                    stocks.sort_by_key(|(storable, _)| **storable);
-                    for (storable, amount) in stocks {
-                        let (label, color) = storable_display(*storable);
+                    for (storable, amount) in primary_stocks {
+                        let (label, color) = storable_display(storable);
                         ui.colored_label(color, format!("{label}: {amount:.1}"));
                     }
                 }
-                if !data.orbital_stocks.is_empty() {
+                let orbital_stocks =
+                    data.ordered_stocks_at(crate::world::types::ConstructionLayer::Orbit);
+                if !orbital_stocks.is_empty() {
                     ui.separator();
                     ui.label("orbital stocks");
-                    let mut stocks: Vec<_> = data.orbital_stocks.iter().collect();
-                    stocks.sort_by_key(|(storable, _)| **storable);
-                    for (storable, amount) in stocks {
-                        let (label, color) = storable_display(*storable);
+                    for (storable, amount) in orbital_stocks {
+                        let (label, color) = storable_display(storable);
                         ui.colored_label(color, format!("{label}: {amount:.1}"));
                     }
                 }
@@ -452,8 +455,7 @@ fn build_confirm(
         let have = world
             .celestial_data
             .get(&entity_id)
-            .and_then(|data| build_layer.and_then(|layer| data.stocks_at(layer).get(&storable)))
-            .copied()
+            .and_then(|data| build_layer.map(|layer| data.amount_at(layer, storable)))
             .unwrap_or(0.0);
         let color = if have < cost.quantity {
             palette::RED
@@ -540,7 +542,8 @@ fn try_build_ship(
 ) {
     let shortfall = {
         match world.celestial_data.get(&shipyard_id) {
-            Some(body) => buildable.first_shortfall(&body.stocks),
+            Some(body) => buildable
+                .first_shortfall(body.stocks_at(crate::world::types::ConstructionLayer::Surface)),
             None => buildable.costs.first().map(|cost| ShipBuildShortfall {
                 resource: cost.resource,
                 required: cost.quantity,

@@ -240,7 +240,7 @@ impl CelestialBodyData {
     }
 
     /// returns mutable stocks at an environment-local layer.
-    pub fn stocks_at_mut(&mut self, layer: ConstructionLayer) -> &mut HashMap<Storable, f32> {
+    fn stocks_at_mut(&mut self, layer: ConstructionLayer) -> &mut HashMap<Storable, f32> {
         match layer {
             ConstructionLayer::Surface | ConstructionLayer::UpperAtmosphere => &mut self.stocks,
             ConstructionLayer::Orbit => &mut self.orbital_stocks,
@@ -252,6 +252,76 @@ impl CelestialBodyData {
         let mut stocks: Vec<_> = self.stocks_at(layer).iter().collect();
         stocks.sort_by_key(|(storable, _)| **storable);
         stocks.into_iter().map(|(_, amount)| *amount).sum()
+    }
+
+    /// amount of one resource stored at a logistics layer.
+    pub fn amount_at(&self, layer: ConstructionLayer, resource: Storable) -> f32 {
+        self.stocks_at(layer).get(&resource).copied().unwrap_or(0.0)
+    }
+
+    /// free shared storage capacity at a logistics layer.
+    #[allow(dead_code)] // used by the next bounded-deposit slice
+    pub fn free_capacity_at(&self, layer: ConstructionLayer, capacity: f32) -> f32 {
+        (capacity.max(0.0) - self.stored_units_at(layer)).max(0.0)
+    }
+
+    /// deposits as much as fits and returns the accepted quantity.
+    #[allow(dead_code)] // used by the next bounded-deposit slice
+    pub fn deposit_bounded_at(
+        &mut self,
+        layer: ConstructionLayer,
+        resource: Storable,
+        quantity: f32,
+        capacity: f32,
+    ) -> f32 {
+        let accepted = quantity
+            .max(0.0)
+            .min(self.free_capacity_at(layer, capacity));
+        if accepted > 0.0 {
+            *self.stocks_at_mut(layer).entry(resource).or_insert(0.0) += accepted;
+        }
+        accepted
+    }
+
+    /// deposits without a capacity limit for migrations and seeded state.
+    pub fn deposit_unbounded_at(
+        &mut self,
+        layer: ConstructionLayer,
+        resource: Storable,
+        quantity: f32,
+    ) -> f32 {
+        let accepted = quantity.max(0.0);
+        if accepted > 0.0 {
+            *self.stocks_at_mut(layer).entry(resource).or_insert(0.0) += accepted;
+        }
+        accepted
+    }
+
+    /// withdraws up to the requested quantity and returns the withdrawn amount.
+    pub fn withdraw_at(
+        &mut self,
+        layer: ConstructionLayer,
+        resource: Storable,
+        quantity: f32,
+    ) -> f32 {
+        let requested = quantity.max(0.0);
+        let available = self.amount_at(layer, resource);
+        let withdrawn = requested.min(available);
+        if withdrawn > 0.0 {
+            *self.stocks_at_mut(layer).entry(resource).or_insert(0.0) -= withdrawn;
+        }
+        withdrawn
+    }
+
+    /// stocks at a layer in deterministic resource order.
+    pub fn ordered_stocks_at(&self, layer: ConstructionLayer) -> Vec<(Storable, f32)> {
+        let mut stocks: Vec<_> = self
+            .stocks_at(layer)
+            .iter()
+            .map(|(resource, amount)| (*resource, *amount))
+            .collect();
+        stocks.sort_by_key(|(resource, _)| *resource);
+        stocks
     }
 }
 
@@ -406,5 +476,36 @@ mod tests {
         };
 
         assert_eq!(body.construction_capacity(), 5.5);
+    }
+
+    #[test]
+    fn layer_inventory_bounds_deposits_and_withdrawals() {
+        let resource = Storable::Raw(RawResource::Metals);
+        let mut body = CelestialBodyData::default();
+
+        assert_eq!(
+            body.deposit_bounded_at(ConstructionLayer::Surface, resource, 8.0, 5.0),
+            5.0
+        );
+        assert_eq!(body.free_capacity_at(ConstructionLayer::Surface, 5.0), 0.0);
+        assert_eq!(
+            body.deposit_bounded_at(ConstructionLayer::Surface, resource, 1.0, 5.0),
+            0.0
+        );
+        assert_eq!(
+            body.withdraw_at(ConstructionLayer::Surface, resource, 3.0),
+            3.0
+        );
+        assert_eq!(body.amount_at(ConstructionLayer::Surface, resource), 2.0);
+        assert_eq!(body.amount_at(ConstructionLayer::Orbit, resource), 0.0);
+
+        let mut gas_body = CelestialBodyData::default();
+        gas_body.deposit_unbounded_at(ConstructionLayer::UpperAtmosphere, resource, 4.0);
+        body.deposit_unbounded_at(ConstructionLayer::Orbit, resource, 7.0);
+        assert_eq!(
+            gas_body.amount_at(ConstructionLayer::UpperAtmosphere, resource),
+            4.0
+        );
+        assert_eq!(body.amount_at(ConstructionLayer::Orbit, resource), 7.0);
     }
 }

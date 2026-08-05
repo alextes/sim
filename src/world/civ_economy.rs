@@ -47,27 +47,30 @@ impl World {
         let celestial_body_ids: Vec<u32> = self.celestial_data.keys().cloned().collect();
 
         for entity_id in celestial_body_ids {
+            let layer = self
+                .get_entity_type(entity_id)
+                .and_then(crate::world::types::ConstructionLayer::primary_for)
+                .unwrap_or(crate::world::types::ConstructionLayer::Orbit);
             if let Some(data) = self.celestial_data.get_mut(&entity_id) {
                 if data.population <= 0.0 {
                     continue;
                 }
 
                 // resource consumption based on demand
-                for (storable, &monthly_demand) in &data.demands {
+                let mut demands: Vec<_> = data
+                    .demands
+                    .iter()
+                    .map(|(storable, demand)| (*storable, *demand))
+                    .collect();
+                demands.sort_by_key(|(storable, _)| *storable);
+                for (storable, monthly_demand) in demands {
                     // consumption is per second, so divide monthly demand by seconds in a month
                     const SECONDS_PER_MONTH: f64 = 30.0; // simplified
                     let consumption_rate = monthly_demand as f64 / SECONDS_PER_MONTH;
                     let total_consumption =
                         consumption_rate * data.population as f64 * dt / 1_000_000.0;
 
-                    if let Some(stock) = data.stocks.get_mut(storable) {
-                        let consumed_amount = (*stock as f64).min(total_consumption);
-
-                        if consumed_amount > 0.0 {
-                            *stock -= consumed_amount as f32;
-                            // for now, consumption doesn't generate credits. that's what industry is for.
-                        }
-                    }
+                    data.withdraw_at(layer, storable, total_consumption as f32);
                 }
 
                 // decision to build a mining ship
@@ -105,7 +108,7 @@ impl World {
                             > 0;
 
                         let can_afford_ship_resources = buildable_ship(ShipType::MiningShip)
-                            .is_some_and(|buildable| buildable.can_afford(&data.stocks));
+                            .is_some_and(|buildable| buildable.can_afford(data.stocks_at(layer)));
 
                         if has_shipyard && can_afford_ship_resources {
                             self.add_command(Command::BuildShip {
@@ -405,10 +408,14 @@ impl World {
                 .map(|(storable, _)| resources::get_local_price(self, home_base_id, *storable))
                 .collect();
 
+            let layer = self
+                .get_entity_type(home_base_id)
+                .and_then(crate::world::types::ConstructionLayer::primary_for)
+                .unwrap_or(crate::world::types::ConstructionLayer::Orbit);
             if let Some(base_data) = self.celestial_data.get_mut(&home_base_id) {
                 let mut total_value = 0.0;
                 for ((storable, amount), price) in drained_cargo.iter().zip(prices.iter()) {
-                    *base_data.stocks.entry(*storable).or_insert(0.0) += *amount;
+                    base_data.deposit_unbounded_at(layer, *storable, *amount);
                     total_value += *amount as f64 * *price;
                 }
                 base_data.credits += total_value;

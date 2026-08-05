@@ -317,25 +317,27 @@ fn single_selection(ui: &mut egui::Ui, world: &World, controls: &ControlState, i
                 ui.colored_label(color, format!("  {label}: {grade:.2}"));
             }
         }
-        if !data.stocks.is_empty() {
+        let primary_stocks = world
+            .get_entity_type(id)
+            .and_then(crate::world::types::ConstructionLayer::primary_for)
+            .map(|layer| data.ordered_stocks_at(layer))
+            .unwrap_or_default();
+        if !primary_stocks.is_empty() {
             let stock_label = match world.get_entity_type(id) {
                 Some(EntityType::GasGiant) => "upper-atmosphere stocks:",
                 _ => "surface stocks:",
             };
             ui.label(stock_label);
-            let mut stocks: Vec<_> = data.stocks.iter().collect();
-            stocks.sort_by_key(|(s, _)| **s);
-            for (storable, amount) in stocks {
-                let (label, color) = storable_display(*storable);
+            for (storable, amount) in primary_stocks {
+                let (label, color) = storable_display(storable);
                 ui.colored_label(color, format!("  {label}: {amount:.1}"));
             }
         }
-        if !data.orbital_stocks.is_empty() {
+        let orbital_stocks = data.ordered_stocks_at(crate::world::types::ConstructionLayer::Orbit);
+        if !orbital_stocks.is_empty() {
             ui.label("orbital stocks:");
-            let mut stocks: Vec<_> = data.orbital_stocks.iter().collect();
-            stocks.sort_by_key(|(s, _)| **s);
-            for (storable, amount) in stocks {
-                let (label, color) = storable_display(*storable);
+            for (storable, amount) in orbital_stocks {
+                let (label, color) = storable_display(storable);
                 ui.colored_label(color, format!("  {label}: {amount:.1}"));
             }
         }

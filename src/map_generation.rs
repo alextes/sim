@@ -97,28 +97,34 @@ fn add_sol_system(world: &mut World) -> EntityId {
             .insert(crate::world::types::RawResource::Organics, 0.7);
         data.yields
             .insert(crate::world::types::RawResource::Crystals, 0.4);
-        data.stocks.insert(
+        data.deposit_unbounded_at(
+            crate::world::types::ConstructionLayer::Surface,
             crate::world::types::Storable::Raw(crate::world::types::RawResource::Metals),
             500.0,
         );
-        data.stocks.insert(
+        data.deposit_unbounded_at(
+            crate::world::types::ConstructionLayer::Surface,
             crate::world::types::Storable::Raw(crate::world::types::RawResource::Organics),
             1000.0,
         );
-        data.stocks.insert(
+        data.deposit_unbounded_at(
+            crate::world::types::ConstructionLayer::Surface,
             crate::world::types::Storable::Raw(crate::world::types::RawResource::Crystals),
             100.0,
         );
-        data.stocks.insert(
+        data.deposit_unbounded_at(
+            crate::world::types::ConstructionLayer::Surface,
             crate::world::types::Storable::Raw(crate::world::types::RawResource::Volatiles),
             100.0,
         );
-        data.stocks.insert(
+        data.deposit_unbounded_at(
+            crate::world::types::ConstructionLayer::Surface,
             crate::world::types::Storable::Good(crate::world::types::Good::Food),
             500.0,
         );
         // bootstrap stock already delivered to orbit until interlayer transport is implemented.
-        data.orbital_stocks.insert(
+        data.deposit_unbounded_at(
+            crate::world::types::ConstructionLayer::Orbit,
             crate::world::types::Storable::Good(crate::world::types::Good::ConstructionMaterials),
             300.0,
         );
