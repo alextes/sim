@@ -3,12 +3,14 @@ schema_version: 9
 id: sim-a80r
 title: add infrastructure definition catalog
 priority: P2
-status: open
+status: done
 deps:
 - sim-cw48
 - sim-r1kx
 owner: null
 created_at: 2026-06-30T22:11:54.470629Z
+started_at: 2026-08-05T10:14:52.606388Z
+completed_at: 2026-08-05T10:21:09.920795Z
 acceptance:
 - catalog defines every buildable InfrastructureType in deterministic order
 - definitions include name, ground/orbit domain, category, ordered costs, capacity use, and effect
