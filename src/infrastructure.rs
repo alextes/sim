@@ -36,6 +36,50 @@ pub enum InfrastructureEffect {
     EnergyGeneration { rate_per_unit: f32 },
 }
 
+impl InfrastructureEffect {
+    pub fn mining_rate(self) -> Option<f32> {
+        match self {
+            Self::Mining { rate_per_unit } => Some(rate_per_unit),
+            _ => None,
+        }
+    }
+
+    pub fn fuel_cell_refining_rate(self) -> Option<f32> {
+        match self {
+            Self::FuelCellRefining { rate_per_unit } => Some(rate_per_unit),
+            _ => None,
+        }
+    }
+
+    pub fn food_production_rate(self) -> Option<f32> {
+        match self {
+            Self::FoodProduction { rate_per_unit } => Some(rate_per_unit),
+            _ => None,
+        }
+    }
+
+    pub fn construction_material_refining_rate(self) -> Option<f32> {
+        match self {
+            Self::ConstructionMaterialRefining { rate_per_unit } => Some(rate_per_unit),
+            _ => None,
+        }
+    }
+
+    pub fn research_generation_rate(self) -> Option<f32> {
+        match self {
+            Self::ResearchGeneration { rate_per_unit } => Some(rate_per_unit),
+            _ => None,
+        }
+    }
+
+    pub fn energy_generation_rate(self) -> Option<f32> {
+        match self {
+            Self::EnergyGeneration { rate_per_unit } => Some(rate_per_unit),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct InfrastructureCost {
     pub resource: Storable,
@@ -304,6 +348,27 @@ impl EntityInfrastructure {
         self.build_queue.iter().fold(0, |capacity, (kind, count)| {
             capacity.saturating_add(kind.definition().capacity_for(*count))
         })
+    }
+
+    /// summed rate for completed infrastructure matching an effect selector.
+    pub fn effect_rate(&self, rate_for: impl Fn(InfrastructureEffect) -> Option<f32>) -> f32 {
+        infrastructure_definitions()
+            .iter()
+            .filter_map(|definition| {
+                rate_for(definition.effect)
+                    .map(|rate| self.get_count(definition.infrastructure_type) as f32 * rate)
+            })
+            .sum()
+    }
+
+    /// completed units in a catalog category.
+    pub fn completed_units_in_category(&self, category: InfrastructureCategory) -> u32 {
+        infrastructure_definitions()
+            .iter()
+            .filter(|definition| definition.category == category)
+            .fold(0, |units, definition| {
+                units.saturating_add(self.get_count(definition.infrastructure_type))
+            })
     }
 
     /// processes the construction queue using capacity and material at the build layer.
@@ -597,5 +662,48 @@ mod tests {
         assert_eq!(capacity.remaining(), 1);
         assert!(capacity.can_fit(1));
         assert!(!capacity.can_fit(2));
+    }
+
+    #[test]
+    fn effect_rates_and_categories_follow_catalog_definitions() {
+        let mut infrastructure = EntityInfrastructure::new("test");
+        infrastructure.infra.insert(InfrastructureType::Mine, 3);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::SolarPanel, 2);
+        infrastructure.infra.insert(InfrastructureType::Shipyard, 1);
+
+        assert_eq!(
+            infrastructure.effect_rate(InfrastructureEffect::mining_rate),
+            3.0
+        );
+        assert_eq!(
+            infrastructure.effect_rate(InfrastructureEffect::energy_generation_rate),
+            2.0
+        );
+        assert_eq!(
+            infrastructure.completed_units_in_category(InfrastructureCategory::Shipbuilding),
+            1
+        );
+    }
+
+    #[test]
+    fn catalog_exposes_all_v1_categories_in_order() {
+        assert_eq!(
+            infrastructure_definitions()
+                .iter()
+                .map(|definition| definition.category)
+                .collect::<Vec<_>>(),
+            vec![
+                InfrastructureCategory::Mining,
+                InfrastructureCategory::Manufacturing,
+                InfrastructureCategory::Agriculture,
+                InfrastructureCategory::Shipbuilding,
+                InfrastructureCategory::Construction,
+                InfrastructureCategory::Research,
+                InfrastructureCategory::Logistics,
+                InfrastructureCategory::Energy,
+            ]
+        );
     }
 }

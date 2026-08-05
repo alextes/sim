@@ -12,10 +12,11 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
 use crate::command::Command;
 use crate::control_state::ControlState;
+use crate::infrastructure::InfrastructureCategory;
 use crate::location::PointF64;
 use crate::ships::ShipType;
 use crate::viewport::Viewport;
-use crate::world::types::{EntityType, InfrastructureType};
+use crate::world::types::EntityType;
 use crate::world::{EntityId, World};
 
 /// world distance panned per arrow-key press at zoom 1.0.
@@ -262,7 +263,8 @@ fn open_shipyard_menu(world: &World, controls: &ControlState, game_state: &mut G
     let id = controls.selection[0];
     if world.is_player_controlled(id) {
         if let Some(infrastructure) = world.infrastructure.get(&id) {
-            if infrastructure.get_count(InfrastructureType::Shipyard) > 0 {
+            if infrastructure.completed_units_in_category(InfrastructureCategory::Shipbuilding) > 0
+            {
                 *game_state = GameState::ShipyardMenu;
             }
         }

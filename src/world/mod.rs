@@ -6,6 +6,7 @@ use crate::location::{LocationSystem, OrbitalInfo, Point};
 use crate::command::Command;
 use crate::infrastructure::{
     player_buildable_infrastructure, EntityInfrastructure, InfrastructureCapacity,
+    InfrastructureEffect,
 };
 use crate::location::PointF64;
 use std::collections::VecDeque;
@@ -336,7 +337,9 @@ impl World {
     pub fn energy_generation_for_body(&self, entity_id: EntityId) -> f32 {
         self.infrastructure
             .get(&entity_id)
-            .map(|infrastructure| infrastructure.get_count(InfrastructureType::SolarPanel) as f32)
+            .map(|infrastructure| {
+                infrastructure.effect_rate(InfrastructureEffect::energy_generation_rate)
+            })
             .unwrap_or(0.0)
     }
 

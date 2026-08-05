@@ -1,4 +1,5 @@
 use crate::command::Command;
+use crate::infrastructure::{InfrastructureCategory, InfrastructureEffect};
 use crate::location::PointF64;
 use crate::ships::{buildable_ship, ShipType};
 use crate::world::components::{CivilianShipState, MiningRoute};
@@ -75,18 +76,17 @@ impl World {
 
                 // refinery demand
                 if let Some(infrastructure) = self.infrastructure.get(&entity_id) {
-                    let cracker_infra = infrastructure
-                        .get_count(crate::world::types::InfrastructureType::FuelCellCracker)
-                        as f32;
+                    let fuel_cell_refining_rate =
+                        infrastructure.effect_rate(InfrastructureEffect::fuel_cell_refining_rate);
 
-                    if cracker_infra > 0.0 {
+                    if fuel_cell_refining_rate > 0.0 {
                         let demand_per_cracker = 10.0; // demand 10 units per month per cracker
                         data.demands
                             .entry(crate::world::types::Storable::Raw(
                                 crate::world::types::RawResource::Volatiles,
                             ))
-                            .and_modify(|d| *d += demand_per_cracker * cracker_infra)
-                            .or_insert(demand_per_cracker * cracker_infra);
+                            .and_modify(|d| *d += demand_per_cracker * fuel_cell_refining_rate)
+                            .or_insert(demand_per_cracker * fuel_cell_refining_rate);
                     }
                 }
 
@@ -101,7 +101,7 @@ impl World {
                 {
                     if let Some(infrastructure) = self.infrastructure.get(&entity_id) {
                         let has_shipyard = infrastructure
-                            .get_count(crate::world::types::InfrastructureType::Shipyard)
+                            .completed_units_in_category(InfrastructureCategory::Shipbuilding)
                             > 0;
 
                         let can_afford_ship_resources = buildable_ship(ShipType::MiningShip)

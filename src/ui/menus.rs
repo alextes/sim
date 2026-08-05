@@ -5,7 +5,7 @@
 use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
 use crate::command::Command;
 use crate::control_state::ControlState;
-use crate::infrastructure::player_buildable_infrastructure;
+use crate::infrastructure::{player_buildable_infrastructure, InfrastructureCategory};
 use crate::palette;
 use crate::ships::{buildable_ships, ShipBuildShortfall, ShipBuildable};
 use crate::world::components::MiningRoute;
@@ -89,7 +89,9 @@ pub fn planet_overview(
                                     .infrastructure
                                     .get(&body)
                                     .is_some_and(|infrastructure| {
-                                        infrastructure.get_count(InfrastructureType::Shipyard) > 0
+                                        infrastructure.completed_units_in_category(
+                                            InfrastructureCategory::Shipbuilding,
+                                        ) > 0
                                     });
                             if ui
                                 .add_enabled(has_shipyard, egui::Button::new("shipyard"))

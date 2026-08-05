@@ -1,8 +1,8 @@
 #![allow(dead_code)] // TODO remove later
 
-use crate::infrastructure::EntityInfrastructure;
+use crate::infrastructure::{EntityInfrastructure, InfrastructureEffect};
 use crate::world::types::EntityType;
-use crate::world::types::{CelestialBodyData, Good, InfrastructureType, RawResource, Storable};
+use crate::world::types::{CelestialBodyData, Good, RawResource, Storable};
 use crate::world::EntityId;
 use crate::world::World;
 use crate::SIMULATION_DT;
@@ -86,13 +86,13 @@ impl ResourceSystem {
                 None => continue,
             };
 
-            // handle raw resource extraction from mines
-            let mine_infra = infrastructure.get_count(InfrastructureType::Mine) as f32;
+            // handle raw resource extraction from mining effects
+            let mining_rate = infrastructure.effect_rate(InfrastructureEffect::mining_rate);
 
-            if mine_infra > 0.0 {
+            if mining_rate > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
                     let production = (celestial_data.population / 1_000_000.0)
-                        * mine_infra
+                        * mining_rate
                         * *yield_grade
                         * production_multiplier;
                     let stock = celestial_data
@@ -104,10 +104,10 @@ impl ResourceSystem {
             }
 
             // handle manufactured goods production
-            let cracker_infra =
-                infrastructure.get_count(InfrastructureType::FuelCellCracker) as f32;
+            let fuel_cell_refining_rate =
+                infrastructure.effect_rate(InfrastructureEffect::fuel_cell_refining_rate);
 
-            if cracker_infra > 0.0 {
+            if fuel_cell_refining_rate > 0.0 {
                 // recipe: 1 volatile + 0.1 metals -> 1 fuel cell
                 process_recipe(
                     &mut celestial_data.stocks,
@@ -116,15 +116,15 @@ impl ResourceSystem {
                         (Storable::Raw(RawResource::Metals), 0.1),
                     ],
                     Storable::Good(Good::FuelCells),
-                    cracker_infra * production_multiplier,
+                    fuel_cell_refining_rate * production_multiplier,
                 );
             }
 
             // construction factories refine the universal construction feedstock.
-            let construction_factory_infra =
-                infrastructure.get_count(InfrastructureType::ConstructionFactory) as f32;
+            let construction_material_refining_rate = infrastructure
+                .effect_rate(InfrastructureEffect::construction_material_refining_rate);
 
-            if construction_factory_infra > 0.0 {
+            if construction_material_refining_rate > 0.0 {
                 // recipe: 1 metals + 1 crystals -> 1 construction material
                 process_recipe(
                     &mut celestial_data.stocks,
@@ -133,20 +133,21 @@ impl ResourceSystem {
                         (Storable::Raw(RawResource::Crystals), 1.0),
                     ],
                     Storable::Good(Good::ConstructionMaterials),
-                    construction_factory_infra * production_multiplier,
+                    construction_material_refining_rate * production_multiplier,
                 );
             }
 
             // handle food production from farms
-            let farm_infra = infrastructure.get_count(InfrastructureType::Farm) as f32;
+            let food_production_rate =
+                infrastructure.effect_rate(InfrastructureEffect::food_production_rate);
 
-            if farm_infra > 0.0 {
+            if food_production_rate > 0.0 {
                 // recipe: 1 organics -> 1 food
                 process_recipe(
                     &mut celestial_data.stocks,
                     &[(Storable::Raw(RawResource::Organics), 1.0)],
                     Storable::Good(Good::Food),
-                    farm_infra * production_multiplier,
+                    food_production_rate * production_multiplier,
                 );
             }
         }
@@ -168,40 +169,40 @@ impl ResourceSystem {
                 None => continue,
             };
 
-            let mine_infra = infrastructure.get_count(InfrastructureType::Mine) as f32;
+            let mining_rate = infrastructure.effect_rate(InfrastructureEffect::mining_rate);
 
-            if mine_infra > 0.0 {
+            if mining_rate > 0.0 {
                 for (resource_type, yield_grade) in &celestial_data.yields {
                     let production_rate =
-                        (celestial_data.population / 1_000_000.0) * mine_infra * yield_grade;
+                        (celestial_data.population / 1_000_000.0) * mining_rate * yield_grade;
                     *rates.entry(Storable::Raw(*resource_type)).or_insert(0.0) += production_rate;
                 }
             }
 
-            let cracker_infra =
-                infrastructure.get_count(InfrastructureType::FuelCellCracker) as f32;
+            let fuel_cell_refining_rate =
+                infrastructure.effect_rate(InfrastructureEffect::fuel_cell_refining_rate);
 
-            if cracker_infra > 0.0 {
+            if fuel_cell_refining_rate > 0.0 {
                 // this is a simplified view. it does not account for input resource availability.
-                let production_rate = cracker_infra * 1.0; // assuming 1 fuel cell per second per cracker
-                *rates.entry(Storable::Good(Good::FuelCells)).or_insert(0.0) += production_rate;
+                *rates.entry(Storable::Good(Good::FuelCells)).or_insert(0.0) +=
+                    fuel_cell_refining_rate;
             }
 
-            let construction_factory_infra =
-                infrastructure.get_count(InfrastructureType::ConstructionFactory) as f32;
+            let construction_material_refining_rate = infrastructure
+                .effect_rate(InfrastructureEffect::construction_material_refining_rate);
 
-            if construction_factory_infra > 0.0 {
+            if construction_material_refining_rate > 0.0 {
                 *rates
                     .entry(Storable::Good(Good::ConstructionMaterials))
-                    .or_insert(0.0) += construction_factory_infra;
+                    .or_insert(0.0) += construction_material_refining_rate;
             }
 
-            let farm_infra = infrastructure.get_count(InfrastructureType::Farm) as f32;
+            let food_production_rate =
+                infrastructure.effect_rate(InfrastructureEffect::food_production_rate);
 
-            if farm_infra > 0.0 {
+            if food_production_rate > 0.0 {
                 // simplified view, does not account for input availability
-                let production_rate = farm_infra * 1.0; // 1 food per second per farm
-                *rates.entry(Storable::Good(Good::Food)).or_insert(0.0) += production_rate;
+                *rates.entry(Storable::Good(Good::Food)).or_insert(0.0) += food_production_rate;
             }
         }
         rates
