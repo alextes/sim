@@ -145,6 +145,15 @@ fn add_sol_system(world: &mut World) -> EntityId {
         earth_infrastructure
             .infra
             .insert(InfrastructureType::Spaceport, 1);
+        earth_infrastructure
+            .infra
+            .insert(InfrastructureType::SurfaceWarehouse, 3);
+        earth_infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDepot, 1);
+        earth_infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDock, 1);
     }
 
     if let Some(earth_pos) = world.get_location(earth_id) {
@@ -356,6 +365,19 @@ mod tests {
                 size: crate::world::types::SpaceportSize::Small,
             })
         );
+        assert_eq!(
+            world.infrastructure_capacity(earth_id).unwrap().allocated(),
+            13
+        );
+        assert_eq!(
+            world.storage_capacity(earth_id, crate::world::types::ConstructionLayer::Surface),
+            Some((3_000.0, 2_200.0))
+        );
+        assert_eq!(
+            world.storage_capacity(earth_id, crate::world::types::ConstructionLayer::Orbit),
+            Some((1_000.0, 300.0))
+        );
+        assert_eq!(world.orbital_dock_capacity(earth_id), Some((100.0, 1)));
     }
 
     #[test]

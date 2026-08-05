@@ -246,6 +246,13 @@ impl CelestialBodyData {
             ConstructionLayer::Orbit => &mut self.orbital_stocks,
         }
     }
+
+    /// resource units currently stored at one logistics layer.
+    pub fn stored_units_at(&self, layer: ConstructionLayer) -> f32 {
+        let mut stocks: Vec<_> = self.stocks_at(layer).iter().collect();
+        stocks.sort_by_key(|(storable, _)| **storable);
+        stocks.into_iter().map(|(_, amount)| *amount).sum()
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -318,9 +325,13 @@ pub enum InfrastructureType {
     Shipyard,
     ConstructionFactory,
     ResearchLab,
+    SurfaceWarehouse,
+    UpperAtmosphereStorage,
     // orbital
     Spaceport,
     SolarPanel,
+    OrbitalDepot,
+    OrbitalDock,
 }
 
 pub const MAX_SPACEPORT_UNITS: u32 = 3;

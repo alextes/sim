@@ -124,6 +124,26 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
             if let Some(data) = world.celestial_data.get(&body) {
                 ui.label(format!("population: {:.2}m", data.population));
                 ui.label(format!("civ credits: {:.0}", data.credits));
+                if let Some(entity_type) = world.get_entity_type(body) {
+                    if let Some(primary_layer) =
+                        crate::world::types::ConstructionLayer::primary_for(entity_type)
+                    {
+                        if let Some((capacity, used)) = world.storage_capacity(body, primary_layer)
+                        {
+                            ui.label(format!("{primary_layer} storage: {used:.1}/{capacity:.1}"));
+                        }
+                    }
+                }
+                if let Some((capacity, used)) =
+                    world.storage_capacity(body, crate::world::types::ConstructionLayer::Orbit)
+                {
+                    ui.label(format!("orbit storage: {used:.1}/{capacity:.1}"));
+                }
+                if let Some((throughput, berths)) = world.orbital_dock_capacity(body) {
+                    ui.label(format!(
+                        "orbital docks: {throughput:.1} unload/interval, {berths} berths"
+                    ));
+                }
                 if !data.yields.is_empty() {
                     ui.separator();
                     ui.label("yields");
@@ -287,7 +307,7 @@ fn build_main(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, enti
 }
 
 fn build_select(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, entity_id: EntityId) {
-    ui.label("select orbital infrastructure:");
+    ui.label("select infrastructure:");
     for definition in player_buildable_infrastructure() {
         let infrastructure = definition.infrastructure_type;
         let available = world.can_queue_player_infrastructure(entity_id, infrastructure, 1);

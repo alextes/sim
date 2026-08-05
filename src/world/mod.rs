@@ -14,8 +14,8 @@ use std::collections::VecDeque;
 use crate::ships::ShipType;
 use crate::world::components::{Cargo, CivilianShipAI, MiningRoute};
 use crate::world::types::{
-    BodyProfile, CelestialBodyData, Color, EntityType, InfrastructureType, Spaceport,
-    SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS, STAR_COLORS,
+    BodyProfile, CelestialBodyData, Color, ConstructionLayer, EntityType, InfrastructureType,
+    Spaceport, SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS, STAR_COLORS,
 };
 
 mod civ_economy;
@@ -363,6 +363,29 @@ impl World {
             completed: infrastructure.completed_capacity_use(),
             queued: infrastructure.queued_capacity_use(),
         })
+    }
+
+    /// completed storage capacity and current use for one logistics layer.
+    pub fn storage_capacity(
+        &self,
+        entity_id: EntityId,
+        layer: ConstructionLayer,
+    ) -> Option<(f32, f32)> {
+        let infrastructure = self.infrastructure.get(&entity_id)?;
+        let body = self.celestial_data.get(&entity_id)?;
+        Some((
+            infrastructure.storage_capacity(layer),
+            body.stored_units_at(layer),
+        ))
+    }
+
+    /// completed orbital unloading throughput and berth capacity.
+    pub fn orbital_dock_capacity(&self, entity_id: EntityId) -> Option<(f32, u32)> {
+        let infrastructure = self.infrastructure.get(&entity_id)?;
+        Some((
+            infrastructure.orbital_dock_throughput(),
+            infrastructure.orbital_berth_capacity(),
+        ))
     }
 
     /// whether a player build command can enter the queue.

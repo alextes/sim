@@ -22,18 +22,44 @@ pub enum InfrastructureCategory {
     Agriculture,
     Construction,
     Logistics,
+    Storage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InfrastructureEffect {
-    Mining { rate_per_unit: f32 },
-    FuelCellRefining { rate_per_unit: f32 },
-    FoodProduction { rate_per_unit: f32 },
+    Mining {
+        rate_per_unit: f32,
+    },
+    FuelCellRefining {
+        rate_per_unit: f32,
+    },
+    FoodProduction {
+        rate_per_unit: f32,
+    },
     Shipbuilding,
-    ConstructionMaterialRefining { rate_per_unit: f32 },
-    ResearchGeneration { rate_per_unit: f32 },
+    ConstructionMaterialRefining {
+        rate_per_unit: f32,
+    },
+    ResearchGeneration {
+        rate_per_unit: f32,
+    },
     Spaceport,
-    EnergyGeneration { rate_per_unit: f32 },
+    EnergyGeneration {
+        rate_per_unit: f32,
+    },
+    SurfaceStorage {
+        capacity_per_unit: f32,
+    },
+    UpperAtmosphereStorage {
+        capacity_per_unit: f32,
+    },
+    OrbitalStorage {
+        capacity_per_unit: f32,
+    },
+    OrbitalDock {
+        throughput_per_unit: f32,
+        berths_per_unit: u32,
+    },
 }
 
 impl InfrastructureEffect {
@@ -170,6 +196,14 @@ const RESEARCH_LAB_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
     resource: Storable::Good(Good::ConstructionMaterials),
     quantity: 80.0,
 }];
+const SURFACE_WAREHOUSE_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 100.0,
+}];
+const UPPER_ATMOSPHERE_STORAGE_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 120.0,
+}];
 const SPACEPORT_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
     resource: Storable::Good(Good::ConstructionMaterials),
     quantity: 100.0,
@@ -177,6 +211,14 @@ const SPACEPORT_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
 const SOLAR_PANEL_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
     resource: Storable::Good(Good::ConstructionMaterials),
     quantity: 30.0,
+}];
+const ORBITAL_DEPOT_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 150.0,
+}];
+const ORBITAL_DOCK_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
+    resource: Storable::Good(Good::ConstructionMaterials),
+    quantity: 180.0,
 }];
 
 const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
@@ -241,6 +283,30 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         player_buildable: false,
     },
     InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::SurfaceWarehouse,
+        name: "surface warehouse",
+        domain: InfrastructureDomain::Ground,
+        category: InfrastructureCategory::Storage,
+        costs: SURFACE_WAREHOUSE_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::SurfaceStorage {
+            capacity_per_unit: 1_000.0,
+        },
+        player_buildable: true,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::UpperAtmosphereStorage,
+        name: "upper-atmosphere storage",
+        domain: InfrastructureDomain::Ground,
+        category: InfrastructureCategory::Storage,
+        costs: UPPER_ATMOSPHERE_STORAGE_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::UpperAtmosphereStorage {
+            capacity_per_unit: 1_000.0,
+        },
+        player_buildable: false,
+    },
+    InfrastructureDefinition {
         infrastructure_type: InfrastructureType::Spaceport,
         name: "spaceport",
         domain: InfrastructureDomain::Orbit,
@@ -258,6 +324,31 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         costs: SOLAR_PANEL_COSTS,
         capacity_use: 1,
         effect: InfrastructureEffect::EnergyGeneration { rate_per_unit: 1.0 },
+        player_buildable: true,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::OrbitalDepot,
+        name: "orbital depot",
+        domain: InfrastructureDomain::Orbit,
+        category: InfrastructureCategory::Storage,
+        costs: ORBITAL_DEPOT_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::OrbitalStorage {
+            capacity_per_unit: 1_000.0,
+        },
+        player_buildable: true,
+    },
+    InfrastructureDefinition {
+        infrastructure_type: InfrastructureType::OrbitalDock,
+        name: "orbital dock",
+        domain: InfrastructureDomain::Orbit,
+        category: InfrastructureCategory::Logistics,
+        costs: ORBITAL_DOCK_COSTS,
+        capacity_use: 1,
+        effect: InfrastructureEffect::OrbitalDock {
+            throughput_per_unit: 100.0,
+            berths_per_unit: 1,
+        },
         player_buildable: true,
     },
 ];
@@ -371,6 +462,62 @@ impl EntityInfrastructure {
             })
     }
 
+    /// storage capacity supplied for one logistics layer.
+    pub fn storage_capacity(&self, layer: ConstructionLayer) -> f32 {
+        infrastructure_definitions()
+            .iter()
+            .filter_map(|definition| {
+                let capacity_per_unit = match (definition.effect, layer) {
+                    (
+                        InfrastructureEffect::SurfaceStorage { capacity_per_unit },
+                        ConstructionLayer::Surface,
+                    )
+                    | (
+                        InfrastructureEffect::UpperAtmosphereStorage { capacity_per_unit },
+                        ConstructionLayer::UpperAtmosphere,
+                    )
+                    | (
+                        InfrastructureEffect::OrbitalStorage { capacity_per_unit },
+                        ConstructionLayer::Orbit,
+                    ) => capacity_per_unit,
+                    _ => return None,
+                };
+                Some(self.get_count(definition.infrastructure_type) as f32 * capacity_per_unit)
+            })
+            .sum()
+    }
+
+    /// completed orbital unloading throughput per economy interval.
+    pub fn orbital_dock_throughput(&self) -> f32 {
+        infrastructure_definitions()
+            .iter()
+            .filter_map(|definition| match definition.effect {
+                InfrastructureEffect::OrbitalDock {
+                    throughput_per_unit,
+                    ..
+                } => Some(
+                    self.get_count(definition.infrastructure_type) as f32 * throughput_per_unit,
+                ),
+                _ => None,
+            })
+            .sum()
+    }
+
+    /// completed orbital berth capacity.
+    pub fn orbital_berth_capacity(&self) -> u32 {
+        infrastructure_definitions()
+            .iter()
+            .fold(0, |berths, definition| match definition.effect {
+                InfrastructureEffect::OrbitalDock {
+                    berths_per_unit, ..
+                } => berths.saturating_add(
+                    self.get_count(definition.infrastructure_type)
+                        .saturating_mul(berths_per_unit),
+                ),
+                _ => berths,
+            })
+    }
+
     /// processes the construction queue using capacity and material at the build layer.
     pub fn process_construction(
         &mut self,
@@ -462,8 +609,12 @@ mod tests {
                 InfrastructureType::Shipyard,
                 InfrastructureType::ConstructionFactory,
                 InfrastructureType::ResearchLab,
+                InfrastructureType::SurfaceWarehouse,
+                InfrastructureType::UpperAtmosphereStorage,
                 InfrastructureType::Spaceport,
                 InfrastructureType::SolarPanel,
+                InfrastructureType::OrbitalDepot,
+                InfrastructureType::OrbitalDock,
             ]
         );
         assert_eq!(
@@ -471,8 +622,11 @@ mod tests {
                 .map(|definition| definition.infrastructure_type)
                 .collect::<Vec<_>>(),
             vec![
+                InfrastructureType::SurfaceWarehouse,
                 InfrastructureType::Spaceport,
                 InfrastructureType::SolarPanel,
+                InfrastructureType::OrbitalDepot,
+                InfrastructureType::OrbitalDock,
             ]
         );
     }
@@ -701,9 +855,45 @@ mod tests {
                 InfrastructureCategory::Shipbuilding,
                 InfrastructureCategory::Construction,
                 InfrastructureCategory::Research,
+                InfrastructureCategory::Storage,
+                InfrastructureCategory::Storage,
                 InfrastructureCategory::Logistics,
                 InfrastructureCategory::Energy,
+                InfrastructureCategory::Storage,
+                InfrastructureCategory::Logistics,
             ]
         );
+    }
+
+    #[test]
+    fn storage_and_dock_effects_derive_capacity_and_throughput() {
+        let mut infrastructure = EntityInfrastructure::new("test");
+        infrastructure
+            .infra
+            .insert(InfrastructureType::SurfaceWarehouse, 2);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::UpperAtmosphereStorage, 3);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDepot, 4);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDock, 2);
+
+        assert_eq!(
+            infrastructure.storage_capacity(ConstructionLayer::Surface),
+            2_000.0
+        );
+        assert_eq!(
+            infrastructure.storage_capacity(ConstructionLayer::UpperAtmosphere),
+            3_000.0
+        );
+        assert_eq!(
+            infrastructure.storage_capacity(ConstructionLayer::Orbit),
+            4_000.0
+        );
+        assert_eq!(infrastructure.orbital_dock_throughput(), 200.0);
+        assert_eq!(infrastructure.orbital_berth_capacity(), 2);
     }
 }
