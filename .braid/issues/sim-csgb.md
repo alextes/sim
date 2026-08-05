@@ -3,11 +3,13 @@ schema_version: 9
 id: sim-csgb
 title: encapsulate layer-aware stockpile access
 priority: P2
-status: open
+status: done
 deps:
-- sim-ax70
+- sim-r1kx
 owner: null
 created_at: 2026-08-04T16:44:57.126851Z
+started_at: 2026-08-05T14:50:41.397366Z
+completed_at: 2026-08-05T14:55:32.501759Z
 acceptance:
 - inventory operations address every layer available to solid bodies, gas giants, and stars
 - inventory operations cover amount, used capacity, free capacity, bounded deposit, and withdrawal
