@@ -75,6 +75,31 @@ impl InfrastructureDefinition {
             .map(|cost| cost.quantity)
             .unwrap_or(0.0)
     }
+
+    pub fn capacity_for(self, count: u32) -> u32 {
+        self.capacity_use.saturating_mul(count)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InfrastructureCapacity {
+    pub limit: u32,
+    pub completed: u32,
+    pub queued: u32,
+}
+
+impl InfrastructureCapacity {
+    pub fn allocated(self) -> u32 {
+        self.completed.saturating_add(self.queued)
+    }
+
+    pub fn remaining(self) -> u32 {
+        self.limit.saturating_sub(self.allocated())
+    }
+
+    pub fn can_fit(self, required: u32) -> bool {
+        required <= self.remaining()
+    }
 }
 
 const MINE_COSTS: &[InfrastructureCost] = &[InfrastructureCost {
@@ -265,6 +290,20 @@ impl EntityInfrastructure {
             .filter(|(queued, _)| *queued == infrastructure)
             .map(|(_, count)| *count)
             .sum()
+    }
+
+    /// capacity occupied by completed infrastructure.
+    pub fn completed_capacity_use(&self) -> u32 {
+        self.infra.iter().fold(0, |capacity, (kind, count)| {
+            capacity.saturating_add(kind.definition().capacity_for(*count))
+        })
+    }
+
+    /// capacity reserved by all queued infrastructure.
+    pub fn queued_capacity_use(&self) -> u32 {
+        self.build_queue.iter().fold(0, |capacity, (kind, count)| {
+            capacity.saturating_add(kind.definition().capacity_for(*count))
+        })
     }
 
     /// processes the construction queue using capacity and material at the build layer.
@@ -530,5 +569,33 @@ mod tests {
             infrastructure.get_queued_count(InfrastructureType::SolarPanel),
             4
         );
+    }
+
+    #[test]
+    fn capacity_use_counts_completed_and_queued_units_from_catalog() {
+        let mut infrastructure = EntityInfrastructure::new("test");
+        infrastructure.infra.insert(InfrastructureType::Shipyard, 2);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::SolarPanel, 1);
+        infrastructure.queue_build(InfrastructureType::Shipyard, 1);
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 3);
+
+        assert_eq!(infrastructure.completed_capacity_use(), 5);
+        assert_eq!(infrastructure.queued_capacity_use(), 5);
+    }
+
+    #[test]
+    fn capacity_snapshot_reserves_queued_capacity() {
+        let capacity = InfrastructureCapacity {
+            limit: 8,
+            completed: 3,
+            queued: 4,
+        };
+
+        assert_eq!(capacity.allocated(), 7);
+        assert_eq!(capacity.remaining(), 1);
+        assert!(capacity.can_fit(1));
+        assert!(!capacity.can_fit(2));
     }
 }

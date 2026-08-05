@@ -292,6 +292,7 @@ mod tests {
             world.infrastructure[&planet_id].get_queued_count(InfrastructureType::Spaceport),
             2
         );
+        assert_eq!(world.infrastructure_capacity(planet_id).unwrap().queued, 2);
         assert!(world.spaceport_for_planet(planet_id).is_none());
 
         world.process_construction(200.0);
@@ -304,6 +305,41 @@ mod tests {
             world.celestial_data[&planet_id].stocks_at(ConstructionLayer::Orbit)
                 [&Storable::Good(Good::ConstructionMaterials)],
             0.0
+        );
+    }
+
+    #[test]
+    fn over_capacity_build_is_rejected_without_mutating_resources_or_queue() {
+        let (mut world, planet_id) = build_test_planet();
+        world.body_profiles.get_mut(&planet_id).unwrap().size = crate::world::types::BodySize::Tiny;
+        let infrastructure = world.infrastructure.get_mut(&planet_id).unwrap();
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 3);
+        let body = world.celestial_data.get_mut(&planet_id).unwrap();
+        body.orbital_stocks
+            .insert(Storable::Good(Good::ConstructionMaterials), 100.0);
+
+        world.add_command(Command::Build {
+            entity_id: planet_id,
+            infrastructure_type: InfrastructureType::SolarPanel,
+            amount: 2,
+        });
+        world.process_commands();
+
+        assert_eq!(
+            world.infrastructure[&planet_id].get_queued_count(InfrastructureType::SolarPanel),
+            3
+        );
+        assert_eq!(
+            world
+                .infrastructure_capacity(planet_id)
+                .unwrap()
+                .remaining(),
+            1
+        );
+        assert_eq!(
+            world.celestial_data[&planet_id].orbital_stocks
+                [&Storable::Good(Good::ConstructionMaterials)],
+            100.0
         );
     }
 }

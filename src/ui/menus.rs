@@ -161,6 +161,15 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
             if let Some(infrastructure) = world.infrastructure.get(&body) {
                 ui.separator();
                 ui.label("infrastructure");
+                if let Some(capacity) = world.infrastructure_capacity(body) {
+                    ui.label(format!(
+                        "capacity: {}/{} ({} active, {} queued)",
+                        capacity.allocated(),
+                        capacity.limit,
+                        capacity.completed,
+                        capacity.queued
+                    ));
+                }
                 if infrastructure.infra.is_empty() {
                     ui.colored_label(palette::DGRAY, "(none)");
                 } else {
@@ -242,6 +251,14 @@ pub fn build_menu(
 }
 
 fn build_main(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, entity_id: EntityId) {
+    if let Some(capacity) = world.infrastructure_capacity(entity_id) {
+        ui.label(format!(
+            "infrastructure capacity: {}/{} ({} queued)",
+            capacity.allocated(),
+            capacity.limit,
+            capacity.queued
+        ));
+    }
     ui.separator();
     ui.label("construction queue:");
     if let Some(infrastructure) = world.infrastructure.get(&entity_id) {
@@ -272,10 +289,15 @@ fn build_select(ui: &mut egui::Ui, world: &World, game_state: &mut GameState, en
     for definition in player_buildable_infrastructure() {
         let infrastructure = definition.infrastructure_type;
         let available = world.can_queue_player_infrastructure(entity_id, infrastructure, 1);
-        let label = if infrastructure == InfrastructureType::Spaceport && !available {
-            "spaceport (maximum size)"
+        let has_capacity = world
+            .infrastructure_capacity(entity_id)
+            .is_some_and(|capacity| capacity.can_fit(definition.capacity_use));
+        let label = if !has_capacity {
+            format!("{} (no capacity)", definition.name)
+        } else if infrastructure == InfrastructureType::Spaceport && !available {
+            "spaceport (maximum size)".to_string()
         } else {
-            definition.name
+            definition.name.to_string()
         };
         if ui
             .add_enabled(available, egui::Button::new(label))
@@ -317,10 +339,24 @@ fn build_quantity(
     let mut qty = quantity_string.to_string();
     let response = ui.add(egui::TextEdit::singleline(&mut qty).hint_text("quantity"));
     let amount = qty.trim().parse::<u32>().ok().filter(|n| *n > 0);
+    let required_capacity = amount
+        .map(|amount| infrastructure.definition().capacity_for(amount))
+        .unwrap_or(0);
+    let capacity = world.infrastructure_capacity(entity_id);
+    if let Some(capacity) = capacity {
+        ui.label(format!(
+            "capacity: {} available, {required_capacity} required",
+            capacity.remaining()
+        ));
+    }
     let eligible = amount.is_some_and(|amount| {
         world.can_queue_player_infrastructure(entity_id, infrastructure, amount)
     });
-    if infrastructure == InfrastructureType::Spaceport && amount.is_some() && !eligible {
+    let exceeds_capacity =
+        amount.is_some() && !capacity.is_some_and(|capacity| capacity.can_fit(required_capacity));
+    if exceeds_capacity {
+        ui.colored_label(palette::RED, "quantity exceeds available capacity");
+    } else if infrastructure == InfrastructureType::Spaceport && amount.is_some() && !eligible {
         ui.colored_label(
             palette::RED,
             "quantity exceeds the available spaceport size",
@@ -373,6 +409,21 @@ fn build_confirm(
         .and_then(|entity_type| infrastructure.construction_layer(entity_type));
     if let Some(layer) = build_layer {
         ui.label(format!("required at: {layer}"));
+    }
+    let required_capacity = infrastructure.definition().capacity_for(amount);
+    if let Some(capacity) = world.infrastructure_capacity(entity_id) {
+        let color = if capacity.can_fit(required_capacity) {
+            palette::WHITE
+        } else {
+            palette::RED
+        };
+        ui.colored_label(
+            color,
+            format!(
+                "capacity: {required_capacity} required ({} available)",
+                capacity.remaining()
+            ),
+        );
     }
     for cost in costs {
         let storable = cost.resource;

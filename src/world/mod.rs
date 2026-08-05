@@ -4,7 +4,9 @@ use crate::location::OrbitalParameters;
 use crate::location::{LocationSystem, OrbitalInfo, Point};
 
 use crate::command::Command;
-use crate::infrastructure::{player_buildable_infrastructure, EntityInfrastructure};
+use crate::infrastructure::{
+    player_buildable_infrastructure, EntityInfrastructure, InfrastructureCapacity,
+};
 use crate::location::PointF64;
 use std::collections::VecDeque;
 
@@ -349,6 +351,17 @@ impl World {
         MAX_SPACEPORT_UNITS.saturating_sub(allocated)
     }
 
+    /// shared infrastructure capacity, including completed and queued units.
+    pub fn infrastructure_capacity(&self, entity_id: EntityId) -> Option<InfrastructureCapacity> {
+        let limit = self.body_profiles.get(&entity_id)?.capacity();
+        let infrastructure = self.infrastructure.get(&entity_id)?;
+        Some(InfrastructureCapacity {
+            limit,
+            completed: infrastructure.completed_capacity_use(),
+            queued: infrastructure.queued_capacity_use(),
+        })
+    }
+
     /// whether a player build command can enter the queue.
     pub fn can_queue_player_infrastructure(
         &self,
@@ -356,11 +369,14 @@ impl World {
         infrastructure: InfrastructureType,
         amount: u32,
     ) -> bool {
+        let required_capacity = infrastructure.definition().capacity_for(amount);
         amount > 0
             && self.is_player_controlled(planet_id)
             && self.get_entity_type(planet_id) == Some(EntityType::Planet)
             && self.celestial_data.contains_key(&planet_id)
-            && self.infrastructure.contains_key(&planet_id)
+            && self
+                .infrastructure_capacity(planet_id)
+                .is_some_and(|capacity| capacity.can_fit(required_capacity))
             && player_buildable_infrastructure()
                 .any(|definition| definition.infrastructure_type == infrastructure)
             && (infrastructure != InfrastructureType::Spaceport
@@ -564,6 +580,26 @@ mod tests {
         assert_eq!(BodySize::Medium.capacity(), 16);
         assert_eq!(BodySize::Large.capacity(), 28);
         assert_eq!(BodySize::Giant.capacity(), 48);
+    }
+
+    #[test]
+    fn infrastructure_capacity_includes_completed_and_queued_units() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 1.0);
+        world.body_profiles.get_mut(&planet_id).unwrap().size = BodySize::Small;
+        let infrastructure = world.infrastructure.get_mut(&planet_id).unwrap();
+        infrastructure.infra.insert(InfrastructureType::Shipyard, 1);
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 3);
+
+        assert_eq!(
+            world.infrastructure_capacity(planet_id),
+            Some(InfrastructureCapacity {
+                limit: 8,
+                completed: 2,
+                queued: 3,
+            })
+        );
     }
 
     #[test]
