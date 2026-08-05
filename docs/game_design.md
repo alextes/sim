@@ -17,6 +17,7 @@ the broader faction model distinguishes three kinds of independent power:
 - [planetary development](design/planetary-development.md): owned planet overview, planet traits, infrastructure units, and ground/orbit infrastructure.
 - [resources and construction](design/resources-and-construction.md): v1 raw resources, refining recipes, local construction material, layers, and capacity.
 - [surface orbit logistics](design/surface-orbit-logistics.md): surface and orbital stockpiles, launch capacity, space elevators, mass drivers, spaceports, and landing economics.
+- [storage and procurement economy](design/storage-procurement-economy.md): bounded stockpiles, staged construction demand, procurement policy, dock throughput, trade accounting, maintenance, and civilian investment.
 - [pirate factions](design/pirate-factions.md): hidden bases, risk-aware raids, route security, discovery, and suppression.
 - [minor factions](design/minor-factions.md): bounded independent powers, specialized capabilities, diplomacy, and intermediary trade.
 - [open ideas](design/open-ideas.md): promising ideas that are not ready for implementation design.
@@ -35,11 +36,16 @@ the economy should feel alive: populated bodies create demand, local stockpiles 
 decided direction:
 
 - populated celestial bodies generate local demand from population, body character, and infrastructure.
-- local resource prices should respond to stock relative to demand, with clamps to avoid extreme swings.
-- civilian mining ships should prefer profitable mining opportunities and sell back to populated worlds.
+- surface and orbital stockpiles have finite capacity supplied by infrastructure.
+- construction creates bounded, staged procurement demand rather than requesting its complete lifetime material cost at once.
+- local purchase prices respond to shortage, procurement limits, free storage, dock throughput, and available buyer funds.
+- civilian mining ships prefer opportunities with positive expected profit per cycle time and sell through credit-conserving delivery transactions.
+- infrastructure has fixed credit maintenance, with arrears suspending effects without destroying stored goods.
 - fuel cells are the standard in-system fuel and are produced by refining raw resources.
 - the active v1 raw resources are metals, organics, crystals, and volatiles; the wider catalogue is reserved for later progression.
 - metals and crystals refine into universal construction material, which must be present at the build location as work advances.
+
+see [storage and procurement economy](design/storage-procurement-economy.md) for the detailed model.
 
 candidate direction:
 

@@ -1,6 +1,6 @@
 # surface orbit logistics
 
-this doc organizes the logistics ideas that sit between planets, orbital infrastructure, and ships. most of this is not ready for implementation yet, but the concepts should shape planetary development design.
+this doc organizes the logistics ideas that sit between planets, orbital infrastructure, and ships. bounded storage, procurement, and trade behavior is specified in [storage and procurement economy](storage-procurement-economy.md).
 
 ## maturity legend
 
@@ -16,8 +16,17 @@ surface and orbit:
 - resources available on a planet surface are not automatically available in orbit.
 - resources delivered to an orbital station are not automatically available on the planet surface.
 - solid bodies now distinguish primary surface stocks from orbital stocks; gas giants use an upper-atmosphere primary stockpile plus orbit.
+- stockpiles are keyed by anchor body and logistics layer so surface, upper atmosphere, and orbit remain independently available.
 - construction consumes construction material only from the layer where the project exists.
 - transport between layers is not automatic. the first transport command and its throughput and fuel parameters remain to be designed.
+
+storage and docks:
+
+- surface warehouses and orbital depots provide separate shared storage capacity.
+- upper-atmosphere storage provides primary capacity for gas giants.
+- orbital dock throughput limits how much arriving cargo can unload during an economy interval.
+- storage capacity, unloading throughput, and berth availability are separate constraints.
+- full storage prevents new purchases and deposits but never silently destroys resources.
 
 launch capacity:
 

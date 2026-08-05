@@ -25,6 +25,13 @@ format: `<type>[(scope)][!]: <description>`
 
 all lowercase for comments, tracing, docs, issue titles, and other prose. exceptions: acronyms (CLI, API, ID, etc.).
 
+## game design documentation
+
+- `docs/game_design.md` is the canonical design index. put durable game mechanics and design decisions in `docs/` and link focused documents from that index.
+- keep related design together in the existing `docs/design/` structure so the complete game design remains browsable and discoverable.
+- braid design issues may research alternatives and organize implementation planning, but they must link to the canonical game-design document instead of becoming the only place where a mechanic is specified.
+- when an approved design changes, update the canonical documentation before or alongside implementation issues. completed braid issues should preserve implementation scope and dependency history, not replace the game-design docs.
+
 <!-- braid:agents:start v8 -->
 ## braid workflow
 
