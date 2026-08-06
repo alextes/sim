@@ -92,7 +92,7 @@ impl ResourceSystem {
                 Some(infrastructure) => infrastructure,
                 None => continue,
             };
-            let storage_capacity = infrastructure.storage_capacity(layer);
+            let storage_capacity = infrastructure.accepting_storage_capacity(layer);
 
             // handle raw resource extraction from mining effects
             let mining_rate = infrastructure.effect_rate(InfrastructureEffect::mining_rate);
@@ -330,7 +330,7 @@ impl World {
         let storage_capacity = self
             .infrastructure
             .get(&entity_id)?
-            .storage_capacity(key.layer);
+            .accepting_storage_capacity(key.layer);
         let free_storage = body.free_capacity_at(key.layer, storage_capacity);
         if shortage == 0.0 || free_storage == 0.0 {
             return None;

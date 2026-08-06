@@ -87,7 +87,7 @@ impl World {
                 {
                     if let Some(infrastructure) = self.infrastructure.get(&entity_id) {
                         let has_shipyard = infrastructure
-                            .completed_units_in_category(InfrastructureCategory::Shipbuilding)
+                            .operational_units_in_category(InfrastructureCategory::Shipbuilding)
                             > 0;
 
                         let can_afford_ship_resources = buildable_ship(ShipType::MiningShip)
@@ -419,7 +419,7 @@ impl World {
                 let storage_capacity = self
                     .infrastructure
                     .get(&destination_id)
-                    .map(|infrastructure| infrastructure.storage_capacity(layer))
+                    .map(|infrastructure| infrastructure.accepting_storage_capacity(layer))
                     .unwrap_or(0.0);
                 let accepted = self
                     .celestial_data

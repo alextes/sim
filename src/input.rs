@@ -263,7 +263,8 @@ fn open_shipyard_menu(world: &World, controls: &ControlState, game_state: &mut G
     let id = controls.selection[0];
     if world.is_player_controlled(id) {
         if let Some(infrastructure) = world.infrastructure.get(&id) {
-            if infrastructure.completed_units_in_category(InfrastructureCategory::Shipbuilding) > 0
+            if infrastructure.operational_units_in_category(InfrastructureCategory::Shipbuilding)
+                > 0
             {
                 *game_state = GameState::ShipyardMenu;
             }

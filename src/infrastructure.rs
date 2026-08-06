@@ -8,6 +8,10 @@ use std::collections::{HashMap, VecDeque};
 
 /// maximum construction material staged by automatic procurement at once.
 pub const CONSTRUCTION_STAGING_MATERIAL_LIMIT: f32 = 300.0;
+/// simulated seconds between infrastructure maintenance charges.
+pub const MAINTENANCE_INTERVAL_SECONDS: f64 = 30.0;
+
+const MAINTENANCE_ARREARS_EPSILON: f64 = 1e-6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InfrastructureDomain {
@@ -132,8 +136,18 @@ pub struct InfrastructureDefinition {
     pub category: InfrastructureCategory,
     pub costs: &'static [InfrastructureCost],
     pub capacity_use: u32,
+    pub maintenance_credits_per_interval: f64,
     pub effect: InfrastructureEffect,
     pub player_buildable: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InfrastructureMaintenanceStatus {
+    pub infrastructure_type: InfrastructureType,
+    pub completed_units: u32,
+    pub upkeep_per_interval: f64,
+    pub arrears: f64,
+    pub active: bool,
 }
 
 impl InfrastructureDefinition {
@@ -232,6 +246,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Mining,
         costs: MINE_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 2.0,
         effect: InfrastructureEffect::Mining { rate_per_unit: 1.0 },
         player_buildable: false,
     },
@@ -242,6 +257,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Manufacturing,
         costs: FUEL_CELL_CRACKER_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 5.0,
         effect: InfrastructureEffect::FuelCellRefining { rate_per_unit: 1.0 },
         player_buildable: false,
     },
@@ -252,6 +268,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Agriculture,
         costs: FARM_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 2.0,
         effect: InfrastructureEffect::FoodProduction { rate_per_unit: 1.0 },
         player_buildable: false,
     },
@@ -262,6 +279,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Shipbuilding,
         costs: SHIPYARD_COSTS,
         capacity_use: 2,
+        maintenance_credits_per_interval: 8.0,
         effect: InfrastructureEffect::Shipbuilding,
         player_buildable: false,
     },
@@ -272,6 +290,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Construction,
         costs: CONSTRUCTION_FACTORY_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 5.0,
         effect: InfrastructureEffect::ConstructionMaterialRefining { rate_per_unit: 1.0 },
         player_buildable: false,
     },
@@ -282,6 +301,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Research,
         costs: RESEARCH_LAB_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 3.0,
         effect: InfrastructureEffect::ResearchGeneration { rate_per_unit: 1.0 },
         player_buildable: false,
     },
@@ -292,6 +312,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Storage,
         costs: SURFACE_WAREHOUSE_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 1.0,
         effect: InfrastructureEffect::SurfaceStorage {
             capacity_per_unit: 1_000.0,
         },
@@ -304,6 +325,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Storage,
         costs: UPPER_ATMOSPHERE_STORAGE_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 1.2,
         effect: InfrastructureEffect::UpperAtmosphereStorage {
             capacity_per_unit: 1_000.0,
         },
@@ -316,6 +338,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Logistics,
         costs: SPACEPORT_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 3.0,
         effect: InfrastructureEffect::Spaceport,
         player_buildable: true,
     },
@@ -326,6 +349,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Energy,
         costs: SOLAR_PANEL_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 0.5,
         effect: InfrastructureEffect::EnergyGeneration { rate_per_unit: 1.0 },
         player_buildable: true,
     },
@@ -336,6 +360,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Storage,
         costs: ORBITAL_DEPOT_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 1.5,
         effect: InfrastructureEffect::OrbitalStorage {
             capacity_per_unit: 1_000.0,
         },
@@ -348,6 +373,7 @@ const INFRASTRUCTURE_DEFINITIONS: &[InfrastructureDefinition] = &[
         category: InfrastructureCategory::Logistics,
         costs: ORBITAL_DOCK_COSTS,
         capacity_use: 1,
+        maintenance_credits_per_interval: 2.0,
         effect: InfrastructureEffect::OrbitalDock {
             throughput_per_unit: 100.0,
             berths_per_unit: 1,
@@ -398,6 +424,9 @@ pub struct EntityInfrastructure {
     pub construction_progress: f32,
     /// the name of the entity that owns this infrastructure.
     pub entity_name: String,
+    /// unpaid maintenance by infrastructure type.
+    #[serde(default)]
+    maintenance_arrears: HashMap<InfrastructureType, f64>,
 }
 
 impl EntityInfrastructure {
@@ -408,6 +437,7 @@ impl EntityInfrastructure {
             build_queue: VecDeque::new(),
             construction_progress: 0.0,
             entity_name: entity_name.to_string(),
+            maintenance_arrears: HashMap::new(),
         }
     }
 
@@ -419,6 +449,57 @@ impl EntityInfrastructure {
     /// gets the completed count of a specific infrastructure type.
     pub fn get_count(&self, infrastructure: InfrastructureType) -> u32 {
         self.infra.get(&infrastructure).copied().unwrap_or(0)
+    }
+
+    /// gets the completed count whose maintenance is current.
+    pub fn operational_count(&self, infrastructure: InfrastructureType) -> u32 {
+        if self.maintenance_arrears(infrastructure) <= MAINTENANCE_ARREARS_EPSILON {
+            self.get_count(infrastructure)
+        } else {
+            0
+        }
+    }
+
+    /// unpaid maintenance for one infrastructure type.
+    pub fn maintenance_arrears(&self, infrastructure: InfrastructureType) -> f64 {
+        self.maintenance_arrears
+            .get(&infrastructure)
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    /// records unpaid maintenance, clearing negligible balances.
+    pub(crate) fn set_maintenance_arrears(
+        &mut self,
+        infrastructure: InfrastructureType,
+        arrears: f64,
+    ) {
+        if arrears <= MAINTENANCE_ARREARS_EPSILON {
+            self.maintenance_arrears.remove(&infrastructure);
+        } else {
+            self.maintenance_arrears.insert(infrastructure, arrears);
+        }
+    }
+
+    /// ordered maintenance state for every completed infrastructure type.
+    pub fn maintenance_statuses(&self) -> Vec<InfrastructureMaintenanceStatus> {
+        infrastructure_definitions()
+            .iter()
+            .filter_map(|definition| {
+                let completed_units = self.get_count(definition.infrastructure_type);
+                (completed_units > 0).then(|| {
+                    let arrears = self.maintenance_arrears(definition.infrastructure_type);
+                    InfrastructureMaintenanceStatus {
+                        infrastructure_type: definition.infrastructure_type,
+                        completed_units,
+                        upkeep_per_interval: definition.maintenance_credits_per_interval
+                            * completed_units as f64,
+                        arrears,
+                        active: arrears <= MAINTENANCE_ARREARS_EPSILON,
+                    }
+                })
+            })
+            .collect()
     }
 
     /// gets the queued count of a specific infrastructure type.
@@ -449,8 +530,9 @@ impl EntityInfrastructure {
         infrastructure_definitions()
             .iter()
             .filter_map(|definition| {
-                rate_for(definition.effect)
-                    .map(|rate| self.get_count(definition.infrastructure_type) as f32 * rate)
+                rate_for(definition.effect).map(|rate| {
+                    self.operational_count(definition.infrastructure_type) as f32 * rate
+                })
             })
             .sum()
     }
@@ -465,8 +547,27 @@ impl EntityInfrastructure {
             })
     }
 
+    /// completed and maintained units in a catalog category.
+    pub fn operational_units_in_category(&self, category: InfrastructureCategory) -> u32 {
+        infrastructure_definitions()
+            .iter()
+            .filter(|definition| definition.category == category)
+            .fold(0, |units, definition| {
+                units.saturating_add(self.operational_count(definition.infrastructure_type))
+            })
+    }
+
     /// storage capacity supplied for one logistics layer.
     pub fn storage_capacity(&self, layer: ConstructionLayer) -> f32 {
+        self.storage_capacity_for(layer, false)
+    }
+
+    /// maintained storage capacity that can accept new deposits.
+    pub fn accepting_storage_capacity(&self, layer: ConstructionLayer) -> f32 {
+        self.storage_capacity_for(layer, true)
+    }
+
+    fn storage_capacity_for(&self, layer: ConstructionLayer, operational_only: bool) -> f32 {
         infrastructure_definitions()
             .iter()
             .filter_map(|definition| {
@@ -485,7 +586,12 @@ impl EntityInfrastructure {
                     ) => capacity_per_unit,
                     _ => return None,
                 };
-                Some(self.get_count(definition.infrastructure_type) as f32 * capacity_per_unit)
+                let count = if operational_only {
+                    self.operational_count(definition.infrastructure_type)
+                } else {
+                    self.get_count(definition.infrastructure_type)
+                };
+                Some(count as f32 * capacity_per_unit)
             })
             .sum()
     }
@@ -499,7 +605,8 @@ impl EntityInfrastructure {
                     throughput_per_unit,
                     ..
                 } => Some(
-                    self.get_count(definition.infrastructure_type) as f32 * throughput_per_unit,
+                    self.operational_count(definition.infrastructure_type) as f32
+                        * throughput_per_unit,
                 ),
                 _ => None,
             })
@@ -514,7 +621,7 @@ impl EntityInfrastructure {
                 InfrastructureEffect::OrbitalDock {
                     berths_per_unit, ..
                 } => berths.saturating_add(
-                    self.get_count(definition.infrastructure_type)
+                    self.operational_count(definition.infrastructure_type)
                         .saturating_mul(berths_per_unit),
                 ),
                 _ => berths,
@@ -657,6 +764,9 @@ mod tests {
                 InfrastructureType::OrbitalDock,
             ]
         );
+        assert!(infrastructure_definitions()
+            .iter()
+            .all(|definition| definition.maintenance_credits_per_interval > 0.0));
         assert_eq!(
             player_buildable_infrastructure()
                 .map(|definition| definition.infrastructure_type)
@@ -878,6 +988,16 @@ mod tests {
         assert_eq!(
             infrastructure.completed_units_in_category(InfrastructureCategory::Shipbuilding),
             1
+        );
+
+        infrastructure.set_maintenance_arrears(InfrastructureType::Mine, 1.0);
+        assert_eq!(
+            infrastructure.effect_rate(InfrastructureEffect::mining_rate),
+            0.0
+        );
+        assert_eq!(
+            infrastructure.operational_units_in_category(InfrastructureCategory::Mining),
+            0
         );
     }
 

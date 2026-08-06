@@ -89,7 +89,7 @@ pub fn planet_overview(
                                     .infrastructure
                                     .get(&body)
                                     .is_some_and(|infrastructure| {
-                                        infrastructure.completed_units_in_category(
+                                        infrastructure.operational_units_in_category(
                                             InfrastructureCategory::Shipbuilding,
                                         ) > 0
                                     });

@@ -23,6 +23,7 @@ mod civ_economy;
 mod command_processing;
 pub mod components;
 mod lanes;
+mod maintenance;
 mod movement;
 mod population;
 mod resources;
@@ -100,6 +101,8 @@ pub struct World {
     pub enable_civilian_ai: bool,
     /// elapsed simulation time since the last unloading interval.
     delivery_time_accumulator: f64,
+    /// elapsed simulation time since the last maintenance interval.
+    maintenance_time_accumulator: f64,
     /// world-owned rng driving generation, spawning, and civilian ai. seed it
     /// for reproducible runs (see `seed_rng`).
     pub(crate) rng: WorldRng,
@@ -237,6 +240,7 @@ impl World {
     pub fn update(&mut self, dt: f64, _current_tick: u64) {
         self.process_commands();
         self.locations.update(dt);
+        self.update_infrastructure_maintenance(dt);
         self.resources.update(
             dt,
             &self.entity_types,
@@ -387,7 +391,7 @@ impl World {
         let units = self
             .infrastructure
             .get(&planet_id)?
-            .get_count(InfrastructureType::Spaceport);
+            .operational_count(InfrastructureType::Spaceport);
         let size = SpaceportSize::from_completed_units(units)?;
         let planet_name = self.get_entity_name(planet_id)?;
         Some(Spaceport {

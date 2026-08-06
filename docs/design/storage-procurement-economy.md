@@ -146,8 +146,11 @@ delivery earnings increase civilian savings and can fund later ships. the econom
 ### infrastructure maintenance
 
 - every completed infrastructure unit has a fixed periodic credit cost.
+- v1 charges upkeep every 30 simulated seconds, representing one modeled month.
 - storage maintenance is charged whether the capacity is empty or occupied, making very large stockpiles expensive to keep available.
 - unpaid maintenance becomes arrears.
+- later payments clear arrears together with the current interval before restoring the effect.
+- when a shared treasury cannot cover everything, bodies are charged by entity ID and infrastructure follows catalog order.
 - delinquent production and construction infrastructure suspends its effect.
 - delinquent storage remains physically present and preserves existing goods, but accepts no new deposits.
 - maintenance failure never deletes inventory.
