@@ -3,7 +3,6 @@ use crate::infrastructure::InfrastructureCategory;
 use crate::location::PointF64;
 use crate::ships::{buildable_ship, ShipType};
 use crate::world::components::{CivilianShipState, MiningRoute};
-use crate::world::resources;
 use crate::world::types::Storable;
 use crate::world::{EntityId, World};
 use rand::Rng;
@@ -287,13 +286,18 @@ impl World {
             } => {
                 if let Some(cargo) = self.cargo.get(&ship_id) {
                     if cargo.current_load >= cargo.capacity {
-                        if let Some(base_pos) = predict_orbital_intercept(self, ship_id, home_base)
+                        let destination = route.map(|route| route.sell_body).unwrap_or(home_base);
+                        if let Some(base_pos) =
+                            predict_orbital_intercept(self, ship_id, destination)
                         {
                             let command = Command::MoveShip {
                                 ship_id,
                                 destination: base_pos,
                             };
-                            (Some(CivilianShipState::ReturningToSell), Some(command))
+                            (
+                                Some(CivilianShipState::ReturningToSell { destination }),
+                                Some(command),
+                            )
                         } else {
                             (None, None)
                         }
@@ -311,13 +315,19 @@ impl World {
                     (None, None)
                 }
             }
-            CivilianShipState::ReturningToSell => {
+            CivilianShipState::ReturningToSell { destination } => {
                 if !self.move_orders.contains_key(&ship_id) {
-                    (Some(CivilianShipState::Idle), None)
+                    (
+                        Some(CivilianShipState::WaitingToUnload {
+                            destination: *destination,
+                        }),
+                        None,
+                    )
                 } else {
                     (None, None)
                 }
             }
+            CivilianShipState::WaitingToUnload { .. } => (None, None),
         }
     }
 
@@ -348,75 +358,107 @@ impl World {
     }
 
     pub(super) fn process_ship_sales(&mut self) -> Vec<ShipSaleInfo> {
-        let mut sales_updates: Vec<(EntityId, EntityId)> = self
+        let mut sales_updates: Vec<(EntityId, EntityId, EntityId)> = self
             .civilian_ai
             .iter()
-            .filter_map(|(id, ai)| {
-                if ai.state == CivilianShipState::Idle {
-                    if let Some(cargo) = self.cargo.get(id) {
-                        if cargo.current_load > 0.0 {
-                            return Some((*id, ai.home_base));
-                        }
-                    }
+            .filter_map(|(id, ai)| match ai.state {
+                CivilianShipState::WaitingToUnload { destination }
+                    if self
+                        .cargo
+                        .get(id)
+                        .is_some_and(|cargo| cargo.current_load > 0.0) =>
+                {
+                    Some((*id, ai.home_base, destination))
                 }
-                None
+                _ => None,
             })
             .collect();
-        // sort by ship id so credits/stocks accumulate on the destination body in
-        // a deterministic order; float addition isn't associative, and this feeds
-        // build-timing decisions and thus the rng stream.
-        sales_updates.sort_unstable();
+        sales_updates.sort_by_key(|(ship_id, _, _)| *ship_id);
 
         let mut sales_info: Vec<ShipSaleInfo> = Vec::new();
-        let mut sales_to_process = Vec::new();
+        let mut remaining_throughput: std::collections::HashMap<EntityId, f32> =
+            std::collections::HashMap::new();
+        let mut used_berths: std::collections::HashMap<EntityId, u32> =
+            std::collections::HashMap::new();
+        let layer = crate::world::types::ConstructionLayer::Orbit;
 
-        for (ship_id, home_base_id) in sales_updates {
-            if let Some(cargo) = self.cargo.get(&ship_id) {
-                if cargo.current_load > 0.0 {
-                    let mut drained_cargo = Vec::new();
-                    for (storable, amount) in &cargo.contents {
-                        drained_cargo.push((*storable, *amount));
-                    }
-                    drained_cargo.sort_by_key(|(storable, _)| *storable);
-                    sales_to_process.push((ship_id, home_base_id, drained_cargo));
-                }
+        for (ship_id, home_base_id, destination_id) in sales_updates {
+            let (dock_throughput, berth_capacity) = self
+                .orbital_dock_capacity(destination_id)
+                .unwrap_or((0.0, 0));
+            let throughput = *remaining_throughput
+                .entry(destination_id)
+                .or_insert(dock_throughput);
+            let berths = used_berths.entry(destination_id).or_insert(0);
+            if throughput <= 0.0 || *berths >= berth_capacity {
+                continue;
             }
-        }
+            *berths += 1;
 
-        for (ship_id, home_base_id, drained_cargo) in sales_to_process {
-            let prices: Vec<f64> = drained_cargo
+            let mut cargo_contents: Vec<_> = self.cargo[&ship_id]
+                .contents
                 .iter()
-                .map(|(storable, _)| resources::get_local_price(self, home_base_id, *storable))
+                .map(|(resource, amount)| (*resource, *amount))
                 .collect();
+            cargo_contents.sort_by_key(|(resource, _)| *resource);
+            let mut accepted_cargo = Vec::new();
+            let mut total_value = 0.0;
 
-            let layer = self
-                .get_entity_type(home_base_id)
-                .and_then(crate::world::types::ConstructionLayer::primary_for)
-                .unwrap_or(crate::world::types::ConstructionLayer::Orbit);
-            let storage_capacity = self
-                .infrastructure
-                .get(&home_base_id)
-                .map(|infrastructure| infrastructure.storage_capacity(layer))
-                .unwrap_or(0.0);
-            if let Some(base_data) = self.celestial_data.get_mut(&home_base_id) {
-                let mut total_value = 0.0;
-                let mut accepted_cargo = Vec::new();
-                for ((storable, amount), price) in drained_cargo.iter().zip(prices.iter()) {
-                    let accepted =
-                        base_data.deposit_bounded_at(layer, *storable, *amount, storage_capacity);
-                    if accepted > 0.0 {
-                        total_value += accepted as f64 * *price;
-                        accepted_cargo.push((*storable, accepted));
-                    }
+            for (resource, onboard) in cargo_contents {
+                let Some(quote) = self.procurement_quote(
+                    destination_id,
+                    crate::world::types::ProcurementKey { layer, resource },
+                ) else {
+                    continue;
+                };
+                let remaining = remaining_throughput[&destination_id];
+                let requested = onboard.min(quote.wanted_quantity).min(remaining);
+                if requested <= 0.0 {
+                    break;
                 }
-                if let Some(cargo) = self.cargo.get_mut(&ship_id) {
-                    for (storable, accepted) in &accepted_cargo {
-                        cargo.remove(*storable, *accepted);
-                    }
+                let storage_capacity = self
+                    .infrastructure
+                    .get(&destination_id)
+                    .map(|infrastructure| infrastructure.storage_capacity(layer))
+                    .unwrap_or(0.0);
+                let accepted = self
+                    .celestial_data
+                    .get_mut(&destination_id)
+                    .map(|body| {
+                        body.deposit_bounded_at(layer, resource, requested, storage_capacity)
+                    })
+                    .unwrap_or(0.0);
+                if accepted == 0.0 {
+                    continue;
                 }
-                base_data.credits += total_value;
-                sales_info.push((ship_id, total_value, home_base_id, accepted_cargo));
+                let value = accepted as f64 * quote.unit_price;
+                let buyer = self.procurement_account(destination_id);
+                let seller = crate::world::types::EconomicAccount::Civilian(home_base_id);
+                if !self.transfer_credits(buyer, seller, value) {
+                    self.celestial_data
+                        .get_mut(&destination_id)
+                        .unwrap()
+                        .withdraw_at(layer, resource, accepted);
+                    continue;
+                }
+
+                self.cargo
+                    .get_mut(&ship_id)
+                    .unwrap()
+                    .remove(resource, accepted);
+                *remaining_throughput.get_mut(&destination_id).unwrap() -= accepted;
+                total_value += value;
+                accepted_cargo.push((resource, accepted));
             }
+
+            if accepted_cargo.is_empty() {
+                *used_berths.get_mut(&destination_id).unwrap() -= 1;
+                continue;
+            }
+            if self.cargo[&ship_id].current_load == 0.0 {
+                self.civilian_ai.get_mut(&ship_id).unwrap().state = CivilianShipState::Idle;
+            }
+            sales_info.push((ship_id, total_value, destination_id, accepted_cargo));
         }
 
         sales_info
@@ -428,7 +470,10 @@ mod tests {
     use super::*;
     use crate::infrastructure::EntityInfrastructure;
     use crate::location::Point;
-    use crate::world::types::{CelestialBodyData, InfrastructureType};
+    use crate::world::types::{
+        CelestialBodyData, ConstructionLayer, InfrastructureType, ProcurementKey,
+        ProcurementPolicy, RawResource,
+    };
 
     #[test]
     fn civilian_ai_keeps_credits_when_shipyard_lacks_mining_ship_resources() {
@@ -456,41 +501,216 @@ mod tests {
     fn delivery_accepts_only_free_storage_and_keeps_remainder_aboard() {
         let mut world = World::default();
         let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let home_id = world.spawn_planet("home".to_string(), star_id, 8.0, 0.0, 0.0);
         let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.set_player_controlled(planet_id);
+        world.player_credits = 100.0;
         world
             .infrastructure
             .get_mut(&planet_id)
             .unwrap()
             .infra
-            .insert(InfrastructureType::SurfaceWarehouse, 1);
+            .insert(InfrastructureType::OrbitalDepot, 1);
         world
-            .celestial_data
+            .infrastructure
             .get_mut(&planet_id)
             .unwrap()
-            .deposit_bounded_at(
-                crate::world::types::ConstructionLayer::Surface,
-                Storable::Good(crate::world::types::Good::Food),
-                995.0,
-                1_000.0,
-            );
-        let ship_id = world.spawn_mining_ship("miner".to_string(), Point { x: 0, y: 0 }, planet_id);
-        world.cargo.get_mut(&ship_id).unwrap().add(
-            Storable::Raw(crate::world::types::RawResource::Metals),
-            10.0,
+            .infra
+            .insert(InfrastructureType::OrbitalDock, 1);
+        let key = ProcurementKey {
+            layer: ConstructionLayer::Orbit,
+            resource: Storable::Raw(RawResource::Metals),
+        };
+        let body = world.celestial_data.get_mut(&planet_id).unwrap();
+        body.deposit_bounded_at(
+            ConstructionLayer::Orbit,
+            Storable::Good(crate::world::types::Good::Food),
+            995.0,
+            1_000.0,
         );
+        body.procurement_policies.insert(
+            key,
+            ProcurementPolicy {
+                enabled: true,
+                reserve_target: 10.0,
+                maximum_unit_price: 10.0,
+                periodic_spend_cap: None,
+            },
+        );
+        let ship_id = world.spawn_mining_ship("miner".to_string(), Point { x: 0, y: 0 }, home_id);
+        world
+            .cargo
+            .get_mut(&ship_id)
+            .unwrap()
+            .add(Storable::Raw(RawResource::Metals), 10.0);
+        world.civilian_ai.get_mut(&ship_id).unwrap().state = CivilianShipState::WaitingToUnload {
+            destination: planet_id,
+        };
 
         let sales = world.process_ship_sales();
 
         assert_eq!(sales.len(), 1);
+        assert_eq!(sales[0].3, vec![(Storable::Raw(RawResource::Metals), 5.0)]);
+        assert_eq!(world.cargo[&ship_id].current_load, 5.0);
+        assert_eq!(world.player_credits, 80.0);
+        assert_eq!(world.celestial_data[&home_id].credits, 20.0);
+        assert_eq!(world.celestial_data[&planet_id].credits, 0.0);
+        assert_eq!(
+            world.civilian_ai[&ship_id].state,
+            CivilianShipState::WaitingToUnload {
+                destination: planet_id
+            }
+        );
+        assert_eq!(
+            world.celestial_data[&planet_id].stored_units_at(ConstructionLayer::Orbit),
+            1_000.0
+        );
+    }
+
+    #[test]
+    fn mining_route_sell_destination_does_not_replace_home_economy() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let home_id = world.spawn_planet("home".to_string(), star_id, 8.0, 0.0, 0.0);
+        let mine_id = world.spawn_planet("mine".to_string(), star_id, 10.0, 0.0, 0.0);
+        let sell_id = world.spawn_planet("market".to_string(), star_id, 12.0, 0.0, 0.0);
+        let ship_id = world.spawn_mining_ship("miner".to_string(), Point { x: 0, y: 0 }, home_id);
+
+        world.set_mining_route(
+            ship_id,
+            Some(MiningRoute {
+                target_body: mine_id,
+                resource: RawResource::Metals,
+                sell_body: sell_id,
+            }),
+        );
+
+        assert_eq!(world.civilian_ai[&ship_id].home_base, home_id);
+        assert_eq!(world.mining_routes[&ship_id].sell_body, sell_id);
+    }
+
+    #[test]
+    fn delivery_is_limited_by_remaining_dock_throughput() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let home_id = world.spawn_planet("home".to_string(), star_id, 8.0, 0.0, 0.0);
+        let destination_id = world.spawn_planet("market".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.set_player_controlled(destination_id);
+        world.player_credits = 10_000.0;
+        let infrastructure = world.infrastructure.get_mut(&destination_id).unwrap();
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDepot, 1);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDock, 1);
+        world
+            .celestial_data
+            .get_mut(&destination_id)
+            .unwrap()
+            .procurement_policies
+            .insert(
+                ProcurementKey {
+                    layer: ConstructionLayer::Orbit,
+                    resource: Storable::Raw(RawResource::Metals),
+                },
+                ProcurementPolicy {
+                    enabled: true,
+                    reserve_target: 200.0,
+                    maximum_unit_price: 100.0,
+                    periodic_spend_cap: None,
+                },
+            );
+        let ship_id =
+            world.spawn_mining_ship("large miner".to_string(), Point { x: 0, y: 0 }, home_id);
+        world.cargo.get_mut(&ship_id).unwrap().capacity = 200.0;
+        world
+            .cargo
+            .get_mut(&ship_id)
+            .unwrap()
+            .add(Storable::Raw(RawResource::Metals), 150.0);
+        world.civilian_ai.get_mut(&ship_id).unwrap().state = CivilianShipState::WaitingToUnload {
+            destination: destination_id,
+        };
+
+        let sales = world.process_ship_sales();
+
         assert_eq!(
             sales[0].3,
-            vec![(Storable::Raw(crate::world::types::RawResource::Metals), 5.0)]
+            vec![(Storable::Raw(RawResource::Metals), 100.0)]
         );
-        assert_eq!(world.cargo[&ship_id].current_load, 5.0);
+        assert_eq!(world.cargo[&ship_id].current_load, 50.0);
         assert_eq!(
-            world.celestial_data[&planet_id]
-                .stored_units_at(crate::world::types::ConstructionLayer::Surface),
-            1_000.0
+            world.celestial_data[&destination_id]
+                .amount_at(ConstructionLayer::Orbit, Storable::Raw(RawResource::Metals)),
+            100.0
+        );
+    }
+
+    #[test]
+    fn simultaneous_arrivals_use_ship_id_order_and_available_berths() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let first_home = world.spawn_planet("first home".to_string(), star_id, 8.0, 0.0, 0.0);
+        let second_home = world.spawn_planet("second home".to_string(), star_id, 9.0, 0.0, 0.0);
+        let destination_id = world.spawn_planet("market".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.set_player_controlled(destination_id);
+        world.player_credits = 10_000.0;
+        let infrastructure = world.infrastructure.get_mut(&destination_id).unwrap();
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDepot, 1);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDock, 1);
+        world
+            .celestial_data
+            .get_mut(&destination_id)
+            .unwrap()
+            .procurement_policies
+            .insert(
+                ProcurementKey {
+                    layer: ConstructionLayer::Orbit,
+                    resource: Storable::Raw(RawResource::Metals),
+                },
+                ProcurementPolicy {
+                    enabled: true,
+                    reserve_target: 200.0,
+                    maximum_unit_price: 100.0,
+                    periodic_spend_cap: None,
+                },
+            );
+        let first_ship =
+            world.spawn_mining_ship("first".to_string(), Point { x: 0, y: 0 }, first_home);
+        let second_ship =
+            world.spawn_mining_ship("second".to_string(), Point { x: 0, y: 0 }, second_home);
+        for ship_id in [first_ship, second_ship] {
+            world
+                .cargo
+                .get_mut(&ship_id)
+                .unwrap()
+                .add(Storable::Raw(RawResource::Metals), 60.0);
+            world.civilian_ai.get_mut(&ship_id).unwrap().state =
+                CivilianShipState::WaitingToUnload {
+                    destination: destination_id,
+                };
+        }
+
+        let sales = world.process_ship_sales();
+
+        assert_eq!(sales.len(), 1);
+        assert_eq!(sales[0].0, first_ship);
+        assert_eq!(world.cargo[&first_ship].current_load, 0.0);
+        assert_eq!(world.cargo[&second_ship].current_load, 60.0);
+        assert_eq!(
+            world.civilian_ai[&first_ship].state,
+            CivilianShipState::Idle
+        );
+        assert_eq!(
+            world.civilian_ai[&second_ship].state,
+            CivilianShipState::WaitingToUnload {
+                destination: destination_id
+            }
         );
     }
 
@@ -513,11 +733,11 @@ mod tests {
 
         assert_eq!(world.celestial_data[&planet_id].demands, before);
         assert!(
-            resources::get_local_price(
+            crate::world::resources::get_local_price(
                 &world,
                 planet_id,
                 Storable::Raw(crate::world::types::RawResource::Volatiles)
-            ) > resources::get_resource_base_price(Storable::Raw(
+            ) > crate::world::resources::get_resource_base_price(Storable::Raw(
                 crate::world::types::RawResource::Volatiles
             ))
         );

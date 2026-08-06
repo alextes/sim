@@ -98,6 +98,8 @@ pub struct World {
     pub mining_routes: HashMap<EntityId, MiningRoute>,
     /// master switch for autonomous civilian ai behavior
     pub enable_civilian_ai: bool,
+    /// elapsed simulation time since the last unloading interval.
+    delivery_time_accumulator: f64,
     /// world-owned rng driving generation, spawning, and civilian ai. seed it
     /// for reproducible runs (see `seed_rng`).
     pub(crate) rng: WorldRng,
@@ -124,7 +126,6 @@ impl World {
     }
 
     /// transfers credits atomically without creating or destroying them.
-    #[allow(dead_code)] // consumed by the transactional-delivery slice
     pub fn transfer_credits(
         &mut self,
         from: EconomicAccount,
@@ -253,8 +254,14 @@ impl World {
         }
         self.process_ship_mining(dt);
         self.process_construction(dt);
-        let sales_info = self.process_ship_sales();
-        for (ship_id, total_value, home_base, cargo) in sales_info {
+        self.delivery_time_accumulator += dt.max(0.0);
+        let sales_info = if self.delivery_time_accumulator >= 1.0 {
+            self.delivery_time_accumulator %= 1.0;
+            self.process_ship_sales()
+        } else {
+            Vec::new()
+        };
+        for (ship_id, total_value, destination, cargo) in sales_info {
             let cargo_desc = cargo
                 .iter()
                 .map(|(s, a)| format!("{a:.2} {s}"))
@@ -265,7 +272,7 @@ impl World {
                 self.get_entity_name(ship_id)
                     .unwrap_or_else(|| "unknown".to_string()),
                 total_value,
-                self.get_entity_name(home_base)
+                self.get_entity_name(destination)
                     .unwrap_or_else(|| "unknown".to_string()),
                 cargo_desc,
             );
@@ -566,13 +573,12 @@ impl World {
         self.lanes.iter()
     }
 
-    /// set or clear a mining route for a ship. also updates the ship's ai home_base to the sell body when set.
+    /// set or clear a mining route without changing the ship's home economy.
     pub fn set_mining_route(&mut self, ship_id: EntityId, route: Option<MiningRoute>) {
         match route {
             Some(r) => {
                 self.mining_routes.insert(ship_id, r);
                 if let Some(ai) = self.civilian_ai.get_mut(&ship_id) {
-                    ai.home_base = r.sell_body;
                     ai.state = crate::world::components::CivilianShipState::Idle;
                 }
             }

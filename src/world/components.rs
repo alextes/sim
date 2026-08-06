@@ -81,5 +81,10 @@ pub enum CivilianShipState {
         resource: RawResource,
         mine_time: u64, // Using u64 to store time as integer milliseconds
     },
-    ReturningToSell,
+    ReturningToSell {
+        destination: EntityId,
+    },
+    WaitingToUnload {
+        destination: EntityId,
+    },
 }
