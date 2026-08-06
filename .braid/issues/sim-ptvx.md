@@ -3,13 +3,15 @@ schema_version: 9
 id: sim-ptvx
 title: make deliveries transactional and throughput limited
 priority: P2
-status: open
+status: done
 deps:
 - sim-h8g3
 - sim-4mvc
 - sim-aro7
 owner: null
 created_at: 2026-08-04T16:45:26.760023Z
+started_at: 2026-08-06T09:55:24.245691Z
+completed_at: 2026-08-06T11:06:22.026319Z
 acceptance:
 - delivery debits the buyer and credits the ship home civilian economy without minting credits
 - accepted cargo is bounded by wanted quantity, funds, free storage, and remaining dock throughput
