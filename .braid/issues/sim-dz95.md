@@ -3,12 +3,14 @@ schema_version: 9
 id: sim-dz95
 title: derive procurement demand from local construction
 priority: P2
-status: open
+status: done
 deps:
 - sim-csgb
 - sim-aro7
 owner: null
 created_at: 2026-08-04T16:45:26.685799Z
+started_at: 2026-08-06T09:52:51.881274Z
+completed_at: 2026-08-06T09:54:56.013197Z
 acceptance:
 - queued construction contributes construction-material demand only at its exact construction layer
 - procurement covers a bounded horizon of upcoming work rather than the full queue lifetime
