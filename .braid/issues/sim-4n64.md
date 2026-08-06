@@ -3,7 +3,7 @@ schema_version: 9
 id: sim-4n64
 title: expose storage and procurement controls in the planet overview
 priority: P2
-status: open
+status: done
 deps:
 - sim-4mvc
 - sim-aro7
@@ -12,6 +12,8 @@ deps:
 - sim-f83n
 owner: null
 created_at: 2026-08-04T16:45:46.86863Z
+started_at: 2026-08-06T11:13:56.707986Z
+completed_at: 2026-08-06T11:35:03.151398Z
 acceptance:
 - overview shows primary-layer and orbital stock usage, capacity, and free space
 - overview shows wanted quantity, current purchase price, and configured reserve, maximum price, and spend cap
