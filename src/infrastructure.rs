@@ -6,6 +6,9 @@ use crate::world::types::{
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
+/// maximum construction material staged by automatic procurement at once.
+pub const CONSTRUCTION_STAGING_MATERIAL_LIMIT: f32 = 300.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InfrastructureDomain {
     Ground,
@@ -518,6 +521,45 @@ impl EntityInfrastructure {
             })
     }
 
+    /// near-term construction material target for one layer, preserving queue order.
+    pub fn staged_construction_material(
+        &self,
+        anchor_type: EntityType,
+        requested_layer: ConstructionLayer,
+    ) -> f32 {
+        let mut horizon = CONSTRUCTION_STAGING_MATERIAL_LIMIT;
+        let mut staged = 0.0;
+        let mut first_unit = true;
+
+        for (infrastructure_type, count) in &self.build_queue {
+            let Some(layer) = infrastructure_type.construction_layer(anchor_type) else {
+                continue;
+            };
+            let unit_cost = infrastructure_type
+                .definition()
+                .construction_material_cost();
+            let mut units = *count;
+            while units > 0 && horizon > 0.0 {
+                let cost = if first_unit {
+                    first_unit = false;
+                    (unit_cost - self.construction_progress).max(0.0)
+                } else {
+                    unit_cost
+                };
+                let within_horizon = cost.min(horizon);
+                if layer == requested_layer {
+                    staged += within_horizon;
+                }
+                horizon -= within_horizon;
+                units -= 1;
+            }
+            if horizon == 0.0 {
+                break;
+            }
+        }
+        staged
+    }
+
     /// processes the construction queue using capacity and material at the build layer.
     pub fn process_construction(
         &mut self,
@@ -893,5 +935,25 @@ mod tests {
         );
         assert_eq!(infrastructure.orbital_dock_throughput(), 200.0);
         assert_eq!(infrastructure.orbital_berth_capacity(), 2);
+    }
+
+    #[test]
+    fn staged_construction_demand_is_bounded_and_layer_exact() {
+        let mut infrastructure = EntityInfrastructure::new("test");
+        infrastructure.queue_build(InfrastructureType::SolarPanel, 1);
+        infrastructure.queue_build(InfrastructureType::Mine, 1);
+        infrastructure.queue_build(InfrastructureType::Spaceport, 3);
+        infrastructure.construction_progress = 10.0;
+
+        assert_eq!(
+            infrastructure
+                .staged_construction_material(EntityType::Planet, ConstructionLayer::Surface),
+            50.0
+        );
+        assert_eq!(
+            infrastructure
+                .staged_construction_material(EntityType::Planet, ConstructionLayer::Orbit),
+            250.0
+        );
     }
 }

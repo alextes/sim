@@ -280,6 +280,21 @@ fn refinery_input_demand(world: &World, entity_id: EntityId, resource: RawResour
 }
 
 impl World {
+    /// automatic near-term construction material target for one layer.
+    pub fn construction_procurement_target(
+        &self,
+        entity_id: EntityId,
+        layer: crate::world::types::ConstructionLayer,
+    ) -> f32 {
+        let Some(entity_type) = self.get_entity_type(entity_id) else {
+            return 0.0;
+        };
+        self.infrastructure
+            .get(&entity_id)
+            .map(|infrastructure| infrastructure.staged_construction_material(entity_type, layer))
+            .unwrap_or(0.0)
+    }
+
     /// current purchase opportunity derived from policy and live economy state.
     pub fn procurement_quote(
         &self,
@@ -287,13 +302,31 @@ impl World {
         key: ProcurementKey,
     ) -> Option<ProcurementQuote> {
         let body = self.celestial_data.get(&entity_id)?;
-        let policy = body.procurement_policies.get(&key)?;
-        if !policy.enabled || policy.reserve_target <= 0.0 || policy.maximum_unit_price <= 0.0 {
+        let automatic_target = if key.resource == Storable::Good(Good::ConstructionMaterials) {
+            self.construction_procurement_target(entity_id, key.layer)
+        } else {
+            0.0
+        };
+        let policy = match body.procurement_policies.get(&key).copied() {
+            Some(policy) => policy,
+            None if automatic_target > 0.0 => crate::world::types::ProcurementPolicy {
+                enabled: true,
+                reserve_target: automatic_target,
+                maximum_unit_price: get_resource_base_price(key.resource) * 4.0,
+                periodic_spend_cap: None,
+            },
+            None => return None,
+        };
+        if !policy.enabled || policy.maximum_unit_price <= 0.0 {
+            return None;
+        }
+        let reserve_target = policy.reserve_target.max(automatic_target);
+        if reserve_target <= 0.0 {
             return None;
         }
 
         let current = body.amount_at(key.layer, key.resource);
-        let shortage = (policy.reserve_target - current).max(0.0);
+        let shortage = (reserve_target - current).max(0.0);
         let storage_capacity = self
             .infrastructure
             .get(&entity_id)?
@@ -303,7 +336,7 @@ impl World {
             return None;
         }
 
-        let shortage_ratio = (shortage / policy.reserve_target).clamp(0.0, 1.0);
+        let shortage_ratio = (shortage / reserve_target).clamp(0.0, 1.0);
         let base_price = get_resource_base_price(key.resource);
         let unit_price =
             (base_price * (1.0 + 3.0 * shortage_ratio as f64)).min(policy.maximum_unit_price);
@@ -592,5 +625,58 @@ mod tests {
         body.withdraw_at(key.layer, key.resource, f32::MAX);
         body.deposit_bounded_at(key.layer, Storable::Good(Good::Food), 1_000.0, 1_000.0);
         assert!(world.procurement_quote(planet_id, key).is_none());
+    }
+
+    #[test]
+    fn queued_construction_creates_layer_local_bounded_procurement() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.set_player_controlled(planet_id);
+        world.player_credits = 10_000.0;
+        let infrastructure = world.infrastructure.get_mut(&planet_id).unwrap();
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDepot, 1);
+        infrastructure.queue_build(InfrastructureType::Spaceport, 2);
+        let orbital_key = ProcurementKey {
+            layer: ConstructionLayer::Orbit,
+            resource: Storable::Good(Good::ConstructionMaterials),
+        };
+
+        assert_eq!(
+            world.construction_procurement_target(planet_id, ConstructionLayer::Orbit),
+            200.0
+        );
+        assert_eq!(
+            world.construction_procurement_target(planet_id, ConstructionLayer::Surface),
+            0.0
+        );
+        let empty_quote = world.procurement_quote(planet_id, orbital_key).unwrap();
+        assert_eq!(empty_quote.wanted_quantity, 200.0);
+        assert_eq!(empty_quote.unit_price, 24.0);
+
+        world
+            .celestial_data
+            .get_mut(&planet_id)
+            .unwrap()
+            .deposit_bounded_at(
+                ConstructionLayer::Orbit,
+                orbital_key.resource,
+                50.0,
+                1_000.0,
+            );
+        let stocked_quote = world.procurement_quote(planet_id, orbital_key).unwrap();
+        assert_eq!(stocked_quote.wanted_quantity, 150.0);
+        assert_eq!(stocked_quote.unit_price, 19.5);
+        assert!(world
+            .procurement_quote(
+                planet_id,
+                ProcurementKey {
+                    layer: ConstructionLayer::Surface,
+                    resource: orbital_key.resource,
+                }
+            )
+            .is_none());
     }
 }

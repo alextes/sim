@@ -427,13 +427,37 @@ fn build_confirm(
         "build {amount}x {}?",
         infrastructure.definition().name
     ));
-    ui.label("cost:");
+    ui.label("lifetime project cost:");
     let costs = infrastructure.definition().scaled_costs(amount);
     let build_layer = world
         .get_entity_type(entity_id)
         .and_then(|entity_type| infrastructure.construction_layer(entity_type));
     if let Some(layer) = build_layer {
         ui.label(format!("required at: {layer}"));
+        if let (Some(entity_type), Some(existing)) = (
+            world.get_entity_type(entity_id),
+            world.infrastructure.get(&entity_id),
+        ) {
+            let mut projected = existing.clone();
+            projected.queue_build(infrastructure, amount);
+            let staged = projected.staged_construction_material(entity_type, layer);
+            let current = world
+                .celestial_data
+                .get(&entity_id)
+                .map(|body| {
+                    body.amount_at(
+                        layer,
+                        crate::world::types::Storable::Good(
+                            crate::world::types::Good::ConstructionMaterials,
+                        ),
+                    )
+                })
+                .unwrap_or(0.0);
+            ui.label(format!(
+                "procurement horizon: {staged:.1} staged ({:.1} outstanding)",
+                (staged - current).max(0.0)
+            ));
+        }
     }
     let required_capacity = infrastructure.definition().capacity_for(amount);
     if let Some(capacity) = world.infrastructure_capacity(entity_id) {
