@@ -2,7 +2,9 @@
 
 use crate::infrastructure::{EntityInfrastructure, InfrastructureEffect};
 use crate::world::types::EntityType;
-use crate::world::types::{CelestialBodyData, Good, RawResource, Storable};
+use crate::world::types::{
+    CelestialBodyData, Good, ProcurementKey, ProcurementQuote, RawResource, Storable,
+};
 use crate::world::EntityId;
 use crate::world::World;
 use crate::SIMULATION_DT;
@@ -244,7 +246,8 @@ pub fn get_local_price(world: &World, entity_id: EntityId, resource: Storable) -
                 .demands
                 .get(&Storable::Raw(raw_resource))
                 .copied()
-                .unwrap_or(0.0),
+                .unwrap_or(0.0)
+                + refinery_input_demand(world, entity_id, raw_resource),
         ),
         Storable::Good(_) => {
             // for now, goods don't have demand, so they trade at base price
@@ -261,6 +264,66 @@ pub fn get_local_price(world: &World, entity_id: EntityId, resource: Storable) -
     let price_modifier = 1.0 / ratio.max(0.1); // prevent extreme multipliers
 
     (base_price * price_modifier as f64).clamp(base_price * 0.25, base_price * 4.0)
+}
+
+fn refinery_input_demand(world: &World, entity_id: EntityId, resource: RawResource) -> f32 {
+    if resource != RawResource::Volatiles {
+        return 0.0;
+    }
+    world
+        .infrastructure
+        .get(&entity_id)
+        .map(|infrastructure| {
+            infrastructure.effect_rate(InfrastructureEffect::fuel_cell_refining_rate) * 10.0
+        })
+        .unwrap_or(0.0)
+}
+
+impl World {
+    /// current purchase opportunity derived from policy and live economy state.
+    pub fn procurement_quote(
+        &self,
+        entity_id: EntityId,
+        key: ProcurementKey,
+    ) -> Option<ProcurementQuote> {
+        let body = self.celestial_data.get(&entity_id)?;
+        let policy = body.procurement_policies.get(&key)?;
+        if !policy.enabled || policy.reserve_target <= 0.0 || policy.maximum_unit_price <= 0.0 {
+            return None;
+        }
+
+        let current = body.amount_at(key.layer, key.resource);
+        let shortage = (policy.reserve_target - current).max(0.0);
+        let storage_capacity = self
+            .infrastructure
+            .get(&entity_id)?
+            .storage_capacity(key.layer);
+        let free_storage = body.free_capacity_at(key.layer, storage_capacity);
+        if shortage == 0.0 || free_storage == 0.0 {
+            return None;
+        }
+
+        let shortage_ratio = (shortage / policy.reserve_target).clamp(0.0, 1.0);
+        let base_price = get_resource_base_price(key.resource);
+        let unit_price =
+            (base_price * (1.0 + 3.0 * shortage_ratio as f64)).min(policy.maximum_unit_price);
+        if unit_price <= 0.0 {
+            return None;
+        }
+
+        let account = self.procurement_account(entity_id);
+        let mut budget = self.account_balance(account)?.max(0.0);
+        if let Some(spend_cap) = policy.periodic_spend_cap {
+            budget = budget.min(spend_cap.max(0.0));
+        }
+        let affordable = (budget / unit_price) as f32;
+        let wanted_quantity = shortage.min(free_storage).min(affordable);
+        (wanted_quantity > 0.0).then_some(ProcurementQuote {
+            key,
+            wanted_quantity,
+            unit_price,
+        })
+    }
 }
 
 /// returns the base credit value for a single unit of a resource.
@@ -289,8 +352,10 @@ pub fn get_resource_base_price(resource: Storable) -> f64 {
 mod tests {
     use super::*;
     use crate::infrastructure::EntityInfrastructure;
+    use crate::location::Point;
     use crate::world::types::{
-        CelestialBodyData, EntityType, InfrastructureType, RawResource, Storable,
+        CelestialBodyData, ConstructionLayer, EntityType, InfrastructureType, ProcurementPolicy,
+        RawResource, Storable,
     };
     use std::collections::HashMap;
 
@@ -437,5 +502,95 @@ mod tests {
             ),
             0.0
         );
+    }
+
+    fn procurement_test_world() -> (World, EntityId, ProcurementKey) {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.set_player_controlled(planet_id);
+        world.player_credits = 1_000.0;
+        world
+            .infrastructure
+            .get_mut(&planet_id)
+            .unwrap()
+            .infra
+            .insert(InfrastructureType::SurfaceWarehouse, 1);
+        let key = ProcurementKey {
+            layer: ConstructionLayer::Surface,
+            resource: Storable::Raw(RawResource::Metals),
+        };
+        world
+            .celestial_data
+            .get_mut(&planet_id)
+            .unwrap()
+            .procurement_policies
+            .insert(
+                key,
+                ProcurementPolicy {
+                    enabled: true,
+                    reserve_target: 10.0,
+                    maximum_unit_price: 10.0,
+                    periodic_spend_cap: None,
+                },
+            );
+        (world, planet_id, key)
+    }
+
+    #[test]
+    fn procurement_price_rises_monotonically_with_shortage() {
+        let (mut world, planet_id, key) = procurement_test_world();
+        let empty_quote = world.procurement_quote(planet_id, key).unwrap();
+        world
+            .celestial_data
+            .get_mut(&planet_id)
+            .unwrap()
+            .deposit_bounded_at(key.layer, key.resource, 5.0, 1_000.0);
+        let half_quote = world.procurement_quote(planet_id, key).unwrap();
+
+        assert!(empty_quote.unit_price > half_quote.unit_price);
+        assert_eq!(empty_quote.unit_price, 4.0);
+        assert_eq!(half_quote.unit_price, 2.5);
+
+        world
+            .celestial_data
+            .get_mut(&planet_id)
+            .unwrap()
+            .deposit_bounded_at(key.layer, key.resource, 5.0, 1_000.0);
+        assert!(world.procurement_quote(planet_id, key).is_none());
+    }
+
+    #[test]
+    fn procurement_quantity_is_bounded_by_storage_funds_and_spend_cap() {
+        let (mut world, planet_id, key) = procurement_test_world();
+        world.player_credits = 100.0;
+        world
+            .celestial_data
+            .get_mut(&planet_id)
+            .unwrap()
+            .procurement_policies
+            .get_mut(&key)
+            .unwrap()
+            .periodic_spend_cap = Some(5.0);
+
+        let quote = world.procurement_quote(planet_id, key).unwrap();
+        assert_eq!(quote.unit_price, 4.0);
+        assert_eq!(quote.wanted_quantity, 1.25);
+
+        {
+            let body = world.celestial_data.get_mut(&planet_id).unwrap();
+            let policy = body.procurement_policies.get_mut(&key).unwrap();
+            policy.periodic_spend_cap = None;
+            policy.maximum_unit_price = 3.0;
+        }
+        world.player_credits = 2.0;
+        let funds_limited = world.procurement_quote(planet_id, key).unwrap();
+        assert_eq!(funds_limited.unit_price, 3.0);
+        assert_eq!(funds_limited.wanted_quantity, 2.0 / 3.0);
+
+        let body = world.celestial_data.get_mut(&planet_id).unwrap();
+        body.withdraw_at(key.layer, key.resource, f32::MAX);
+        body.deposit_bounded_at(key.layer, Storable::Good(Good::Food), 1_000.0, 1_000.0);
+        assert!(world.procurement_quote(planet_id, key).is_none());
     }
 }

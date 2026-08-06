@@ -14,8 +14,9 @@ use std::collections::VecDeque;
 use crate::ships::ShipType;
 use crate::world::components::{Cargo, CivilianShipAI, MiningRoute};
 use crate::world::types::{
-    BodyProfile, CelestialBodyData, Color, ConstructionLayer, EntityType, InfrastructureType,
-    Spaceport, SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS, STAR_COLORS,
+    BodyProfile, CelestialBodyData, Color, ConstructionLayer, EconomicAccount, EntityType,
+    InfrastructureType, Spaceport, SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS,
+    STAR_COLORS,
 };
 
 mod civ_economy;
@@ -103,6 +104,61 @@ pub struct World {
 }
 
 impl World {
+    /// current balance for an explicit economy account.
+    pub fn account_balance(&self, account: EconomicAccount) -> Option<f64> {
+        match account {
+            EconomicAccount::PlayerTreasury => Some(self.player_credits),
+            EconomicAccount::Civilian(entity_id) => {
+                self.celestial_data.get(&entity_id).map(|body| body.credits)
+            }
+        }
+    }
+
+    /// account used for procurement at one body.
+    pub fn procurement_account(&self, entity_id: EntityId) -> EconomicAccount {
+        if self.is_player_controlled(entity_id) {
+            EconomicAccount::PlayerTreasury
+        } else {
+            EconomicAccount::Civilian(entity_id)
+        }
+    }
+
+    /// transfers credits atomically without creating or destroying them.
+    #[allow(dead_code)] // consumed by the transactional-delivery slice
+    pub fn transfer_credits(
+        &mut self,
+        from: EconomicAccount,
+        to: EconomicAccount,
+        amount: f64,
+    ) -> bool {
+        if !amount.is_finite() || amount < 0.0 {
+            return false;
+        }
+        if from == to || amount == 0.0 {
+            return true;
+        }
+        let Some(balance) = self.account_balance(from) else {
+            return false;
+        };
+        if balance < amount || self.account_balance(to).is_none() {
+            return false;
+        }
+
+        match from {
+            EconomicAccount::PlayerTreasury => self.player_credits -= amount,
+            EconomicAccount::Civilian(entity_id) => {
+                self.celestial_data.get_mut(&entity_id).unwrap().credits -= amount;
+            }
+        }
+        match to {
+            EconomicAccount::PlayerTreasury => self.player_credits += amount,
+            EconomicAccount::Civilian(entity_id) => {
+                self.celestial_data.get_mut(&entity_id).unwrap().credits += amount;
+            }
+        }
+        true
+    }
+
     /// Create a static entity at a fixed point (e.g. a star).
     pub fn spawn_star(&mut self, name: String, position: Point) -> EntityId {
         spawning::spawn_star(self, name, position)
@@ -606,6 +662,37 @@ mod tests {
         assert_eq!(BodySize::Medium.capacity(), 16);
         assert_eq!(BodySize::Large.capacity(), 28);
         assert_eq!(BodySize::Giant.capacity(), 48);
+    }
+
+    #[test]
+    fn economic_account_transfers_conserve_credits() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.player_credits = 100.0;
+        world.celestial_data.get_mut(&planet_id).unwrap().credits = 20.0;
+
+        assert!(world.transfer_credits(
+            EconomicAccount::PlayerTreasury,
+            EconomicAccount::Civilian(planet_id),
+            30.0,
+        ));
+        assert_eq!(world.player_credits, 70.0);
+        assert_eq!(world.celestial_data[&planet_id].credits, 50.0);
+        assert_eq!(
+            world.player_credits + world.celestial_data[&planet_id].credits,
+            120.0
+        );
+
+        assert!(!world.transfer_credits(
+            EconomicAccount::PlayerTreasury,
+            EconomicAccount::Civilian(planet_id),
+            80.0,
+        ));
+        assert_eq!(
+            world.player_credits + world.celestial_data[&planet_id].credits,
+            120.0
+        );
     }
 
     #[test]

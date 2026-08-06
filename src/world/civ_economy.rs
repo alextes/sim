@@ -1,5 +1,5 @@
 use crate::command::Command;
-use crate::infrastructure::{InfrastructureCategory, InfrastructureEffect};
+use crate::infrastructure::InfrastructureCategory;
 use crate::location::PointF64;
 use crate::ships::{buildable_ship, ShipType};
 use crate::world::components::{CivilianShipState, MiningRoute};
@@ -76,22 +76,6 @@ impl World {
                 // decision to build a mining ship
                 const MINING_SHIP_COST: f64 = 1000.0;
                 const MAX_MINING_SHIPS_PER_BODY: usize = 64;
-
-                // refinery demand
-                if let Some(infrastructure) = self.infrastructure.get(&entity_id) {
-                    let fuel_cell_refining_rate =
-                        infrastructure.effect_rate(InfrastructureEffect::fuel_cell_refining_rate);
-
-                    if fuel_cell_refining_rate > 0.0 {
-                        let demand_per_cracker = 10.0; // demand 10 units per month per cracker
-                        data.demands
-                            .entry(crate::world::types::Storable::Raw(
-                                crate::world::types::RawResource::Volatiles,
-                            ))
-                            .and_modify(|d| *d += demand_per_cracker * fuel_cell_refining_rate)
-                            .or_insert(demand_per_cracker * fuel_cell_refining_rate);
-                    }
-                }
 
                 let existing_ships_for_base = self
                     .civilian_ai
@@ -507,6 +491,35 @@ mod tests {
             world.celestial_data[&planet_id]
                 .stored_units_at(crate::world::types::ConstructionLayer::Surface),
             1_000.0
+        );
+    }
+
+    #[test]
+    fn refinery_input_demand_does_not_accumulate_across_updates() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let planet_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 0.0);
+        world.celestial_data.get_mut(&planet_id).unwrap().population = 1.0;
+        world
+            .infrastructure
+            .get_mut(&planet_id)
+            .unwrap()
+            .infra
+            .insert(InfrastructureType::FuelCellCracker, 1);
+        let before = world.celestial_data[&planet_id].demands.clone();
+
+        world.update_civilian_economy(0.0);
+        world.update_civilian_economy(0.0);
+
+        assert_eq!(world.celestial_data[&planet_id].demands, before);
+        assert!(
+            resources::get_local_price(
+                &world,
+                planet_id,
+                Storable::Raw(crate::world::types::RawResource::Volatiles)
+            ) > resources::get_resource_base_price(Storable::Raw(
+                crate::world::types::RawResource::Volatiles
+            ))
         );
     }
 }

@@ -34,6 +34,44 @@ pub enum Storable {
     Good(Good),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ProcurementKey {
+    pub layer: ConstructionLayer,
+    pub resource: Storable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ProcurementPolicy {
+    pub enabled: bool,
+    pub reserve_target: f32,
+    pub maximum_unit_price: f64,
+    pub periodic_spend_cap: Option<f64>,
+}
+
+impl Default for ProcurementPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            reserve_target: 0.0,
+            maximum_unit_price: 0.0,
+            periodic_spend_cap: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ProcurementQuote {
+    pub key: ProcurementKey,
+    pub wanted_quantity: f32,
+    pub unit_price: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EconomicAccount {
+    PlayerTreasury,
+    Civilian(u32),
+}
+
 impl fmt::Display for RawResource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")
@@ -221,6 +259,9 @@ pub struct CelestialBodyData {
     pub robotic_construction_capacity: f32,
     /// a map of raw resource types to their monthly demand on the celestial body.
     pub demands: HashMap<Storable, f32>,
+    /// player-configured purchase policies keyed by destination layer and resource.
+    #[serde(default)]
+    pub procurement_policies: HashMap<ProcurementKey, ProcurementPolicy>,
 }
 
 impl CelestialBodyData {
