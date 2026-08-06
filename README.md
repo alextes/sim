@@ -23,5 +23,13 @@ cargo run -- --seed 42 --start playing --ticks 300 \
 
 the capture uses the native wgpu and egui renderers, advances the simulation by
 the requested number of fixed ticks, and does not depend on browser rendering.
-use `--start main-menu` without `--ticks` to capture the main menu. run
-`cargo run -- --help` for all options.
+use `--start main-menu` without `--ticks` to capture the main menu.
+use `--start planet-overview` to capture the player-facing economy inspector.
+run `cargo run -- --help` for all options.
+
+## trying the economy inspector
+
+run `cargo run`, start the game, and press `o` to open the planet overview.
+the overview shows storage pressure, live procurement offers and editable limits,
+dock queues, construction blockage, and infrastructure upkeep. scroll the detail
+pane to inspect every logistics layer and resource.

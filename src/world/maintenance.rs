@@ -12,6 +12,9 @@ impl World {
         }
         self.maintenance_time_accumulator -= intervals as f64 * MAINTENANCE_INTERVAL_SECONDS;
         self.charge_infrastructure_maintenance(intervals);
+        for body in self.celestial_data.values_mut() {
+            body.procurement_spend.clear();
+        }
     }
 
     fn charge_infrastructure_maintenance(&mut self, intervals: u32) {
@@ -72,7 +75,8 @@ mod tests {
     use super::*;
     use crate::location::Point;
     use crate::world::types::{
-        ConstructionLayer, Good, InfrastructureType, ProcurementKey, ProcurementPolicy, Storable,
+        ConstructionLayer, Good, InfrastructureType, ProcurementKey, ProcurementPolicy,
+        RawResource, Storable,
     };
 
     #[test]
@@ -115,6 +119,29 @@ mod tests {
             .maintenance_statuses()
             .iter()
             .all(|status| status.active));
+    }
+
+    #[test]
+    fn modeled_month_resets_procurement_spend() {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let body_id = world.spawn_planet("earth".to_string(), star_id, 8.0, 0.0, 0.0);
+        let key = ProcurementKey {
+            layer: ConstructionLayer::Orbit,
+            resource: Storable::Raw(RawResource::Metals),
+        };
+        world
+            .celestial_data
+            .get_mut(&body_id)
+            .unwrap()
+            .procurement_spend
+            .insert(key, 25.0);
+
+        world.update_infrastructure_maintenance(MAINTENANCE_INTERVAL_SECONDS - 1.0);
+        assert_eq!(world.celestial_data[&body_id].procurement_spend[&key], 25.0);
+
+        world.update_infrastructure_maintenance(1.0);
+        assert!(world.celestial_data[&body_id].procurement_spend.is_empty());
     }
 
     #[test]

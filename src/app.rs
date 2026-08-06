@@ -40,6 +40,7 @@ pub struct CaptureConfig {
     pub width: u32,
     pub height: u32,
     pub start_playing: bool,
+    pub open_planet_overview: bool,
 }
 
 struct CaptureRequest {
@@ -177,6 +178,9 @@ impl App {
         for tick in 1..=config.ticks {
             app.world.update(SIMULATION_DT.as_secs_f64(), tick);
         }
+        if config.open_planet_overview {
+            app.open_planet_overview();
+        }
         app.clock.total_sim_ticks = config.ticks;
         app.viewport.screen_pixel_width = config.width;
         app.viewport.screen_pixel_height = config.height;
@@ -184,7 +188,7 @@ impl App {
             path: config.path,
             width: config.width,
             height: config.height,
-            warmup_frames_remaining: 1,
+            warmup_frames_remaining: 3,
             result: None,
         });
         app
@@ -193,6 +197,15 @@ impl App {
     pub fn start_playing(&mut self) {
         self.game_state = GameState::Playing;
         self.controls.paused = false;
+    }
+
+    pub fn open_planet_overview(&mut self) {
+        let selected = self.world.owned_body_overview_entities().first().copied();
+        if let Some(selected) = selected {
+            self.controls.selection = vec![selected];
+        }
+        self.game_state = GameState::PlanetOverview { selected };
+        self.controls.paused = true;
     }
 
     pub fn finish_capture(&mut self) -> anyhow::Result<()> {

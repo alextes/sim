@@ -12,7 +12,7 @@ use crate::location::PointF64;
 use std::collections::VecDeque;
 
 use crate::ships::ShipType;
-use crate::world::components::{Cargo, CivilianShipAI, MiningRoute};
+use crate::world::components::{Cargo, CivilianShipAI, CivilianShipState, MiningRoute};
 use crate::world::types::{
     BodyProfile, CelestialBodyData, Color, ConstructionLayer, EconomicAccount, EntityType,
     InfrastructureType, Spaceport, SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS,
@@ -32,7 +32,7 @@ pub mod types;
 
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-pub use resources::ResourceSystem;
+pub use resources::{get_resource_base_price, ResourceSystem};
 use tracing::debug;
 
 // Entity identifiers for all game objects.
@@ -453,6 +453,20 @@ impl World {
             infrastructure.orbital_dock_throughput(),
             infrastructure.orbital_berth_capacity(),
         ))
+    }
+
+    /// number of cargo ships currently queued to unload at one body.
+    pub fn ships_waiting_to_unload(&self, entity_id: EntityId) -> usize {
+        self.civilian_ai
+            .values()
+            .filter(|ai| {
+                matches!(
+                    ai.state,
+                    CivilianShipState::WaitingToUnload { destination }
+                        if destination == entity_id
+                )
+            })
+            .count()
     }
 
     /// whether a player build command can enter the queue.

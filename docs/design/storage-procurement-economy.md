@@ -62,6 +62,7 @@ recurring consumption and active construction
 - recurring consumption is a rate describing what population or infrastructure uses over time. it is not itself a purchase order.
 - procurement policy describes what a buyer is willing to acquire.
 - each resource policy supports an enabled state, reserve target, maximum unit price, and optional periodic spend cap.
+- spend caps track completed purchases and reset on the 30-second modeled-month boundary.
 - construction contributes automatic procurement demand for a bounded staging horizon.
 - the player can override procurement limits, but does not need to create each construction order manually.
 

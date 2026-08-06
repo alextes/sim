@@ -667,6 +667,37 @@ impl EntityInfrastructure {
         staged
     }
 
+    /// remaining lifetime construction material for queued work at one layer.
+    pub fn remaining_construction_material(
+        &self,
+        anchor_type: EntityType,
+        requested_layer: ConstructionLayer,
+    ) -> f32 {
+        let mut remaining = 0.0;
+        let mut first_unit = true;
+
+        for (infrastructure_type, count) in &self.build_queue {
+            let Some(layer) = infrastructure_type.construction_layer(anchor_type) else {
+                continue;
+            };
+            let unit_cost = infrastructure_type
+                .definition()
+                .construction_material_cost();
+            for _ in 0..*count {
+                let cost = if first_unit {
+                    first_unit = false;
+                    (unit_cost - self.construction_progress).max(0.0)
+                } else {
+                    unit_cost
+                };
+                if layer == requested_layer {
+                    remaining += cost;
+                }
+            }
+        }
+        remaining
+    }
+
     /// processes the construction queue using capacity and material at the build layer.
     pub fn process_construction(
         &mut self,
@@ -1074,6 +1105,16 @@ mod tests {
             infrastructure
                 .staged_construction_material(EntityType::Planet, ConstructionLayer::Orbit),
             250.0
+        );
+        assert_eq!(
+            infrastructure
+                .remaining_construction_material(EntityType::Planet, ConstructionLayer::Surface),
+            50.0
+        );
+        assert_eq!(
+            infrastructure
+                .remaining_construction_material(EntityType::Planet, ConstructionLayer::Orbit),
+            320.0
         );
     }
 }

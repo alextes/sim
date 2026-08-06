@@ -405,10 +405,8 @@ impl World {
             let mut total_value = 0.0;
 
             for (resource, onboard) in cargo_contents {
-                let Some(quote) = self.procurement_quote(
-                    destination_id,
-                    crate::world::types::ProcurementKey { layer, resource },
-                ) else {
+                let procurement_key = crate::world::types::ProcurementKey { layer, resource };
+                let Some(quote) = self.procurement_quote(destination_id, procurement_key) else {
                     continue;
                 };
                 let remaining = remaining_throughput[&destination_id];
@@ -446,6 +444,13 @@ impl World {
                     .get_mut(&ship_id)
                     .unwrap()
                     .remove(resource, accepted);
+                *self
+                    .celestial_data
+                    .get_mut(&destination_id)
+                    .unwrap()
+                    .procurement_spend
+                    .entry(procurement_key)
+                    .or_insert(0.0) += value;
                 *remaining_throughput.get_mut(&destination_id).unwrap() -= accepted;
                 total_value += value;
                 accepted_cargo.push((resource, accepted));
@@ -604,21 +609,22 @@ mod tests {
         infrastructure
             .infra
             .insert(InfrastructureType::OrbitalDock, 1);
+        let procurement_key = ProcurementKey {
+            layer: ConstructionLayer::Orbit,
+            resource: Storable::Raw(RawResource::Metals),
+        };
         world
             .celestial_data
             .get_mut(&destination_id)
             .unwrap()
             .procurement_policies
             .insert(
-                ProcurementKey {
-                    layer: ConstructionLayer::Orbit,
-                    resource: Storable::Raw(RawResource::Metals),
-                },
+                procurement_key,
                 ProcurementPolicy {
                     enabled: true,
                     reserve_target: 200.0,
                     maximum_unit_price: 100.0,
-                    periodic_spend_cap: None,
+                    periodic_spend_cap: Some(400.0),
                 },
             );
         let ship_id =
@@ -645,6 +651,12 @@ mod tests {
                 .amount_at(ConstructionLayer::Orbit, Storable::Raw(RawResource::Metals)),
             100.0
         );
+        assert_eq!(
+            world.celestial_data[&destination_id].procurement_spend[&procurement_key],
+            400.0
+        );
+        assert!(world.process_ship_sales().is_empty());
+        assert_eq!(world.cargo[&ship_id].current_load, 50.0);
     }
 
     #[test]
@@ -695,6 +707,7 @@ mod tests {
                     destination: destination_id,
                 };
         }
+        assert_eq!(world.ships_waiting_to_unload(destination_id), 2);
 
         let sales = world.process_ship_sales();
 
@@ -702,6 +715,7 @@ mod tests {
         assert_eq!(sales[0].0, first_ship);
         assert_eq!(world.cargo[&first_ship].current_load, 0.0);
         assert_eq!(world.cargo[&second_ship].current_load, 60.0);
+        assert_eq!(world.ships_waiting_to_unload(destination_id), 1);
         assert_eq!(
             world.civilian_ai[&first_ship].state,
             CivilianShipState::Idle

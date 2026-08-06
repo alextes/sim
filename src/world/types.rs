@@ -262,6 +262,9 @@ pub struct CelestialBodyData {
     /// player-configured purchase policies keyed by destination layer and resource.
     #[serde(default)]
     pub procurement_policies: HashMap<ProcurementKey, ProcurementPolicy>,
+    /// credits spent against each policy during the current modeled month.
+    #[serde(default)]
+    pub(crate) procurement_spend: HashMap<ProcurementKey, f64>,
 }
 
 impl CelestialBodyData {

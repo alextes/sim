@@ -347,7 +347,8 @@ impl World {
         let account = self.procurement_account(entity_id);
         let mut budget = self.account_balance(account)?.max(0.0);
         if let Some(spend_cap) = policy.periodic_spend_cap {
-            budget = budget.min(spend_cap.max(0.0));
+            let spent = body.procurement_spend.get(&key).copied().unwrap_or(0.0);
+            budget = budget.min((spend_cap - spent).max(0.0));
         }
         let affordable = (budget / unit_price) as f32;
         let wanted_quantity = shortage.min(free_storage).min(affordable);

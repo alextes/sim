@@ -8,7 +8,7 @@ pub const HELP: &str = "usage: sim [options]\n\
 \n\
 options:\n\
   --seed S             seed world generation and simulation\n\
-  --start STATE        start at main-menu or playing\n\
+  --start STATE        start at main-menu, playing, or planet-overview\n\
   --ticks N            advance N fixed simulation ticks before capture\n\
   --screenshot PATH    save one rendered frame as a PNG and exit\n\
   --width PX           capture width in physical pixels (default: 800)\n\
@@ -19,6 +19,7 @@ options:\n\
 pub enum StartState {
     MainMenu,
     Playing,
+    PlanetOverview,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -62,8 +63,11 @@ impl CliOptions {
                     options.start = Some(match value.as_str() {
                         "main-menu" => StartState::MainMenu,
                         "playing" => StartState::Playing,
+                        "planet-overview" => StartState::PlanetOverview,
                         _ => {
-                            bail!("invalid --start value {value:?}; expected main-menu or playing")
+                            bail!(
+                                "invalid --start value {value:?}; expected main-menu, playing, or planet-overview"
+                            )
                         }
                     });
                 }
@@ -160,5 +164,12 @@ mod tests {
         ])
         .unwrap_err();
         assert!(error.to_string().contains("--start main-menu"));
+    }
+
+    #[test]
+    fn parses_planet_overview_start() {
+        let options = parse(&["--start", "planet-overview"]).unwrap();
+
+        assert_eq!(options.start, Some(StartState::PlanetOverview));
     }
 }

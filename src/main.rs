@@ -56,11 +56,14 @@ fn main() -> anyhow::Result<()> {
             width: options.width,
             height: options.height,
             start_playing: options.start != Some(cli::StartState::MainMenu),
+            open_planet_overview: options.start == Some(cli::StartState::PlanetOverview),
         })
     } else {
         let mut app = app::App::with_seed(options.seed);
-        if options.start == Some(cli::StartState::Playing) {
-            app.start_playing();
+        match options.start {
+            Some(cli::StartState::Playing) => app.start_playing(),
+            Some(cli::StartState::PlanetOverview) => app.open_planet_overview(),
+            Some(cli::StartState::MainMenu) | None => {}
         }
         app
     };

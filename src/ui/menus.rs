@@ -9,14 +9,27 @@ use crate::infrastructure::{player_buildable_infrastructure, InfrastructureCateg
 use crate::palette;
 use crate::ships::{buildable_ships, ShipBuildShortfall, ShipBuildable};
 use crate::world::components::MiningRoute;
-use crate::world::types::{EntityType, InfrastructureType, RawResource};
-use crate::world::{EntityId, World};
+use crate::world::types::{
+    ConstructionLayer, EntityType, Good, InfrastructureType, ProcurementKey, ProcurementPolicy,
+    RawResource, Storable,
+};
+use crate::world::{get_resource_base_price, EntityId, World};
 
 use super::{centered_window, raw_resource_display, storable_display};
 
+const PROCUREMENT_RESOURCES: &[Storable] = &[
+    Storable::Raw(RawResource::Metals),
+    Storable::Raw(RawResource::Organics),
+    Storable::Raw(RawResource::Crystals),
+    Storable::Raw(RawResource::Volatiles),
+    Storable::Good(Good::FuelCells),
+    Storable::Good(Good::ConstructionMaterials),
+    Storable::Good(Good::Food),
+];
+
 pub fn planet_overview(
     ctx: &egui::Context,
-    world: &World,
+    world: &mut World,
     controls: &mut ControlState,
     game_state: &mut GameState,
     selected: Option<EntityId>,
@@ -28,13 +41,18 @@ pub fn planet_overview(
     if current != selected {
         *game_state = GameState::PlanetOverview { selected: current };
     }
+    let screen = ctx.content_rect();
+    let maximum_width = (screen.width() - 32.0).max(640.0);
+    let maximum_height = (screen.height() - 32.0).max(420.0);
+    let window_width = 900.0_f32.min(maximum_width);
+    let window_height = 620.0_f32.min((maximum_height - 120.0).max(380.0));
+    let detail_height = (window_height - 300.0).clamp(180.0, 340.0);
 
     egui::Window::new("planet overview")
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .collapsible(false)
-        .resizable(true)
-        .default_width(720.0)
-        .default_height(460.0)
+        .resizable(false)
+        .fixed_size(egui::Vec2::new(window_width, window_height))
         .show(ctx, |ui| {
             if bodies.is_empty() {
                 ui.colored_label(palette::DGRAY, "no owned planets");
@@ -44,106 +62,124 @@ pub fn planet_overview(
                 return;
             }
 
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(220.0);
-                    ui.label("owned bodies");
-                    ui.separator();
-                    egui::ScrollArea::vertical()
-                        .id_salt("planet_overview_body_list")
-                        .max_height(360.0)
-                        .show(ui, |ui| {
-                            for body in &bodies {
-                                let name = world.get_entity_name(*body).unwrap_or_default();
-                                let selected_row = current == Some(*body);
-                                if ui.selectable_label(selected_row, name).clicked() {
-                                    controls.selection = vec![*body];
-                                    *game_state = GameState::PlanetOverview {
-                                        selected: Some(*body),
-                                    };
-                                }
-                            }
-                        });
-                });
-
-                ui.separator();
-
-                ui.vertical(|ui| {
-                    ui.set_min_width(420.0);
-                    if let Some(body) = current {
-                        planet_detail(ui, world, body);
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            let can_build = world.get_entity_type(body) == Some(EntityType::Planet);
-                            if ui
-                                .add_enabled(can_build, egui::Button::new("build"))
-                                .clicked()
-                            {
-                                controls.selection = vec![body];
-                                *game_state = GameState::BuildMenu {
-                                    mode: BuildMenuMode::Main,
+            if window_width < 900.0 {
+                if let Some(body) = current {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("body");
+                        for candidate in &bodies {
+                            let name = world.get_entity_name(*candidate).unwrap_or_default();
+                            if ui.selectable_label(*candidate == body, name).clicked() {
+                                controls.selection = vec![*candidate];
+                                *game_state = GameState::PlanetOverview {
+                                    selected: Some(*candidate),
                                 };
                             }
-                            let has_shipyard =
-                                world
-                                    .infrastructure
-                                    .get(&body)
-                                    .is_some_and(|infrastructure| {
-                                        infrastructure.operational_units_in_category(
-                                            InfrastructureCategory::Shipbuilding,
-                                        ) > 0
-                                    });
-                            if ui
-                                .add_enabled(has_shipyard, egui::Button::new("shipyard"))
-                                .clicked()
-                            {
-                                controls.selection = vec![body];
-                                *game_state = GameState::ShipyardMenu;
-                            }
-                            if ui.button("close").clicked() {
-                                *game_state = GameState::Playing;
-                            }
-                        });
-                    }
+                        }
+                    });
+                    planet_detail(ui, world, body, detail_height);
+                    ui.separator();
+                    planet_actions(ui, world, controls, game_state, body);
+                }
+            } else {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(120.0);
+                        ui.label("bodies");
+                        ui.separator();
+                        egui::ScrollArea::vertical()
+                            .id_salt("planet_overview_body_list")
+                            .max_height(detail_height)
+                            .show(ui, |ui| {
+                                for body in &bodies {
+                                    let name = world.get_entity_name(*body).unwrap_or_default();
+                                    let selected_row = current == Some(*body);
+                                    if ui.selectable_label(selected_row, name).clicked() {
+                                        controls.selection = vec![*body];
+                                        *game_state = GameState::PlanetOverview {
+                                            selected: Some(*body),
+                                        };
+                                    }
+                                }
+                            });
+                    });
+
+                    ui.separator();
+
+                    ui.vertical(|ui| {
+                        let detail_width = (window_width - 190.0).max(400.0);
+                        ui.set_width(detail_width);
+                        if let Some(body) = current {
+                            planet_detail(ui, world, body, detail_height);
+                            ui.separator();
+                            planet_actions(ui, world, controls, game_state, body);
+                        }
+                    });
                 });
-            });
+            }
         });
 }
 
-fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
+fn planet_actions(
+    ui: &mut egui::Ui,
+    world: &World,
+    controls: &mut ControlState,
+    game_state: &mut GameState,
+    body: EntityId,
+) {
+    ui.horizontal(|ui| {
+        let can_build = world.get_entity_type(body) == Some(EntityType::Planet);
+        if ui
+            .add_enabled(can_build, egui::Button::new("build"))
+            .clicked()
+        {
+            controls.selection = vec![body];
+            *game_state = GameState::BuildMenu {
+                mode: BuildMenuMode::Main,
+            };
+        }
+        let has_shipyard = world
+            .infrastructure
+            .get(&body)
+            .is_some_and(|infrastructure| {
+                infrastructure.operational_units_in_category(InfrastructureCategory::Shipbuilding)
+                    > 0
+            });
+        if ui
+            .add_enabled(has_shipyard, egui::Button::new("shipyard"))
+            .clicked()
+        {
+            controls.selection = vec![body];
+            *game_state = GameState::ShipyardMenu;
+        }
+        if ui.button("close").clicked() {
+            *game_state = GameState::Playing;
+        }
+    });
+}
+
+fn planet_detail(ui: &mut egui::Ui, world: &mut World, body: EntityId, detail_height: f32) {
     let name = world.get_entity_name(body).unwrap_or_default();
-    ui.heading(name);
-    if let Some(entity_type) = world.get_entity_type(body) {
-        ui.colored_label(palette::GRAY, body_type_label(entity_type));
-    }
+    let Some(entity_type) = world.get_entity_type(body) else {
+        return;
+    };
 
     egui::ScrollArea::vertical()
         .id_salt("planet_overview_detail")
-        .max_height(350.0)
+        .min_scrolled_height(detail_height)
+        .max_height(detail_height)
         .show(ui, |ui| {
+            ui.heading(name);
+            ui.colored_label(palette::GRAY, body_type_label(entity_type));
             if let Some(data) = world.celestial_data.get(&body) {
-                ui.label(format!("population: {:.2}m", data.population));
+                ui.label(format!("population: {:.2}m", data.population / 1_000_000.0));
                 ui.label(format!("civ credits: {:.0}", data.credits));
-                if let Some(entity_type) = world.get_entity_type(body) {
-                    if let Some(primary_layer) =
-                        crate::world::types::ConstructionLayer::primary_for(entity_type)
-                    {
-                        if let Some((capacity, used)) = world.storage_capacity(body, primary_layer)
-                        {
-                            ui.label(format!("{primary_layer} storage: {used:.1}/{capacity:.1}"));
-                        }
-                    }
-                }
-                if let Some((capacity, used)) =
-                    world.storage_capacity(body, crate::world::types::ConstructionLayer::Orbit)
-                {
-                    ui.label(format!("orbit storage: {used:.1}/{capacity:.1}"));
-                }
-                if let Some((throughput, berths)) = world.orbital_dock_capacity(body) {
-                    ui.label(format!(
-                        "orbital docks: {throughput:.1} unload/interval, {berths} berths"
-                    ));
-                }
+            }
+
+            storage_and_docks(ui, world, body, entity_type);
+            procurement_controls(ui, world, body, entity_type);
+            construction_status(ui, world, body, entity_type);
+
+            if let Some(data) = world.celestial_data.get(&body) {
                 if !data.yields.is_empty() {
                     ui.separator();
                     ui.label("yields");
@@ -156,7 +192,7 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                 }
                 let primary_stocks = world
                     .get_entity_type(body)
-                    .and_then(crate::world::types::ConstructionLayer::primary_for)
+                    .and_then(ConstructionLayer::primary_for)
                     .map(|layer| data.ordered_stocks_at(layer))
                     .unwrap_or_default();
                 if !primary_stocks.is_empty() {
@@ -171,8 +207,7 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                         ui.colored_label(color, format!("{label}: {amount:.1}"));
                     }
                 }
-                let orbital_stocks =
-                    data.ordered_stocks_at(crate::world::types::ConstructionLayer::Orbit);
+                let orbital_stocks = data.ordered_stocks_at(ConstructionLayer::Orbit);
                 if !orbital_stocks.is_empty() {
                     ui.separator();
                     ui.label("orbital stocks");
@@ -188,7 +223,7 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                 ui.label("infrastructure");
                 if let Some(capacity) = world.infrastructure_capacity(body) {
                     ui.label(format!(
-                        "capacity: {}/{} ({} active, {} queued)",
+                        "capacity: {}/{} ({} completed, {} queued)",
                         capacity.allocated(),
                         capacity.limit,
                         capacity.completed,
@@ -198,28 +233,241 @@ fn planet_detail(ui: &mut egui::Ui, world: &World, body: EntityId) {
                 if infrastructure.infra.is_empty() {
                     ui.colored_label(palette::DGRAY, "(none)");
                 } else {
-                    let mut infra: Vec<_> = infrastructure.infra.iter().collect();
-                    infra.sort_by_key(|(infrastructure, _)| format!("{infrastructure:?}"));
-                    for (infrastructure, count) in infra {
-                        let name = infrastructure.definition().name;
-                        ui.colored_label(palette::GRAY, format!("{name}: {count}"));
-                    }
-                }
-
-                ui.separator();
-                ui.label("construction queue");
-                if infrastructure.build_queue.is_empty() {
-                    ui.colored_label(palette::DGRAY, "(empty)");
-                } else {
-                    for (infrastructure_type, count) in &infrastructure.build_queue {
-                        ui.label(format!(
-                            "{} x{count}",
-                            infrastructure_type.definition().name
-                        ));
+                    let statuses = infrastructure.maintenance_statuses();
+                    let total_upkeep: f64 = statuses
+                        .iter()
+                        .map(|status| status.upkeep_per_interval)
+                        .sum();
+                    let total_arrears: f64 = statuses.iter().map(|status| status.arrears).sum();
+                    ui.label(format!(
+                        "upkeep: {total_upkeep:.1} credits/month, arrears: {total_arrears:.1}"
+                    ));
+                    for status in statuses {
+                        let name = status.infrastructure_type.definition().name;
+                        let state = if status.active { "active" } else { "inactive" };
+                        let color = if status.active {
+                            palette::GRAY
+                        } else {
+                            palette::RED
+                        };
+                        ui.colored_label(
+                            color,
+                            format!(
+                                "{name}: {} ({state}, {:.1}/month, {:.1} arrears)",
+                                status.completed_units, status.upkeep_per_interval, status.arrears
+                            ),
+                        );
                     }
                 }
             }
         });
+}
+
+fn storage_and_docks(ui: &mut egui::Ui, world: &World, body: EntityId, entity_type: EntityType) {
+    ui.separator();
+    ui.label("storage and docks");
+    for &layer in ConstructionLayer::available_for(entity_type) {
+        let Some((capacity, used)) = world.storage_capacity(body, layer) else {
+            continue;
+        };
+        let free = (capacity - used).max(0.0);
+        let accepting = world
+            .infrastructure
+            .get(&body)
+            .map(|infrastructure| infrastructure.accepting_storage_capacity(layer))
+            .unwrap_or(0.0);
+        let text = format!("{layer}: {used:.1}/{capacity:.1}, {free:.1} free");
+        if accepting < capacity {
+            ui.colored_label(palette::RED, format!("{text} (new deposits paused)"));
+        } else {
+            ui.label(text);
+        }
+    }
+    if let Some((throughput, berths)) = world.orbital_dock_capacity(body) {
+        let waiting = world.ships_waiting_to_unload(body);
+        ui.label(format!(
+            "unload: {throughput:.1}/interval | {berths} berths | {waiting} waiting"
+        ));
+    }
+}
+
+fn procurement_controls(
+    ui: &mut egui::Ui,
+    world: &mut World,
+    body: EntityId,
+    entity_type: EntityType,
+) {
+    ui.separator();
+    ui.label("procurement");
+    ui.colored_label(
+        palette::DGRAY,
+        "reserve | price ceiling | optional monthly cap",
+    );
+
+    let mut updates = Vec::new();
+    for &layer in ConstructionLayer::available_for(entity_type) {
+        egui::CollapsingHeader::new(format!("{layer} procurement"))
+            .default_open(true)
+            .show(ui, |ui| {
+                for &resource in PROCUREMENT_RESOURCES {
+                    if let Some(update) = procurement_control_row(ui, world, body, layer, resource)
+                    {
+                        updates.push(update);
+                    }
+                }
+            });
+    }
+
+    if let Some(data) = world.celestial_data.get_mut(&body) {
+        for (key, policy) in updates {
+            if let Some(policy) = policy {
+                data.procurement_policies.insert(key, policy);
+            } else {
+                data.procurement_policies.remove(&key);
+            }
+        }
+    }
+}
+
+fn procurement_control_row(
+    ui: &mut egui::Ui,
+    world: &World,
+    body: EntityId,
+    layer: ConstructionLayer,
+    resource: Storable,
+) -> Option<(ProcurementKey, Option<ProcurementPolicy>)> {
+    let key = ProcurementKey { layer, resource };
+    let existing = world
+        .celestial_data
+        .get(&body)
+        .and_then(|data| data.procurement_policies.get(&key).copied());
+    let automatic_target = if resource == Storable::Good(Good::ConstructionMaterials) {
+        world.construction_procurement_target(body, layer)
+    } else {
+        0.0
+    };
+    let mut policy = existing.unwrap_or(ProcurementPolicy {
+        enabled: automatic_target > 0.0,
+        reserve_target: automatic_target.max(100.0),
+        maximum_unit_price: get_resource_base_price(resource) * 4.0,
+        periodic_spend_cap: None,
+    });
+    policy.reserve_target = policy.reserve_target.max(automatic_target);
+    let stock = world
+        .celestial_data
+        .get(&body)
+        .map(|data| data.amount_at(layer, resource))
+        .unwrap_or(0.0);
+    let quote = world.procurement_quote(body, key);
+    let mut changed = false;
+    let mut reset = false;
+
+    ui.group(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            changed |= ui.checkbox(&mut policy.enabled, "buy").changed();
+            let (label, color) = storable_display(resource);
+            ui.colored_label(color, label);
+            ui.label(format!("stock {stock:.1}"));
+            if let Some(quote) = quote {
+                ui.label(format!(
+                    "offer {:.1} @ {:.2}",
+                    quote.wanted_quantity, quote.unit_price
+                ));
+            } else {
+                ui.colored_label(palette::DGRAY, "offer closed");
+            }
+            reset = ui
+                .add_enabled(existing.is_some(), egui::Button::new("reset"))
+                .clicked();
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(18.0);
+            ui.label("reserve");
+            changed |= ui
+                .add(egui::DragValue::new(&mut policy.reserve_target).speed(1.0))
+                .changed();
+            ui.label("max price");
+            changed |= ui
+                .add(egui::DragValue::new(&mut policy.maximum_unit_price).speed(0.25))
+                .changed();
+
+            let mut cap_enabled = policy.periodic_spend_cap.is_some();
+            let mut cap = policy.periodic_spend_cap.unwrap_or_else(|| {
+                (policy.reserve_target as f64 * policy.maximum_unit_price).max(1.0)
+            });
+            changed |= ui.checkbox(&mut cap_enabled, "spend cap").changed();
+            if cap_enabled {
+                changed |= ui.add(egui::DragValue::new(&mut cap).speed(1.0)).changed();
+            } else {
+                ui.colored_label(palette::DGRAY, "none");
+            }
+            policy.periodic_spend_cap = cap_enabled.then_some(cap.max(0.0));
+        });
+    });
+    policy.reserve_target = policy.reserve_target.max(0.0);
+    policy.maximum_unit_price = policy.maximum_unit_price.max(0.0);
+
+    if reset {
+        Some((key, None))
+    } else if changed {
+        Some((key, Some(policy)))
+    } else {
+        None
+    }
+}
+
+fn construction_status(ui: &mut egui::Ui, world: &World, body: EntityId, entity_type: EntityType) {
+    let Some(infrastructure) = world.infrastructure.get(&body) else {
+        return;
+    };
+    ui.separator();
+    ui.label("construction queue");
+    if infrastructure.build_queue.is_empty() {
+        ui.colored_label(palette::DGRAY, "(empty)");
+        return;
+    }
+
+    if let Some((infrastructure_type, _)) = infrastructure.build_queue.front() {
+        if let Some(layer) = infrastructure_type.construction_layer(entity_type) {
+            let remaining = (infrastructure_type
+                .definition()
+                .construction_material_cost()
+                - infrastructure.construction_progress)
+                .max(0.0);
+            let available = world
+                .celestial_data
+                .get(&body)
+                .map(|data| data.amount_at(layer, Storable::Good(Good::ConstructionMaterials)))
+                .unwrap_or(0.0);
+            let shortfall = (remaining - available).max(0.0);
+            if shortfall > 0.0 {
+                ui.colored_label(
+                    palette::RED,
+                    format!(
+                        "blocked: {:.1} more construction materials needed at {layer}",
+                        shortfall
+                    ),
+                );
+            } else {
+                ui.label(format!("front item supplied at {layer}"));
+            }
+        }
+    }
+
+    for &layer in ConstructionLayer::available_for(entity_type) {
+        let lifetime = infrastructure.remaining_construction_material(entity_type, layer);
+        if lifetime > 0.0 {
+            ui.label(format!(
+                "lifetime project cost remaining at {layer}: {lifetime:.1} construction materials"
+            ));
+        }
+    }
+    for (infrastructure_type, count) in &infrastructure.build_queue {
+        ui.label(format!(
+            "{} x{count}",
+            infrastructure_type.definition().name
+        ));
+    }
 }
 
 fn body_type_label(entity_type: EntityType) -> &'static str {
@@ -700,4 +948,25 @@ fn list_bodies(world: &World) -> Vec<EntityId> {
     let mut bodies: Vec<EntityId> = world.celestial_data.keys().copied().collect();
     bodies.sort_unstable();
     bodies
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn procurement_resources_follow_v1_display_order() {
+        assert_eq!(
+            PROCUREMENT_RESOURCES,
+            &[
+                Storable::Raw(RawResource::Metals),
+                Storable::Raw(RawResource::Organics),
+                Storable::Raw(RawResource::Crystals),
+                Storable::Raw(RawResource::Volatiles),
+                Storable::Good(Good::FuelCells),
+                Storable::Good(Good::ConstructionMaterials),
+                Storable::Good(Good::Food),
+            ]
+        );
+    }
 }
