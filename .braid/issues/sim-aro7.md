@@ -3,11 +3,13 @@ schema_version: 9
 id: sim-aro7
 title: add procurement policies and economic accounts
 priority: P2
-status: open
+status: done
 deps:
 - sim-csgb
 owner: null
 created_at: 2026-08-04T16:45:26.595235Z
+started_at: 2026-08-06T09:47:05.525403Z
+completed_at: 2026-08-06T09:52:15.842454Z
 acceptance:
 - recurring consumption rates are not mutated while the simulation runs
 - procurement policy supports reserve target, maximum unit price, enabled state, and optional periodic spend cap
