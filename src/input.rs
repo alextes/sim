@@ -9,7 +9,7 @@ use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
+use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode, PlanetOverviewTab};
 use crate::command::Command;
 use crate::control_state::ControlState;
 use crate::infrastructure::InfrastructureCategory;
@@ -238,7 +238,10 @@ fn open_planet_overview(world: &World, controls: &ControlState, game_state: &mut
         .filter(|entity| bodies.contains(entity))
         .or_else(|| bodies.first().copied());
 
-    *game_state = GameState::PlanetOverview { selected };
+    *game_state = GameState::PlanetOverview {
+        selected,
+        tab: PlanetOverviewTab::Overview,
+    };
 }
 
 /// (b) open the build menu if the selection is a player-controlled body.
@@ -584,7 +587,8 @@ mod tests {
         assert_eq!(
             game_state,
             GameState::PlanetOverview {
-                selected: Some(mars_id)
+                selected: Some(mars_id),
+                tab: PlanetOverviewTab::Overview,
             }
         );
     }
@@ -604,7 +608,8 @@ mod tests {
         assert_eq!(
             game_state,
             GameState::PlanetOverview {
-                selected: Some(earth_id)
+                selected: Some(earth_id),
+                tab: PlanetOverviewTab::Overview,
             }
         );
     }
@@ -612,7 +617,10 @@ mod tests {
     #[test]
     fn escape_closes_planet_overview() {
         let mut controls = ControlState::new(vec![]);
-        let mut game_state = GameState::PlanetOverview { selected: Some(42) };
+        let mut game_state = GameState::PlanetOverview {
+            selected: Some(42),
+            tab: PlanetOverviewTab::Logistics,
+        };
 
         handle_escape(&mut game_state, &mut controls);
 

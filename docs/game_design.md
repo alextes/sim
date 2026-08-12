@@ -29,6 +29,12 @@ the broader faction model distinguishes three kinds of independent power:
 - keep shipyards and build flows simple until the menu model is redesigned.
 - separate worked-out direction from maybe-later ideas so agents can safely pick up focused work.
 
+## interface presentation
+
+- the interface uses a bundled monospace pixel font for a consistent retro technical character across platforms.
+- dense management views should lead with a compact status overview and separate controls or deep operational detail into named tabs.
+- important identity, navigation, and actions remain visible while the active tab scrolls independently.
+
 ## economy
 
 the economy should feel alive: populated bodies create demand, local stockpiles influence prices, and civilian ships respond to profitable mining and trade opportunities.

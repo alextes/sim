@@ -6,6 +6,9 @@
 use winit::event::WindowEvent;
 use winit::window::Window;
 
+const DEPARTURE_MONO: &[u8] = include_bytes!("../assets/fonts/DepartureMono-Regular.otf");
+const UI_FONT_NAME: &str = "departure mono";
+
 pub struct EguiLayer {
     ctx: egui::Context,
     state: egui_winit::State,
@@ -29,6 +32,7 @@ impl EguiLayer {
         native_pixels_per_point: Option<f32>,
     ) -> Self {
         let ctx = egui::Context::default();
+        configure_fonts(&ctx);
         let viewport_id = ctx.viewport_id();
         let deterministic_capture = native_pixels_per_point.is_some();
         let state = egui_winit::State::new(
@@ -131,4 +135,25 @@ impl EguiLayer {
 
         (user_buffers, repaint_now)
     }
+}
+
+fn configure_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        UI_FONT_NAME.to_owned(),
+        std::sync::Arc::new(
+            egui::FontData::from_static(DEPARTURE_MONO).tweak(egui::FontTweak {
+                hinting_override: Some(true),
+                ..Default::default()
+            }),
+        ),
+    );
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        fonts
+            .families
+            .get_mut(&family)
+            .expect("default font family should exist")
+            .insert(0, UI_FONT_NAME.to_owned());
+    }
+    ctx.set_fonts(fonts);
 }

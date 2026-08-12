@@ -20,7 +20,10 @@ owned bodies:
 planet overview:
 
 - the player needs a scrollable overview of owned bodies.
-- each row or detail panel should show name, body kind, ownership, population, civilian credits, resource yields, stocks, and infrastructure.
+- the selected body's name and kind remain visible above three focused tabs instead of sharing one long detail list.
+- overview shows identity, population, civilian credits, resource yields, energy, infrastructure capacity, and infrastructure condition.
+- logistics shows storage capacity, dock throughput, waiting ships, layer-specific stocks, and construction supply status.
+- procurement contains the editable reserve, price ceiling, spending cap, current stock, and open-offer state for each layer and resource.
 - selecting a body from the overview should make it the active body for inspection and actions.
 - actions should include opening the build flow and opening an associated shipyard when one exists.
 

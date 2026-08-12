@@ -75,11 +75,20 @@ pub enum GameState {
     },
     PlanetOverview {
         selected: Option<world::EntityId>,
+        tab: PlanetOverviewTab,
     },
     MiningRouteMenu {
         ship_id: world::EntityId,
         mode: MiningRouteMenuMode,
     },
+}
+
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+pub enum PlanetOverviewTab {
+    #[default]
+    Overview,
+    Logistics,
+    Procurement,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -204,7 +213,10 @@ impl App {
         if let Some(selected) = selected {
             self.controls.selection = vec![selected];
         }
-        self.game_state = GameState::PlanetOverview { selected };
+        self.game_state = GameState::PlanetOverview {
+            selected,
+            tab: PlanetOverviewTab::Overview,
+        };
         self.controls.paused = true;
     }
 

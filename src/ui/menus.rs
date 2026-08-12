@@ -2,7 +2,7 @@
 //! drive the `GameState` machine and issue world commands, replacing the old
 //! sdl key handlers.
 
-use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
+use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode, PlanetOverviewTab};
 use crate::command::Command;
 use crate::control_state::ControlState;
 use crate::infrastructure::{player_buildable_infrastructure, InfrastructureCategory};
@@ -33,20 +33,27 @@ pub fn planet_overview(
     controls: &mut ControlState,
     game_state: &mut GameState,
     selected: Option<EntityId>,
+    tab: PlanetOverviewTab,
 ) {
     let bodies = world.owned_body_overview_entities();
     let current = selected
         .filter(|entity| bodies.contains(entity))
         .or_else(|| bodies.first().copied());
     if current != selected {
-        *game_state = GameState::PlanetOverview { selected: current };
+        *game_state = GameState::PlanetOverview {
+            selected: current,
+            tab,
+        };
     }
     let screen = ctx.content_rect();
-    let maximum_width = (screen.width() - 32.0).max(640.0);
-    let maximum_height = (screen.height() - 32.0).max(420.0);
-    let window_width = 900.0_f32.min(maximum_width);
-    let window_height = 620.0_f32.min((maximum_height - 120.0).max(380.0));
-    let detail_height = (window_height - 300.0).clamp(180.0, 340.0);
+    let window_width = 900.0_f32.min((screen.width() - 32.0).max(320.0));
+    let window_height = 620.0_f32.min((screen.height() - 64.0).max(220.0));
+    let narrow_layout = window_width < 540.0;
+    let detail_height = if narrow_layout {
+        (window_height - 125.0).max(90.0)
+    } else {
+        (window_height - 120.0).max(140.0)
+    };
 
     egui::Window::new("planet overview")
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -62,21 +69,24 @@ pub fn planet_overview(
                 return;
             }
 
-            if window_width < 900.0 {
+            if narrow_layout {
                 if let Some(body) = current {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("body");
-                        for candidate in &bodies {
-                            let name = world.get_entity_name(*candidate).unwrap_or_default();
-                            if ui.selectable_label(*candidate == body, name).clicked() {
-                                controls.selection = vec![*candidate];
-                                *game_state = GameState::PlanetOverview {
-                                    selected: Some(*candidate),
-                                };
+                    if bodies.len() > 1 {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("body");
+                            for candidate in &bodies {
+                                let name = world.get_entity_name(*candidate).unwrap_or_default();
+                                if ui.selectable_label(*candidate == body, name).clicked() {
+                                    controls.selection = vec![*candidate];
+                                    *game_state = GameState::PlanetOverview {
+                                        selected: Some(*candidate),
+                                        tab,
+                                    };
+                                }
                             }
-                        }
-                    });
-                    planet_detail(ui, world, body, detail_height);
+                        });
+                    }
+                    planet_detail(ui, world, game_state, body, tab, detail_height);
                     ui.separator();
                     planet_actions(ui, world, controls, game_state, body);
                 }
@@ -97,6 +107,7 @@ pub fn planet_overview(
                                         controls.selection = vec![*body];
                                         *game_state = GameState::PlanetOverview {
                                             selected: Some(*body),
+                                            tab,
                                         };
                                     }
                                 }
@@ -109,7 +120,7 @@ pub fn planet_overview(
                         let detail_width = (window_width - 190.0).max(400.0);
                         ui.set_width(detail_width);
                         if let Some(body) = current {
-                            planet_detail(ui, world, body, detail_height);
+                            planet_detail(ui, world, game_state, body, tab, detail_height);
                             ui.separator();
                             planet_actions(ui, world, controls, game_state, body);
                         }
@@ -157,114 +168,209 @@ fn planet_actions(
     });
 }
 
-fn planet_detail(ui: &mut egui::Ui, world: &mut World, body: EntityId, detail_height: f32) {
+fn planet_detail(
+    ui: &mut egui::Ui,
+    world: &mut World,
+    game_state: &mut GameState,
+    body: EntityId,
+    tab: PlanetOverviewTab,
+    detail_height: f32,
+) {
     let name = world.get_entity_name(body).unwrap_or_default();
     let Some(entity_type) = world.get_entity_type(body) else {
         return;
     };
 
+    ui.horizontal_wrapped(|ui| {
+        ui.heading(name);
+        ui.colored_label(palette::GRAY, body_type_label(entity_type));
+    });
+
+    let mut active_tab = tab;
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut active_tab, PlanetOverviewTab::Overview, "overview");
+        ui.selectable_value(&mut active_tab, PlanetOverviewTab::Logistics, "logistics");
+        ui.selectable_value(
+            &mut active_tab,
+            PlanetOverviewTab::Procurement,
+            "procurement",
+        );
+    });
+    ui.separator();
+
+    if active_tab != tab {
+        *game_state = GameState::PlanetOverview {
+            selected: Some(body),
+            tab: active_tab,
+        };
+    }
+
     egui::ScrollArea::vertical()
-        .id_salt("planet_overview_detail")
+        .id_salt(("planet_overview_detail", body, active_tab))
         .min_scrolled_height(detail_height)
         .max_height(detail_height)
-        .show(ui, |ui| {
-            ui.heading(name);
-            ui.colored_label(palette::GRAY, body_type_label(entity_type));
-            if let Some(data) = world.celestial_data.get(&body) {
-                ui.label(format!("population: {:.2}m", data.population / 1_000_000.0));
-                ui.label(format!("civ credits: {:.0}", data.credits));
-            }
-
-            storage_and_docks(ui, world, body, entity_type);
-            procurement_controls(ui, world, body, entity_type);
-            construction_status(ui, world, body, entity_type);
-
-            if let Some(data) = world.celestial_data.get(&body) {
-                if !data.yields.is_empty() {
-                    ui.separator();
-                    ui.label("yields");
-                    let mut yields: Vec<_> = data.yields.iter().collect();
-                    yields.sort_by_key(|(resource, _)| **resource);
-                    for (resource, grade) in yields {
-                        let (label, color) = raw_resource_display(*resource);
-                        ui.colored_label(color, format!("{label}: {grade:.2}"));
-                    }
-                }
-                let primary_stocks = world
-                    .get_entity_type(body)
-                    .and_then(ConstructionLayer::primary_for)
-                    .map(|layer| data.ordered_stocks_at(layer))
-                    .unwrap_or_default();
-                if !primary_stocks.is_empty() {
-                    ui.separator();
-                    let stock_label = match world.get_entity_type(body) {
-                        Some(EntityType::GasGiant) => "upper-atmosphere stocks",
-                        _ => "surface stocks",
-                    };
-                    ui.label(stock_label);
-                    for (storable, amount) in primary_stocks {
-                        let (label, color) = storable_display(storable);
-                        ui.colored_label(color, format!("{label}: {amount:.1}"));
-                    }
-                }
-                let orbital_stocks = data.ordered_stocks_at(ConstructionLayer::Orbit);
-                if !orbital_stocks.is_empty() {
-                    ui.separator();
-                    ui.label("orbital stocks");
-                    for (storable, amount) in orbital_stocks {
-                        let (label, color) = storable_display(storable);
-                        ui.colored_label(color, format!("{label}: {amount:.1}"));
-                    }
-                }
-            }
-
-            if let Some(infrastructure) = world.infrastructure.get(&body) {
-                ui.separator();
-                ui.label("infrastructure");
-                if let Some(capacity) = world.infrastructure_capacity(body) {
-                    ui.label(format!(
-                        "capacity: {}/{} ({} completed, {} queued)",
-                        capacity.allocated(),
-                        capacity.limit,
-                        capacity.completed,
-                        capacity.queued
-                    ));
-                }
-                if infrastructure.infra.is_empty() {
-                    ui.colored_label(palette::DGRAY, "(none)");
-                } else {
-                    let statuses = infrastructure.maintenance_statuses();
-                    let total_upkeep: f64 = statuses
-                        .iter()
-                        .map(|status| status.upkeep_per_interval)
-                        .sum();
-                    let total_arrears: f64 = statuses.iter().map(|status| status.arrears).sum();
-                    ui.label(format!(
-                        "upkeep: {total_upkeep:.1} credits/month, arrears: {total_arrears:.1}"
-                    ));
-                    for status in statuses {
-                        let name = status.infrastructure_type.definition().name;
-                        let state = if status.active { "active" } else { "inactive" };
-                        let color = if status.active {
-                            palette::GRAY
-                        } else {
-                            palette::RED
-                        };
-                        ui.colored_label(
-                            color,
-                            format!(
-                                "{name}: {} ({state}, {:.1}/month, {:.1} arrears)",
-                                status.completed_units, status.upkeep_per_interval, status.arrears
-                            ),
-                        );
-                    }
-                }
-            }
+        .show(ui, |ui| match active_tab {
+            PlanetOverviewTab::Overview => overview_tab(ui, world, body, entity_type),
+            PlanetOverviewTab::Logistics => logistics_tab(ui, world, body, entity_type),
+            PlanetOverviewTab::Procurement => procurement_controls(ui, world, body, entity_type),
         });
 }
 
-fn storage_and_docks(ui: &mut egui::Ui, world: &World, body: EntityId, entity_type: EntityType) {
+fn overview_tab(ui: &mut egui::Ui, world: &World, body: EntityId, entity_type: EntityType) {
+    ui.label("current stats");
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        egui::Grid::new(("planet_stats", body))
+            .num_columns(2)
+            .striped(true)
+            .show(ui, |ui| {
+                stat_row(ui, "body class", body_type_label(entity_type));
+                let system = world
+                    .find_star_for_entity(body)
+                    .and_then(|star| world.get_entity_name(star))
+                    .unwrap_or_else(|| "unknown".to_owned());
+                stat_row(ui, "system", system);
+                if let Some(data) = world.celestial_data.get(&body) {
+                    stat_row(
+                        ui,
+                        "population",
+                        format!("{:.2}m", data.population / 1_000_000.0),
+                    );
+                    stat_row(ui, "civilian credits", format!("{:.0}", data.credits));
+                }
+                stat_row(
+                    ui,
+                    "energy generation",
+                    format!("{:.1}", world.energy_generation_for_body(body)),
+                );
+                if entity_type == EntityType::Planet {
+                    stat_row(ui, "moons", world.direct_moon_count(body).to_string());
+                }
+                if let Some(capacity) = world.infrastructure_capacity(body) {
+                    stat_row(
+                        ui,
+                        "infrastructure load",
+                        format!("{}/{}", capacity.allocated(), capacity.limit),
+                    );
+                    stat_row(ui, "completed units", capacity.completed.to_string());
+                    stat_row(ui, "queued units", capacity.queued.to_string());
+                }
+            });
+    });
+
+    if let Some(data) = world.celestial_data.get(&body) {
+        ui.add_space(8.0);
+        ui.label("resource profile");
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            if data.yields.is_empty() {
+                ui.colored_label(palette::DGRAY, "no known yields");
+                return;
+            }
+            let mut yields: Vec<_> = data.yields.iter().collect();
+            yields.sort_by_key(|(resource, _)| **resource);
+            egui::Grid::new(("planet_yields", body))
+                .num_columns(2)
+                .striped(true)
+                .show(ui, |ui| {
+                    for (resource, grade) in yields {
+                        let (label, color) = raw_resource_display(*resource);
+                        ui.colored_label(color, label);
+                        ui.label(format!("grade {grade:.2}"));
+                        ui.end_row();
+                    }
+                });
+        });
+    }
+
+    infrastructure_overview(ui, world, body);
+}
+
+fn stat_row(ui: &mut egui::Ui, label: &str, value: impl Into<egui::WidgetText>) {
+    ui.colored_label(palette::DGRAY, label);
+    ui.label(value);
+    ui.end_row();
+}
+
+fn infrastructure_overview(ui: &mut egui::Ui, world: &World, body: EntityId) {
+    let Some(infrastructure) = world.infrastructure.get(&body) else {
+        return;
+    };
+    ui.add_space(8.0);
+    ui.label("infrastructure");
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        if infrastructure.infra.is_empty() {
+            ui.colored_label(palette::DGRAY, "none");
+            return;
+        }
+        let statuses = infrastructure.maintenance_statuses();
+        let total_upkeep: f64 = statuses
+            .iter()
+            .map(|status| status.upkeep_per_interval)
+            .sum();
+        let total_arrears: f64 = statuses.iter().map(|status| status.arrears).sum();
+        ui.label(format!(
+            "upkeep {total_upkeep:.1} credits/month | arrears {total_arrears:.1}"
+        ));
+        for status in statuses {
+            let name = status.infrastructure_type.definition().name;
+            let state = if status.active { "active" } else { "inactive" };
+            let color = if status.active {
+                palette::GRAY
+            } else {
+                palette::RED
+            };
+            ui.colored_label(
+                color,
+                format!(
+                    "{name} x{} | {state} | {:.1}/month | {:.1} arrears",
+                    status.completed_units, status.upkeep_per_interval, status.arrears
+                ),
+            );
+        }
+    });
+}
+
+fn logistics_tab(ui: &mut egui::Ui, world: &World, body: EntityId, entity_type: EntityType) {
+    storage_and_docks(ui, world, body, entity_type);
+    stockpiles(ui, world, body, entity_type);
+    construction_status(ui, world, body, entity_type);
+}
+
+fn stockpiles(ui: &mut egui::Ui, world: &World, body: EntityId, entity_type: EntityType) {
+    let Some(data) = world.celestial_data.get(&body) else {
+        return;
+    };
+    let primary_stocks = ConstructionLayer::primary_for(entity_type)
+        .map(|layer| data.ordered_stocks_at(layer))
+        .unwrap_or_default();
+    let orbital_stocks = data.ordered_stocks_at(ConstructionLayer::Orbit);
+
     ui.separator();
+    ui.label("stockpiles");
+    if primary_stocks.is_empty() && orbital_stocks.is_empty() {
+        ui.colored_label(palette::DGRAY, "empty");
+        return;
+    }
+    if !primary_stocks.is_empty() {
+        let stock_label = match entity_type {
+            EntityType::GasGiant => "upper atmosphere",
+            _ => "surface",
+        };
+        ui.colored_label(palette::DGRAY, stock_label);
+        for (storable, amount) in primary_stocks {
+            let (label, color) = storable_display(storable);
+            ui.colored_label(color, format!("{label}: {amount:.1}"));
+        }
+    }
+    if !orbital_stocks.is_empty() {
+        ui.colored_label(palette::DGRAY, "orbit");
+        for (storable, amount) in orbital_stocks {
+            let (label, color) = storable_display(storable);
+            ui.colored_label(color, format!("{label}: {amount:.1}"));
+        }
+    }
+}
+
+fn storage_and_docks(ui: &mut egui::Ui, world: &World, body: EntityId, entity_type: EntityType) {
     ui.label("storage and docks");
     for &layer in ConstructionLayer::available_for(entity_type) {
         let Some((capacity, used)) = world.storage_capacity(body, layer) else {
@@ -297,7 +403,6 @@ fn procurement_controls(
     body: EntityId,
     entity_type: EntityType,
 ) {
-    ui.separator();
     ui.label("procurement");
     ui.colored_label(
         palette::DGRAY,
