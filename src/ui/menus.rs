@@ -38,55 +38,124 @@ pub fn owned_bodies_dialog(
     }
 
     let bodies = world.owned_body_overview_entities();
+    ui_state.normalize_owned_body_cursor(&bodies);
+    if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) {
+        ui_state.move_owned_body_cursor(&bodies, true);
+    }
+    if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) {
+        ui_state.move_owned_body_cursor(&bodies, false);
+    }
+    let open_highlighted =
+        ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
     let mut open = true;
-    let mut body_to_open = None;
+    let mut body_to_open = open_highlighted
+        .then(|| ui_state.owned_body_cursor())
+        .flatten();
+    let mut close_requested = false;
     let screen = ctx.content_rect();
-    egui::Window::new("owned bodies [o]")
+    egui::Window::new("owned bodies")
         .id(egui::Id::new("owned_bodies"))
         .open(&mut open)
+        .title_bar(false)
         .collapsible(false)
-        .resizable(true)
+        .resizable(false)
+        .movable(false)
+        .frame(egui::Frame::window(&ctx.global_style()).inner_margin(egui::Margin::symmetric(6, 3)))
         .default_pos(egui::Pos2::new((screen.right() - 334.0).max(24.0), 24.0))
-        .default_width(310.0)
+        .default_width(286.0)
         .show(ctx, |ui| {
+            ui.set_min_width(270.0);
+            ui.scope(|ui| {
+                ui.spacing_mut().button_padding = egui::Vec2::new(3.0, 0.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("owned bodies")
+                            .text_style(egui::TextStyle::Small)
+                            .strong()
+                            .color(palette::TEXT),
+                    );
+                    ui.label(
+                        egui::RichText::new("[o]")
+                            .text_style(egui::TextStyle::Small)
+                            .color(palette::OVERLAY1),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let close = egui::Button::new(
+                            egui::RichText::new("x").text_style(egui::TextStyle::Small),
+                        );
+                        if ui.add_sized([16.0, 14.0], close).clicked() {
+                            close_requested = true;
+                        }
+                    });
+                });
+            });
+            ui.separator();
+
             if bodies.is_empty() {
                 ui.colored_label(palette::DGRAY, "no owned bodies");
                 return;
             }
 
-            ui.colored_label(palette::SUBTEXT0, "select a body to inspect");
-            ui.separator();
             egui::ScrollArea::vertical()
-                .max_height((screen.height() - 180.0).clamp(100.0, 420.0))
+                .max_height((screen.height() - 150.0).clamp(100.0, 420.0))
                 .show(ui, |ui| {
-                    egui::Grid::new("owned_bodies_grid")
-                        .num_columns(2)
-                        .spacing(egui::Vec2::new(24.0, 8.0))
-                        .striped(true)
-                        .show(ui, |ui| {
-                            ui.colored_label(palette::OVERLAY1, "body");
-                            ui.colored_label(palette::OVERLAY1, "system");
-                            ui.end_row();
-                            for body in bodies {
-                                let name = world.get_entity_name(body).unwrap_or_default();
-                                let selected = controls.selection.as_slice() == [body];
-                                let response = ui.selectable_label(selected, name);
-                                let system = world
-                                    .find_star_for_entity(body)
-                                    .and_then(|star| world.get_entity_name(star))
-                                    .unwrap_or_else(|| "unknown".to_owned());
-                                ui.colored_label(palette::SUBTEXT1, system);
-                                ui.end_row();
-                                if response.clicked() {
-                                    controls.selection = vec![body];
-                                    body_to_open = Some(body);
-                                }
-                            }
-                        });
+                    for &body in &bodies {
+                        let name = world.get_entity_name(body).unwrap_or_default();
+                        let system = world
+                            .find_star_for_entity(body)
+                            .and_then(|star| world.get_entity_name(star))
+                            .unwrap_or_else(|| "unknown".to_owned());
+                        let body_type = world
+                            .get_entity_type(body)
+                            .map(body_type_label)
+                            .unwrap_or("body");
+                        let selected = ui_state.owned_body_cursor() == Some(body);
+                        let (rect, response) = ui.allocate_exact_size(
+                            egui::Vec2::new(ui.available_width(), 48.0),
+                            egui::Sense::click(),
+                        );
+                        let (fill, stroke) = if selected {
+                            (palette::SURFACE1, palette::BLUE)
+                        } else if response.hovered() {
+                            (palette::SURFACE0, palette::SURFACE2)
+                        } else {
+                            (palette::MANTLE, palette::SURFACE0)
+                        };
+                        ui.painter().rect(
+                            rect,
+                            3.0,
+                            fill,
+                            egui::Stroke::new(1.0, stroke),
+                            egui::StrokeKind::Inside,
+                        );
+                        ui.painter().text(
+                            rect.left_top() + egui::Vec2::new(10.0, 7.0),
+                            egui::Align2::LEFT_TOP,
+                            name,
+                            egui::TextStyle::Button.resolve(ui.style()),
+                            palette::TEXT,
+                        );
+                        ui.painter().text(
+                            rect.left_top() + egui::Vec2::new(10.0, 27.0),
+                            egui::Align2::LEFT_TOP,
+                            format!("{system} · {body_type}"),
+                            egui::TextStyle::Small.resolve(ui.style()),
+                            palette::SUBTEXT0,
+                        );
+                        if response.clicked() {
+                            response.surrender_focus();
+                            ui_state.set_owned_body_cursor(body);
+                            controls.selection = vec![body];
+                            body_to_open = Some(body);
+                        }
+                        ui.add_space(4.0);
+                    }
                 });
+            ui.colored_label(palette::OVERLAY1, "↑/↓ navigate · enter open");
         });
-    ui_state.owned_bodies_open = open;
+    ui_state.owned_bodies_open = open && !close_requested;
     if let Some(body) = body_to_open {
+        controls.selection = vec![body];
         ui_state.open_body_dialog(body, BodyDialog::Overview);
     }
 }

@@ -139,6 +139,17 @@ fn handle_keydown(
     };
     let pan = KEY_PAN_AT_ZOOM_1 / viewport.zoom.max(0.01);
 
+    // the owned-body picker handles these keys from egui so its highlight and
+    // activation remain available even after a row receives keyboard focus.
+    if ui_state.owned_bodies_open
+        && matches!(
+            code,
+            KeyCode::ArrowUp | KeyCode::ArrowDown | KeyCode::Enter | KeyCode::NumpadEnter
+        )
+    {
+        return InputOutcome::default();
+    }
+
     match code {
         KeyCode::ArrowUp => {
             viewport.anchor.y -= pan;
@@ -191,7 +202,13 @@ fn handle_keydown(
             InputOutcome::default()
         }
         KeyCode::KeyO if !event.repeat => {
-            ui_state.toggle_owned_bodies();
+            let bodies = world.owned_body_overview_entities();
+            let selected = controls
+                .selection
+                .first()
+                .copied()
+                .filter(|_| controls.selection.len() == 1);
+            ui_state.toggle_owned_bodies(&bodies, selected);
             InputOutcome::default()
         }
         KeyCode::KeyI if !event.repeat => {

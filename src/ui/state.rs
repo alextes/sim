@@ -33,12 +33,57 @@ impl BodyDialogs {
 #[derive(Debug, Default)]
 pub struct UiState {
     pub owned_bodies_open: bool,
+    owned_body_cursor: Option<EntityId>,
     body_dialogs: BTreeMap<EntityId, BodyDialogs>,
 }
 
 impl UiState {
-    pub fn toggle_owned_bodies(&mut self) {
-        self.owned_bodies_open = !self.owned_bodies_open;
+    pub fn toggle_owned_bodies(&mut self, bodies: &[EntityId], selected: Option<EntityId>) {
+        if self.owned_bodies_open {
+            self.owned_bodies_open = false;
+        } else {
+            self.open_owned_bodies(bodies, selected);
+        }
+    }
+
+    pub fn open_owned_bodies(&mut self, bodies: &[EntityId], selected: Option<EntityId>) {
+        self.owned_bodies_open = true;
+        self.owned_body_cursor = selected
+            .filter(|body| bodies.contains(body))
+            .or_else(|| bodies.first().copied());
+    }
+
+    pub fn owned_body_cursor(&self) -> Option<EntityId> {
+        self.owned_body_cursor
+    }
+
+    pub fn set_owned_body_cursor(&mut self, body: EntityId) {
+        self.owned_body_cursor = Some(body);
+    }
+
+    pub fn normalize_owned_body_cursor(&mut self, bodies: &[EntityId]) {
+        if !self
+            .owned_body_cursor
+            .is_some_and(|body| bodies.contains(&body))
+        {
+            self.owned_body_cursor = bodies.first().copied();
+        }
+    }
+
+    pub fn move_owned_body_cursor(&mut self, bodies: &[EntityId], backwards: bool) {
+        self.normalize_owned_body_cursor(bodies);
+        let Some(current) = self.owned_body_cursor else {
+            return;
+        };
+        let Some(index) = bodies.iter().position(|&body| body == current) else {
+            return;
+        };
+        let next = if backwards {
+            index.checked_sub(1).unwrap_or(bodies.len() - 1)
+        } else {
+            (index + 1) % bodies.len()
+        };
+        self.owned_body_cursor = Some(bodies[next]);
     }
 
     pub fn open_body_dialog(&mut self, body: EntityId, dialog: BodyDialog) {
@@ -93,5 +138,31 @@ mod tests {
         state.update_body_dialogs(7, dialogs);
 
         assert!(state.body_dialogs().is_empty());
+    }
+
+    #[test]
+    fn owned_body_cursor_prefers_selection_and_wraps() {
+        let mut state = UiState::default();
+        let bodies = [3, 7, 11];
+
+        state.open_owned_bodies(&bodies, Some(7));
+        assert_eq!(state.owned_body_cursor(), Some(7));
+
+        state.move_owned_body_cursor(&bodies, false);
+        assert_eq!(state.owned_body_cursor(), Some(11));
+        state.move_owned_body_cursor(&bodies, false);
+        assert_eq!(state.owned_body_cursor(), Some(3));
+        state.move_owned_body_cursor(&bodies, true);
+        assert_eq!(state.owned_body_cursor(), Some(11));
+    }
+
+    #[test]
+    fn owned_body_cursor_recovers_when_body_is_no_longer_owned() {
+        let mut state = UiState::default();
+        state.open_owned_bodies(&[3, 7], Some(7));
+
+        state.normalize_owned_body_cursor(&[3]);
+
+        assert_eq!(state.owned_body_cursor(), Some(3));
     }
 }

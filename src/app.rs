@@ -203,7 +203,14 @@ impl App {
             self.game_state = GameState::Playing;
             self.controls.paused = true;
         }
-        self.ui_state.owned_bodies_open = true;
+        let bodies = self.world.owned_body_overview_entities();
+        let selected = self
+            .controls
+            .selection
+            .first()
+            .copied()
+            .filter(|_| self.controls.selection.len() == 1);
+        self.ui_state.open_owned_bodies(&bodies, selected);
     }
 
     pub fn finish_capture(&mut self) -> anyhow::Result<()> {

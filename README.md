@@ -30,6 +30,8 @@ run `cargo run -- --help` for all options.
 ## trying the economy inspector
 
 run `cargo run`, start the game, and press `o` to toggle the owned-bodies launcher.
-select an owned body on the map to show its attached foldout. use `i`, `l`, and
-`p` to open independent overview, logistics, and procurement windows for the
-selected body. the same actions are available as labeled foldout buttons.
+click a body name in the launcher, or use the up/down arrows and enter, to select
+it and open its overview. select an owned body on the map to show its attached
+foldout. use `i`, `l`, and `p` to open independent overview, logistics, and
+procurement windows for the selected body. the same actions are available as
+labeled foldout buttons.
