@@ -1,33 +1,54 @@
-//! color palette, ported from the old sdl `colors` module.
+//! catppuccin mocha color palette.
 //!
 //! ui colors are `egui::Color32`. the sprite-batch tint path (stage 2) will
 //! add an `[f32; 4]` conversion alongside these.
-//!
-//! colors were originally taken from the lee v2 dwarf fortress color set.
 //!
 //! this is a palette library; not every color is used at all times.
 #![allow(dead_code)]
 use egui::Color32;
 
-pub const BASE: Color32 = Color32::from_rgb(20, 22, 30);
-pub const BLUE: Color32 = Color32::from_rgb(138, 173, 244);
-pub const WHITE: Color32 = Color32::from_rgb(202, 211, 245);
-pub const BLACK: Color32 = Color32::from_rgb(21, 19, 15);
-pub const GREEN: Color32 = Color32::from_rgb(80, 135, 20);
-pub const CYAN: Color32 = Color32::from_rgb(25, 140, 140);
-pub const RED: Color32 = Color32::from_rgb(160, 20, 10);
-pub const MAGENTA: Color32 = Color32::from_rgb(135, 60, 130);
-pub const BROWN: Color32 = Color32::from_rgb(150, 75, 55);
-pub const LGRAY: Color32 = Color32::from_rgb(178, 175, 172);
-pub const DGRAY: Color32 = Color32::from_rgb(116, 110, 113);
-pub const LBLUE: Color32 = Color32::from_rgb(105, 135, 225);
-pub const LGREEN: Color32 = Color32::from_rgb(125, 185, 55);
-pub const LCYAN: Color32 = Color32::from_rgb(60, 205, 190);
-pub const LRED: Color32 = Color32::from_rgb(220, 50, 20);
-pub const LMAGENTA: Color32 = Color32::from_rgb(190, 110, 185);
-pub const YELLOW: Color32 = Color32::from_rgb(230, 170, 30);
-pub const GRAY: Color32 = Color32::from_rgb(128, 128, 128);
-pub const ORANGE: Color32 = Color32::from_rgb(255, 165, 0);
+pub const ROSEWATER: Color32 = Color32::from_rgb(245, 224, 220);
+pub const FLAMINGO: Color32 = Color32::from_rgb(242, 205, 205);
+pub const PINK: Color32 = Color32::from_rgb(245, 194, 231);
+pub const MAUVE: Color32 = Color32::from_rgb(203, 166, 247);
+pub const RED: Color32 = Color32::from_rgb(243, 139, 168);
+pub const MAROON: Color32 = Color32::from_rgb(235, 160, 172);
+pub const PEACH: Color32 = Color32::from_rgb(250, 179, 135);
+pub const YELLOW: Color32 = Color32::from_rgb(249, 226, 175);
+pub const GREEN: Color32 = Color32::from_rgb(166, 227, 161);
+pub const TEAL: Color32 = Color32::from_rgb(148, 226, 213);
+pub const SKY: Color32 = Color32::from_rgb(137, 220, 235);
+pub const SAPPHIRE: Color32 = Color32::from_rgb(116, 199, 236);
+pub const BLUE: Color32 = Color32::from_rgb(137, 180, 250);
+pub const LAVENDER: Color32 = Color32::from_rgb(180, 190, 254);
+pub const TEXT: Color32 = Color32::from_rgb(205, 214, 244);
+pub const SUBTEXT1: Color32 = Color32::from_rgb(186, 194, 222);
+pub const SUBTEXT0: Color32 = Color32::from_rgb(166, 173, 200);
+pub const OVERLAY2: Color32 = Color32::from_rgb(147, 153, 178);
+pub const OVERLAY1: Color32 = Color32::from_rgb(127, 132, 156);
+pub const OVERLAY0: Color32 = Color32::from_rgb(108, 112, 134);
+pub const SURFACE2: Color32 = Color32::from_rgb(88, 91, 112);
+pub const SURFACE1: Color32 = Color32::from_rgb(69, 71, 90);
+pub const SURFACE0: Color32 = Color32::from_rgb(49, 50, 68);
+pub const BASE: Color32 = Color32::from_rgb(30, 30, 46);
+pub const MANTLE: Color32 = Color32::from_rgb(24, 24, 37);
+pub const CRUST: Color32 = Color32::from_rgb(17, 17, 27);
+
+// semantic aliases retained while render paths move to palette-native names.
+pub const WHITE: Color32 = TEXT;
+pub const BLACK: Color32 = CRUST;
+pub const CYAN: Color32 = TEAL;
+pub const MAGENTA: Color32 = MAUVE;
+pub const BROWN: Color32 = PEACH;
+pub const LGRAY: Color32 = SUBTEXT1;
+pub const DGRAY: Color32 = OVERLAY0;
+pub const LBLUE: Color32 = SAPPHIRE;
+pub const LGREEN: Color32 = GREEN;
+pub const LCYAN: Color32 = SKY;
+pub const LRED: Color32 = MAROON;
+pub const LMAGENTA: Color32 = PINK;
+pub const GRAY: Color32 = OVERLAY2;
+pub const ORANGE: Color32 = PEACH;
 
 /// the scene clear color as a `wgpu::Color`.
 ///

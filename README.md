@@ -24,12 +24,12 @@ cargo run -- --seed 42 --start playing --ticks 300 \
 the capture uses the native wgpu and egui renderers, advances the simulation by
 the requested number of fixed ticks, and does not depend on browser rendering.
 use `--start main-menu` without `--ticks` to capture the main menu.
-use `--start planet-overview` to capture the player-facing economy inspector.
+use `--start planet-overview` to capture the owned-bodies launcher and selected-body foldout.
 run `cargo run -- --help` for all options.
 
 ## trying the economy inspector
 
-run `cargo run`, start the game, and press `o` to open the planet overview.
-the overview shows storage pressure, live procurement offers and editable limits,
-dock queues, construction blockage, and infrastructure upkeep. scroll the detail
-pane to inspect every logistics layer and resource.
+run `cargo run`, start the game, and press `o` to toggle the owned-bodies launcher.
+select an owned body on the map to show its attached foldout. use `i`, `l`, and
+`p` to open independent overview, logistics, and procurement windows for the
+selected body. the same actions are available as labeled foldout buttons.

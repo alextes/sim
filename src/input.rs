@@ -9,12 +9,13 @@ use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode, PlanetOverviewTab};
+use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
 use crate::command::Command;
 use crate::control_state::ControlState;
 use crate::infrastructure::InfrastructureCategory;
 use crate::location::PointF64;
 use crate::ships::ShipType;
+use crate::ui::{BodyDialog, UiState};
 use crate::viewport::Viewport;
 use crate::world::types::EntityType;
 use crate::world::{EntityId, World};
@@ -44,6 +45,7 @@ pub fn handle_window_event(
     world: &mut World,
     controls: &mut ControlState,
     game_state: &mut GameState,
+    ui_state: &mut UiState,
 ) -> InputOutcome {
     // cursor position and modifier state are tracked regardless of game state.
     match event {
@@ -65,7 +67,7 @@ pub fn handle_window_event(
             && !key.repeat
             && matches!(key.physical_key, PhysicalKey::Code(KeyCode::Escape))
         {
-            handle_escape(game_state, controls);
+            handle_escape(game_state, controls, ui_state);
             return InputOutcome::default();
         }
     }
@@ -77,7 +79,7 @@ pub fn handle_window_event(
 
     match event {
         WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-            handle_keydown(event, viewport, world, controls, game_state)
+            handle_keydown(event, viewport, world, controls, game_state, ui_state)
         }
         WindowEvent::MouseInput { state, button, .. } => {
             handle_mouse_button(*state, *button, viewport, world, controls);
@@ -130,6 +132,7 @@ fn handle_keydown(
     world: &World,
     controls: &mut ControlState,
     game_state: &mut GameState,
+    ui_state: &mut UiState,
 ) -> InputOutcome {
     let PhysicalKey::Code(code) = event.physical_key else {
         return InputOutcome::default();
@@ -188,7 +191,19 @@ fn handle_keydown(
             InputOutcome::default()
         }
         KeyCode::KeyO if !event.repeat => {
-            open_planet_overview(world, controls, game_state);
+            ui_state.toggle_owned_bodies();
+            InputOutcome::default()
+        }
+        KeyCode::KeyI if !event.repeat => {
+            open_selected_body_dialog(world, controls, ui_state, BodyDialog::Overview);
+            InputOutcome::default()
+        }
+        KeyCode::KeyL if !event.repeat => {
+            open_selected_body_dialog(world, controls, ui_state, BodyDialog::Logistics);
+            InputOutcome::default()
+        }
+        KeyCode::KeyP if !event.repeat => {
+            open_selected_body_dialog(world, controls, ui_state, BodyDialog::Procurement);
             InputOutcome::default()
         }
         KeyCode::Space if !event.repeat => {
@@ -209,12 +224,16 @@ fn handle_keydown(
 
 /// escape: context-dependent menu/pause transition (ported from the old global
 /// escape handler).
-fn handle_escape(game_state: &mut GameState, controls: &mut ControlState) {
+fn handle_escape(game_state: &mut GameState, controls: &mut ControlState, ui_state: &mut UiState) {
     match game_state {
         GameState::MainMenu => controls.quit_requested = true,
         GameState::Playing => {
-            *game_state = GameState::GameMenu;
-            controls.paused = true;
+            if ui_state.has_open_windows() {
+                ui_state.close_all();
+            } else {
+                *game_state = GameState::GameMenu;
+                controls.paused = true;
+            }
         }
         GameState::GameMenu => {
             *game_state = GameState::Playing;
@@ -223,25 +242,26 @@ fn handle_escape(game_state: &mut GameState, controls: &mut ControlState) {
         GameState::BuildMenu { .. }
         | GameState::ShipyardMenu
         | GameState::ShipyardMenuError { .. }
-        | GameState::PlanetOverview { .. }
         | GameState::MiningRouteMenu { .. } => *game_state = GameState::Playing,
     }
 }
 
-/// (o) open the owned-body planet overview.
-fn open_planet_overview(world: &World, controls: &ControlState, game_state: &mut GameState) {
-    let bodies = world.owned_body_overview_entities();
-    let selected = controls
+fn open_selected_body_dialog(
+    world: &World,
+    controls: &ControlState,
+    ui_state: &mut UiState,
+    dialog: BodyDialog,
+) {
+    let Some(&body) = controls
         .selection
         .first()
-        .copied()
-        .filter(|entity| bodies.contains(entity))
-        .or_else(|| bodies.first().copied());
-
-    *game_state = GameState::PlanetOverview {
-        selected,
-        tab: PlanetOverviewTab::Overview,
+        .filter(|_| controls.selection.len() == 1)
+    else {
+        return;
     };
+    if world.owned_body_overview_entities().contains(&body) {
+        ui_state.open_body_dialog(body, dialog);
+    }
 }
 
 /// (b) open the build menu if the selection is a player-controlled body.
@@ -572,58 +592,44 @@ mod tests {
     }
 
     #[test]
-    fn open_planet_overview_uses_selected_owned_body() {
+    fn selected_owned_body_opens_an_independent_dialog() {
         let mut world = World::default();
         let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
-        let earth_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 1.0);
         let mars_id = world.spawn_planet("mars".to_string(), star_id, 12.0, 0.0, 1.0);
-        world.set_player_controlled(earth_id);
         world.set_player_controlled(mars_id);
         let controls = ControlState::new(vec![mars_id]);
-        let mut game_state = GameState::Playing;
+        let mut ui_state = UiState::default();
 
-        open_planet_overview(&world, &controls, &mut game_state);
+        open_selected_body_dialog(&world, &controls, &mut ui_state, BodyDialog::Logistics);
 
-        assert_eq!(
-            game_state,
-            GameState::PlanetOverview {
-                selected: Some(mars_id),
-                tab: PlanetOverviewTab::Overview,
-            }
-        );
+        let dialogs = ui_state.body_dialogs();
+        assert_eq!(dialogs.len(), 1);
+        assert_eq!(dialogs[0].0, mars_id);
+        assert!(dialogs[0].1.logistics);
     }
 
     #[test]
-    fn open_planet_overview_falls_back_to_first_owned_body() {
+    fn body_dialog_shortcut_rejects_non_body_selection() {
         let mut world = World::default();
-        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
-        let earth_id = world.spawn_planet("earth".to_string(), star_id, 10.0, 0.0, 1.0);
         let ship_id = world.spawn_frigate("frigate".to_string(), Point { x: 1, y: 1 });
-        world.set_player_controlled(earth_id);
         let controls = ControlState::new(vec![ship_id]);
-        let mut game_state = GameState::Playing;
+        let mut ui_state = UiState::default();
 
-        open_planet_overview(&world, &controls, &mut game_state);
+        open_selected_body_dialog(&world, &controls, &mut ui_state, BodyDialog::Overview);
 
-        assert_eq!(
-            game_state,
-            GameState::PlanetOverview {
-                selected: Some(earth_id),
-                tab: PlanetOverviewTab::Overview,
-            }
-        );
+        assert!(ui_state.body_dialogs().is_empty());
     }
 
     #[test]
-    fn escape_closes_planet_overview() {
+    fn escape_closes_utility_windows_before_opening_the_game_menu() {
         let mut controls = ControlState::new(vec![]);
-        let mut game_state = GameState::PlanetOverview {
-            selected: Some(42),
-            tab: PlanetOverviewTab::Logistics,
-        };
+        let mut game_state = GameState::Playing;
+        let mut ui_state = UiState::default();
+        ui_state.owned_bodies_open = true;
 
-        handle_escape(&mut game_state, &mut controls);
+        handle_escape(&mut game_state, &mut controls, &mut ui_state);
 
         assert_eq!(game_state, GameState::Playing);
+        assert!(!ui_state.has_open_windows());
     }
 }

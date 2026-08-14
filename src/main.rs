@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
         let mut app = app::App::with_seed(options.seed);
         match options.start {
             Some(cli::StartState::Playing) => app.start_playing(),
-            Some(cli::StartState::PlanetOverview) => app.open_planet_overview(),
+            Some(cli::StartState::PlanetOverview) => app.open_owned_bodies(),
             Some(cli::StartState::MainMenu) | None => {}
         }
         app

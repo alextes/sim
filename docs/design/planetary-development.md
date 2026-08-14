@@ -19,12 +19,13 @@ owned bodies:
 
 planet overview:
 
-- the player needs a scrollable overview of owned bodies.
-- the selected body's name and kind remain visible above three focused tabs instead of sharing one long detail list.
+- the owned-bodies window is a compact launcher rather than a combined management screen. it lists each owned body and its system, with no detailed economy rows.
+- selecting an owned body on the map reveals an attached foldout connected to the top of the body. the foldout shows core current stats and labeled keyboard shortcuts.
+- selecting a body in the launcher also selects it on the map and opens its overview window.
+- overview, logistics, and procurement are independent body windows that can remain open together and can be opened for more than one body.
 - overview shows identity, population, civilian credits, resource yields, energy, infrastructure capacity, and infrastructure condition.
 - logistics shows storage capacity, dock throughput, waiting ships, layer-specific stocks, and construction supply status.
 - procurement contains the editable reserve, price ceiling, spending cap, current stock, and open-offer state for each layer and resource.
-- selecting a body from the overview should make it the active body for inspection and actions.
 - actions should include opening the build flow and opening an associated shipyard when one exists.
 
 planet traits:

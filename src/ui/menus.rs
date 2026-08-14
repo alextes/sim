@@ -1,13 +1,13 @@
-//! the stateful modal menus: build, shipyard, mining route. button presses
-//! drive the `GameState` machine and issue world commands, replacing the old
-//! sdl key handlers.
+//! independent utility windows plus stateful build, shipyard, and mining-route
+//! menus. button presses update ui state or issue world commands.
 
-use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode, PlanetOverviewTab};
+use crate::app::{BuildMenuMode, GameState, MiningRouteMenuMode};
 use crate::command::Command;
 use crate::control_state::ControlState;
 use crate::infrastructure::{player_buildable_infrastructure, InfrastructureCategory};
 use crate::palette;
 use crate::ships::{buildable_ships, ShipBuildShortfall, ShipBuildable};
+use crate::ui::{BodyDialog, BodyDialogs, UiState};
 use crate::world::components::MiningRoute;
 use crate::world::types::{
     ConstructionLayer, EntityType, Good, InfrastructureType, ProcurementKey, ProcurementPolicy,
@@ -27,120 +27,195 @@ const PROCUREMENT_RESOURCES: &[Storable] = &[
     Storable::Good(Good::Food),
 ];
 
-pub fn planet_overview(
+pub fn owned_bodies_dialog(
+    ctx: &egui::Context,
+    world: &World,
+    controls: &mut ControlState,
+    ui_state: &mut UiState,
+) {
+    if !ui_state.owned_bodies_open {
+        return;
+    }
+
+    let bodies = world.owned_body_overview_entities();
+    let mut open = true;
+    let mut body_to_open = None;
+    let screen = ctx.content_rect();
+    egui::Window::new("owned bodies [o]")
+        .id(egui::Id::new("owned_bodies"))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(true)
+        .default_pos(egui::Pos2::new((screen.right() - 334.0).max(24.0), 24.0))
+        .default_width(310.0)
+        .show(ctx, |ui| {
+            if bodies.is_empty() {
+                ui.colored_label(palette::DGRAY, "no owned bodies");
+                return;
+            }
+
+            ui.colored_label(palette::SUBTEXT0, "select a body to inspect");
+            ui.separator();
+            egui::ScrollArea::vertical()
+                .max_height((screen.height() - 180.0).clamp(100.0, 420.0))
+                .show(ui, |ui| {
+                    egui::Grid::new("owned_bodies_grid")
+                        .num_columns(2)
+                        .spacing(egui::Vec2::new(24.0, 8.0))
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.colored_label(palette::OVERLAY1, "body");
+                            ui.colored_label(palette::OVERLAY1, "system");
+                            ui.end_row();
+                            for body in bodies {
+                                let name = world.get_entity_name(body).unwrap_or_default();
+                                let selected = controls.selection.as_slice() == [body];
+                                let response = ui.selectable_label(selected, name);
+                                let system = world
+                                    .find_star_for_entity(body)
+                                    .and_then(|star| world.get_entity_name(star))
+                                    .unwrap_or_else(|| "unknown".to_owned());
+                                ui.colored_label(palette::SUBTEXT1, system);
+                                ui.end_row();
+                                if response.clicked() {
+                                    controls.selection = vec![body];
+                                    body_to_open = Some(body);
+                                }
+                            }
+                        });
+                });
+        });
+    ui_state.owned_bodies_open = open;
+    if let Some(body) = body_to_open {
+        ui_state.open_body_dialog(body, BodyDialog::Overview);
+    }
+}
+
+pub fn body_detail_dialogs(
     ctx: &egui::Context,
     world: &mut World,
     controls: &mut ControlState,
     game_state: &mut GameState,
-    selected: Option<EntityId>,
-    tab: PlanetOverviewTab,
+    ui_state: &mut UiState,
 ) {
-    let bodies = world.owned_body_overview_entities();
-    let current = selected
-        .filter(|entity| bodies.contains(entity))
-        .or_else(|| bodies.first().copied());
-    if current != selected {
-        *game_state = GameState::PlanetOverview {
-            selected: current,
-            tab,
-        };
+    let owned_bodies = world.owned_body_overview_entities();
+    for (body, mut dialogs) in ui_state.body_dialogs() {
+        if !owned_bodies.contains(&body) {
+            ui_state.update_body_dialogs(body, BodyDialogs::default());
+            continue;
+        }
+        if dialogs.overview {
+            dialogs.overview = body_overview_dialog(ctx, world, controls, game_state, body);
+        }
+        if dialogs.logistics {
+            dialogs.logistics = body_logistics_dialog(ctx, world, body);
+        }
+        if dialogs.procurement {
+            dialogs.procurement = body_procurement_dialog(ctx, world, body);
+        }
+        ui_state.update_body_dialogs(body, dialogs);
     }
-    let screen = ctx.content_rect();
-    let window_width = 900.0_f32.min((screen.width() - 32.0).max(320.0));
-    let window_height = 620.0_f32.min((screen.height() - 64.0).max(220.0));
-    let narrow_layout = window_width < 540.0;
-    let detail_height = if narrow_layout {
-        (window_height - 125.0).max(90.0)
-    } else {
-        (window_height - 120.0).max(140.0)
-    };
-
-    egui::Window::new("planet overview")
-        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-        .collapsible(false)
-        .resizable(false)
-        .fixed_size(egui::Vec2::new(window_width, window_height))
-        .show(ctx, |ui| {
-            if bodies.is_empty() {
-                ui.colored_label(palette::DGRAY, "no owned planets");
-                if ui.button("close").clicked() {
-                    *game_state = GameState::Playing;
-                }
-                return;
-            }
-
-            if narrow_layout {
-                if let Some(body) = current {
-                    if bodies.len() > 1 {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("body");
-                            for candidate in &bodies {
-                                let name = world.get_entity_name(*candidate).unwrap_or_default();
-                                if ui.selectable_label(*candidate == body, name).clicked() {
-                                    controls.selection = vec![*candidate];
-                                    *game_state = GameState::PlanetOverview {
-                                        selected: Some(*candidate),
-                                        tab,
-                                    };
-                                }
-                            }
-                        });
-                    }
-                    planet_detail(ui, world, game_state, body, tab, detail_height);
-                    ui.separator();
-                    planet_actions(ui, world, controls, game_state, body);
-                }
-            } else {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.set_width(120.0);
-                        ui.label("bodies");
-                        ui.separator();
-                        egui::ScrollArea::vertical()
-                            .id_salt("planet_overview_body_list")
-                            .max_height(detail_height)
-                            .show(ui, |ui| {
-                                for body in &bodies {
-                                    let name = world.get_entity_name(*body).unwrap_or_default();
-                                    let selected_row = current == Some(*body);
-                                    if ui.selectable_label(selected_row, name).clicked() {
-                                        controls.selection = vec![*body];
-                                        *game_state = GameState::PlanetOverview {
-                                            selected: Some(*body),
-                                            tab,
-                                        };
-                                    }
-                                }
-                            });
-                    });
-
-                    ui.separator();
-
-                    ui.vertical(|ui| {
-                        let detail_width = (window_width - 190.0).max(400.0);
-                        ui.set_width(detail_width);
-                        if let Some(body) = current {
-                            planet_detail(ui, world, game_state, body, tab, detail_height);
-                            ui.separator();
-                            planet_actions(ui, world, controls, game_state, body);
-                        }
-                    });
-                });
-            }
-        });
 }
 
-fn planet_actions(
+fn body_overview_dialog(
+    ctx: &egui::Context,
+    world: &World,
+    controls: &mut ControlState,
+    game_state: &mut GameState,
+    body: EntityId,
+) -> bool {
+    let name = world.get_entity_name(body).unwrap_or_default();
+    let Some(entity_type) = world.get_entity_type(body) else {
+        return false;
+    };
+    let mut open = true;
+    egui::Window::new(format!("{name} overview [i]"))
+        .id(egui::Id::new(("body_overview", body)))
+        .open(&mut open)
+        .default_pos(body_dialog_position(body, egui::Pos2::new(24.0, 96.0)))
+        .default_size(body_dialog_size(ctx, 440.0, 420.0))
+        .show(ctx, |ui| {
+            let detail_height = (ui.available_height() - 52.0).max(120.0);
+            egui::ScrollArea::vertical()
+                .max_height(detail_height)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    overview_tab(ui, world, body, entity_type);
+                });
+            ui.separator();
+            body_actions(ui, world, controls, game_state, body);
+        });
+    open
+}
+
+fn body_logistics_dialog(ctx: &egui::Context, world: &World, body: EntityId) -> bool {
+    let name = world.get_entity_name(body).unwrap_or_default();
+    let Some(entity_type) = world.get_entity_type(body) else {
+        return false;
+    };
+    let mut open = true;
+    egui::Window::new(format!("{name} logistics [l]"))
+        .id(egui::Id::new(("body_logistics", body)))
+        .open(&mut open)
+        .default_pos(body_dialog_position(body, egui::Pos2::new(480.0, 96.0)))
+        .default_size(body_dialog_size(ctx, 420.0, 360.0))
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(ui.available_height())
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    logistics_tab(ui, world, body, entity_type);
+                });
+        });
+    open
+}
+
+fn body_procurement_dialog(ctx: &egui::Context, world: &mut World, body: EntityId) -> bool {
+    let name = world.get_entity_name(body).unwrap_or_default();
+    let Some(entity_type) = world.get_entity_type(body) else {
+        return false;
+    };
+    let mut open = true;
+    egui::Window::new(format!("{name} procurement [p]"))
+        .id(egui::Id::new(("body_procurement", body)))
+        .open(&mut open)
+        .default_pos(body_dialog_position(body, egui::Pos2::new(220.0, 180.0)))
+        .default_size(body_dialog_size(ctx, 620.0, 480.0))
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(ui.available_height())
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    procurement_controls(ui, world, body, entity_type);
+                });
+        });
+    open
+}
+
+fn body_dialog_position(body: EntityId, base: egui::Pos2) -> egui::Pos2 {
+    let offset = (body % 6) as f32 * 18.0;
+    base + egui::vec2(offset, offset)
+}
+
+fn body_dialog_size(ctx: &egui::Context, max_width: f32, max_height: f32) -> egui::Vec2 {
+    let screen = ctx.content_rect();
+    egui::vec2(
+        (screen.width() - 48.0).max(260.0).min(max_width),
+        (screen.height() - 96.0).max(200.0).min(max_height),
+    )
+}
+
+pub(super) fn body_actions(
     ui: &mut egui::Ui,
     world: &World,
     controls: &mut ControlState,
     game_state: &mut GameState,
     body: EntityId,
 ) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let can_build = world.get_entity_type(body) == Some(EntityType::Planet);
         if ui
-            .add_enabled(can_build, egui::Button::new("build"))
+            .add_enabled(can_build, egui::Button::new("build [b]"))
             .clicked()
         {
             controls.selection = vec![body];
@@ -156,64 +231,13 @@ fn planet_actions(
                     > 0
             });
         if ui
-            .add_enabled(has_shipyard, egui::Button::new("shipyard"))
+            .add_enabled(has_shipyard, egui::Button::new("shipyard [s]"))
             .clicked()
         {
             controls.selection = vec![body];
             *game_state = GameState::ShipyardMenu;
         }
-        if ui.button("close").clicked() {
-            *game_state = GameState::Playing;
-        }
     });
-}
-
-fn planet_detail(
-    ui: &mut egui::Ui,
-    world: &mut World,
-    game_state: &mut GameState,
-    body: EntityId,
-    tab: PlanetOverviewTab,
-    detail_height: f32,
-) {
-    let name = world.get_entity_name(body).unwrap_or_default();
-    let Some(entity_type) = world.get_entity_type(body) else {
-        return;
-    };
-
-    ui.horizontal_wrapped(|ui| {
-        ui.heading(name);
-        ui.colored_label(palette::GRAY, body_type_label(entity_type));
-    });
-
-    let mut active_tab = tab;
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut active_tab, PlanetOverviewTab::Overview, "overview");
-        ui.selectable_value(&mut active_tab, PlanetOverviewTab::Logistics, "logistics");
-        ui.selectable_value(
-            &mut active_tab,
-            PlanetOverviewTab::Procurement,
-            "procurement",
-        );
-    });
-    ui.separator();
-
-    if active_tab != tab {
-        *game_state = GameState::PlanetOverview {
-            selected: Some(body),
-            tab: active_tab,
-        };
-    }
-
-    egui::ScrollArea::vertical()
-        .id_salt(("planet_overview_detail", body, active_tab))
-        .min_scrolled_height(detail_height)
-        .max_height(detail_height)
-        .show(ui, |ui| match active_tab {
-            PlanetOverviewTab::Overview => overview_tab(ui, world, body, entity_type),
-            PlanetOverviewTab::Logistics => logistics_tab(ui, world, body, entity_type),
-            PlanetOverviewTab::Procurement => procurement_controls(ui, world, body, entity_type),
-        });
 }
 
 fn overview_tab(ui: &mut egui::Ui, world: &World, body: EntityId, entity_type: EntityType) {

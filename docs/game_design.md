@@ -32,8 +32,10 @@ the broader faction model distinguishes three kinds of independent power:
 ## interface presentation
 
 - the interface uses a bundled monospace pixel font for a consistent retro technical character across platforms.
-- dense management views should lead with a compact status overview and separate controls or deep operational detail into named tabs.
-- important identity, navigation, and actions remain visible while the active tab scrolls independently.
+- the base interface palette is catppuccin mocha: crust, mantle, and base provide near-black neutral backgrounds; text and subtext provide high-contrast lettering; brighter colors are reserved for state and resource accents.
+- selecting an owned body should produce a compact map-attached foldout with current stats and direct shortcut actions.
+- dense management controls belong in small independent windows so the player can arrange and compare overview, logistics, and procurement information without entering one monolithic modal.
+- index windows such as owned bodies should remain sparse launchers, showing only enough information to choose what to inspect next.
 
 ## economy
 

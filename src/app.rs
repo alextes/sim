@@ -73,22 +73,10 @@ pub enum GameState {
     ShipyardMenuError {
         message: String,
     },
-    PlanetOverview {
-        selected: Option<world::EntityId>,
-        tab: PlanetOverviewTab,
-    },
     MiningRouteMenu {
         ship_id: world::EntityId,
         mode: MiningRouteMenuMode,
     },
-}
-
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-pub enum PlanetOverviewTab {
-    #[default]
-    Overview,
-    Logistics,
-    Procurement,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,6 +117,7 @@ pub struct App {
     controls: ControlState,
     viewport: Viewport,
     game_state: GameState,
+    ui_state: ui::UiState,
     background: BackgroundLayer,
     capture: Option<CaptureRequest>,
 }
@@ -172,6 +161,7 @@ impl App {
             controls,
             viewport: Viewport::default(),
             game_state: GameState::MainMenu,
+            ui_state: ui::UiState::default(),
             background,
             capture: None,
         }
@@ -188,7 +178,7 @@ impl App {
             app.world.update(SIMULATION_DT.as_secs_f64(), tick);
         }
         if config.open_planet_overview {
-            app.open_planet_overview();
+            app.open_owned_bodies();
         }
         app.clock.total_sim_ticks = config.ticks;
         app.viewport.screen_pixel_width = config.width;
@@ -208,16 +198,12 @@ impl App {
         self.controls.paused = false;
     }
 
-    pub fn open_planet_overview(&mut self) {
-        let selected = self.world.owned_body_overview_entities().first().copied();
-        if let Some(selected) = selected {
-            self.controls.selection = vec![selected];
+    pub fn open_owned_bodies(&mut self) {
+        if self.game_state == GameState::MainMenu {
+            self.game_state = GameState::Playing;
+            self.controls.paused = true;
         }
-        self.game_state = GameState::PlanetOverview {
-            selected,
-            tab: PlanetOverviewTab::Overview,
-        };
-        self.controls.paused = true;
+        self.ui_state.owned_bodies_open = true;
     }
 
     pub fn finish_capture(&mut self) -> anyhow::Result<()> {
@@ -239,6 +225,7 @@ impl App {
             world,
             controls,
             game_state,
+            ui_state,
             clock,
             viewport,
             background,
@@ -322,7 +309,7 @@ impl App {
                 view: &view,
                 screen_size_in_pixels: [screen.0, screen.1],
             },
-            |ctx| ui::build_ui(ctx, world, controls, game_state, clock, viewport),
+            |ctx| ui::build_ui(ctx, world, controls, game_state, ui_state, clock, viewport),
         );
 
         let render_submission = gfx.queue.submit(
@@ -477,6 +464,7 @@ impl ApplicationHandler for App {
                         &mut self.world,
                         &mut self.controls,
                         &mut self.game_state,
+                        &mut self.ui_state,
                     );
                     if outcome.request_redraw {
                         if let Some(gfx) = self.gfx.as_ref() {
