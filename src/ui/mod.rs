@@ -63,7 +63,7 @@ fn shows_world(state: &GameState) -> bool {
 
 fn hud_panels(
     ctx: &egui::Context,
-    world: &World,
+    world: &mut World,
     controls: &ControlState,
     clock: &SimClock,
     viewport: &Viewport,
@@ -96,6 +96,7 @@ fn hud_panels(
                         clock.sim_units_per_second, clock.fps_per_second
                     ));
                     ui.label(format!("zoom: {:.2}", viewport.zoom));
+                    ui.checkbox(&mut world.enable_civilian_ai, "autonomous civilian AI");
                 }
             });
         });
@@ -457,6 +458,89 @@ fn single_selection(ui: &mut egui::Ui, world: &World, controls: &ControlState, i
                 ui.colored_label(palette::GRAY, format!("  - {name}: {count}"));
             }
         }
+    }
+
+    if let Some(ai) = world.civilian_ai.get(&id) {
+        ui.separator();
+        ui.label("civilian mining");
+        let manual = world.mining_routes.contains_key(&id);
+        let active_route = world.active_mining_route(id);
+        let opportunity = active_route
+            .and_then(|route| world.estimate_mining_route(id, route))
+            .or_else(|| {
+                (!manual && world.enable_civilian_ai)
+                    .then(|| world.best_mining_opportunity(id))
+                    .flatten()
+            });
+        ui.colored_label(
+            palette::SUBTEXT0,
+            format!(
+                "{} · {}",
+                civilian_ship_state_label(&ai.state),
+                if manual { "manual route" } else { "autonomous" }
+            ),
+        );
+        if let Some(estimate) = opportunity {
+            let source = world
+                .get_entity_name(estimate.route.target_body)
+                .unwrap_or_else(|| "unknown".to_owned());
+            let buyer = world
+                .get_entity_name(estimate.route.sell_body)
+                .unwrap_or_else(|| "unknown".to_owned());
+            let (resource, color) = raw_resource_display(estimate.route.resource);
+            ui.label(format!("route: {source} -> {buyer}"));
+            ui.colored_label(
+                color,
+                format!(
+                    "{resource}: {:.1} @ {:.2}",
+                    estimate.sale_quantity, estimate.unit_price
+                ),
+            );
+            ui.colored_label(
+                palette::SUBTEXT0,
+                format!(
+                    "travel {:.1}s · mining {:.1}s @ {:.2}x",
+                    estimate.travel_time, estimate.mining_time, estimate.mining_yield
+                ),
+            );
+            ui.colored_label(
+                palette::SUBTEXT0,
+                format!(
+                    "revenue {:.1} · costs {:.1}",
+                    estimate.sale_revenue, estimate.operating_cost
+                ),
+            );
+            let profit_color = if estimate.expected_profit > 0.0 {
+                palette::GREEN
+            } else {
+                palette::RED
+            };
+            ui.colored_label(
+                profit_color,
+                format!(
+                    "profit {:.1} / {:.1}s ({:.2}/s)",
+                    estimate.expected_profit, estimate.cycle_time, estimate.profit_per_second
+                ),
+            );
+        } else if active_route.is_some() {
+            ui.colored_label(palette::YELLOW, "buyer has no current purchase offer");
+        } else if !world.enable_civilian_ai && !manual {
+            ui.colored_label(palette::OVERLAY1, "autonomous AI is off [f4]");
+        } else {
+            ui.colored_label(palette::OVERLAY1, "no profitable route found");
+        }
+    }
+}
+
+fn civilian_ship_state_label(state: &crate::world::components::CivilianShipState) -> &'static str {
+    use crate::world::components::CivilianShipState;
+
+    match state {
+        CivilianShipState::Idle => "idle",
+        CivilianShipState::MovingToMine { .. } => "outbound",
+        CivilianShipState::Mining { .. } => "mining",
+        CivilianShipState::ReturningToSell { .. } => "delivering",
+        CivilianShipState::WaitingToUnload { .. } => "waiting to unload",
     }
 }
 

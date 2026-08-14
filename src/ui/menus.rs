@@ -1056,7 +1056,7 @@ pub fn mining_route_menu(
             MiningRouteMenuMode::SelectTarget => {
                 ui.label("select target body:");
                 if ui.button("auto (best route)").clicked() {
-                    let route = world.compute_best_mining_route();
+                    let route = world.compute_best_mining_route(ship_id);
                     world.set_mining_route(ship_id, route);
                     *game_state = GameState::Playing;
                 }

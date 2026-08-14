@@ -12,7 +12,9 @@ use crate::location::PointF64;
 use std::collections::VecDeque;
 
 use crate::ships::ShipType;
-use crate::world::components::{Cargo, CivilianShipAI, CivilianShipState, MiningRoute};
+use crate::world::components::{
+    Cargo, CivilianEconomyConfig, CivilianShipAI, CivilianShipState, MiningRoute,
+};
 use crate::world::types::{
     BodyProfile, CelestialBodyData, Color, ConstructionLayer, EconomicAccount, EntityType,
     InfrastructureType, Spaceport, SpaceportSize, MAX_SPACEPORT_UNITS, MOON_COLORS, PLANET_COLORS,
@@ -99,6 +101,8 @@ pub struct World {
     pub mining_routes: HashMap<EntityId, MiningRoute>,
     /// master switch for autonomous civilian ai behavior
     pub enable_civilian_ai: bool,
+    /// tunable costs and production assumptions used by civilian route scoring.
+    pub civilian_economy_config: CivilianEconomyConfig,
     /// elapsed simulation time since the last unloading interval.
     delivery_time_accumulator: f64,
     /// elapsed simulation time since the last maintenance interval.
@@ -462,8 +466,8 @@ impl World {
             .filter(|ai| {
                 matches!(
                     ai.state,
-                    CivilianShipState::WaitingToUnload { destination }
-                        if destination == entity_id
+                    CivilianShipState::WaitingToUnload { route, .. }
+                        if route.sell_body == entity_id
                 )
             })
             .count()
@@ -604,39 +608,6 @@ impl World {
                 self.mining_routes.remove(&ship_id);
             }
         }
-    }
-
-    /// compute a naive most-profitable mining route by scanning all bodies with yields and all bodies as buyers.
-    pub fn compute_best_mining_route(&self) -> Option<MiningRoute> {
-        let mut best: Option<(f64, MiningRoute)> = None;
-        for (&source_id, data) in &self.celestial_data {
-            if data.yields.is_empty() {
-                continue;
-            }
-            for &sell_id in self.celestial_data.keys() {
-                if sell_id == source_id {
-                    continue;
-                }
-                for (&raw, &grade) in &data.yields {
-                    let price = crate::world::resources::get_local_price(
-                        self,
-                        sell_id,
-                        crate::world::types::Storable::Raw(raw),
-                    );
-                    let score = (grade as f64) * price;
-                    let candidate = MiningRoute {
-                        target_body: source_id,
-                        resource: raw,
-                        sell_body: sell_id,
-                    };
-                    match best {
-                        Some((best_score, _)) if score <= best_score => {}
-                        _ => best = Some((score, candidate)),
-                    }
-                }
-            }
-        }
-        best.map(|(_, r)| r)
     }
 }
 
@@ -855,8 +826,8 @@ mod tests {
     }
 
     /// full-sim reproducibility: with the world-owned rng seeded, generation
-    /// plus many ticks of the civilian economy (which selects mining targets
-    /// and places built ships randomly) must produce bit-identical results.
+    /// plus many ticks of the civilian economy and randomly placed ship builds
+    /// must produce bit-identical results.
     #[test]
     fn same_seed_produces_identical_simulation_run() {
         fn run(seed: u64) -> Vec<String> {
@@ -878,7 +849,7 @@ mod tests {
                 world.update(0.1, 0);
             }
 
-            // fingerprint the parts the rng drives: ship states/positions and credits.
+            // fingerprint ship states, positions, and credits.
             let mut lines: Vec<String> = world
                 .civilian_ai
                 .keys()

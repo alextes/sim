@@ -2,10 +2,9 @@ use crate::command::Command;
 use crate::infrastructure::InfrastructureCategory;
 use crate::location::PointF64;
 use crate::ships::{buildable_ship, ShipType};
-use crate::world::components::{CivilianShipState, MiningRoute};
-use crate::world::types::Storable;
+use crate::world::components::{CivilianShipState, MiningRoute, MiningRouteEstimate};
+use crate::world::types::{ConstructionLayer, ProcurementKey, Storable};
 use crate::world::{EntityId, World};
-use rand::Rng;
 
 pub type ShipSaleInfo = (EntityId, f64, EntityId, Vec<(Storable, f32)>);
 
@@ -41,7 +40,152 @@ fn predict_orbital_intercept(world: &World, ship_id: u32, target_id: u32) -> Opt
     Some(target_pos)
 }
 
+fn point_distance(a: PointF64, b: PointF64) -> f64 {
+    ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt()
+}
+
 impl World {
+    pub fn estimate_mining_route(
+        &self,
+        ship_id: EntityId,
+        route: MiningRoute,
+    ) -> Option<MiningRouteEstimate> {
+        let ship = self.ships.get(&ship_id)?;
+        let cargo_capacity = self.cargo.get(&ship_id)?.capacity;
+        let mining_yield = self
+            .celestial_data
+            .get(&route.target_body)?
+            .yields
+            .get(&route.resource)
+            .copied()?;
+        let quote = self.procurement_quote(
+            route.sell_body,
+            ProcurementKey {
+                layer: ConstructionLayer::Orbit,
+                resource: Storable::Raw(route.resource),
+            },
+        )?;
+        let sale_quantity = cargo_capacity.min(quote.wanted_quantity);
+        let mining_rate = mining_yield * self.civilian_economy_config.mining_units_per_yield_second;
+        if sale_quantity <= 0.0 || mining_rate <= 0.0 || ship.speed <= 0.0 {
+            return None;
+        }
+
+        let ship_position = self.get_location_f64(ship_id)?;
+        let target_position = self.get_location_f64(route.target_body)?;
+        let sell_position = self.get_location_f64(route.sell_body)?;
+        let outbound_distance = point_distance(ship_position, target_position);
+        let delivery_distance = point_distance(target_position, sell_position);
+        let travel_distance = outbound_distance + delivery_distance;
+        let travel_time = travel_distance / ship.speed;
+        let mining_time = sale_quantity as f64 / mining_rate as f64;
+        let cycle_time = travel_time + mining_time;
+        if cycle_time <= 0.0 || !cycle_time.is_finite() {
+            return None;
+        }
+
+        let config = self.civilian_economy_config;
+        let operating_cost = travel_distance * config.travel_cost_per_distance
+            + mining_time * config.mining_cost_per_second
+            + config.ship_maintenance_per_cycle
+            + config.docking_fee;
+        let sale_revenue = sale_quantity as f64 * quote.unit_price;
+        let expected_profit = sale_revenue - operating_cost;
+
+        Some(MiningRouteEstimate {
+            route,
+            sale_quantity,
+            mining_yield,
+            unit_price: quote.unit_price,
+            sale_revenue,
+            travel_distance,
+            travel_time,
+            mining_time,
+            operating_cost,
+            cycle_time,
+            expected_profit,
+            profit_per_second: expected_profit / cycle_time,
+        })
+    }
+
+    pub fn best_mining_opportunity(&self, ship_id: EntityId) -> Option<MiningRouteEstimate> {
+        let mut procurement_opportunities = Vec::new();
+        for (&sell_id, body) in &self.celestial_data {
+            for &key in body.procurement_policies.keys() {
+                let Storable::Raw(resource) = key.resource else {
+                    continue;
+                };
+                if key.layer == ConstructionLayer::Orbit
+                    && self.procurement_quote(sell_id, key).is_some()
+                {
+                    procurement_opportunities.push((resource, sell_id));
+                }
+            }
+        }
+        procurement_opportunities.sort_unstable();
+        if procurement_opportunities.is_empty() {
+            return None;
+        }
+
+        let mut source_ids: Vec<_> = self.celestial_data.keys().copied().collect();
+        source_ids.sort_unstable();
+        let mut best = None;
+
+        for source_id in source_ids {
+            let mut resources: Vec<_> = self.celestial_data[&source_id]
+                .yields
+                .keys()
+                .copied()
+                .collect();
+            resources.sort_unstable();
+            for resource in resources {
+                for &(_, sell_id) in procurement_opportunities
+                    .iter()
+                    .filter(|(wanted_resource, _)| *wanted_resource == resource)
+                {
+                    if source_id == sell_id {
+                        continue;
+                    }
+                    let route = MiningRoute {
+                        target_body: source_id,
+                        resource,
+                        sell_body: sell_id,
+                    };
+                    let Some(estimate) = self.estimate_mining_route(ship_id, route) else {
+                        continue;
+                    };
+                    if estimate.expected_profit <= 0.0 {
+                        continue;
+                    }
+                    let improves_score =
+                        best.as_ref().is_none_or(|current: &MiningRouteEstimate| {
+                            estimate.profit_per_second > current.profit_per_second
+                        });
+                    if improves_score {
+                        best = Some(estimate);
+                    }
+                }
+            }
+        }
+        best
+    }
+
+    pub fn compute_best_mining_route(&self, ship_id: EntityId) -> Option<MiningRoute> {
+        self.best_mining_opportunity(ship_id)
+            .map(|estimate| estimate.route)
+    }
+
+    pub fn active_mining_route(&self, ship_id: EntityId) -> Option<MiningRoute> {
+        let ai = self.civilian_ai.get(&ship_id)?;
+        match ai.state {
+            CivilianShipState::Idle => self.mining_routes.get(&ship_id).copied(),
+            CivilianShipState::MovingToMine { route, .. }
+            | CivilianShipState::Mining { route, .. }
+            | CivilianShipState::ReturningToSell { route, .. }
+            | CivilianShipState::WaitingToUnload { route, .. } => Some(route),
+        }
+    }
+
     pub(super) fn update_civilian_economy(&mut self, dt: f64) {
         let celestial_body_ids: Vec<u32> = self.celestial_data.keys().cloned().collect();
 
@@ -116,21 +260,7 @@ impl World {
         let mut commands_to_issue = Vec::new();
         let mut state_changes_to_apply = Vec::new();
 
-        let mut potential_mining_targets: Vec<(u32, crate::world::types::RawResource)> = self
-            .celestial_data
-            .iter()
-            .flat_map(|(id, data)| data.yields.keys().map(move |resource| (*id, *resource)))
-            .collect();
-        // sort for deterministic target order: this vec is built from hashmap
-        // iteration and later indexed by a random roll, so its order matters.
-        potential_mining_targets.sort_unstable();
-
-        if potential_mining_targets.is_empty() {
-            return;
-        }
-
-        // snapshot ship ai in a stable order so we can roll the world rng
-        // (a mutable borrow) between the immutable decision calls.
+        // snapshot ship ai in stable order before applying any decisions.
         let mut ships: Vec<(
             EntityId,
             crate::world::components::CivilianShipAI,
@@ -143,17 +273,12 @@ impl World {
         ships.sort_by_key(|(id, _, _)| *id);
 
         for (ship_id, ai, route) in &ships {
-            // pre-roll the target selection while we hold the rng mutably; the
-            // decision function itself stays a pure function of world state.
-            let target_roll = self.rng.0.random::<f64>();
             let (new_state, command) = self.decide_civilian_ship_action(
                 *ship_id,
                 ai,
-                &potential_mining_targets,
                 dt,
                 self.enable_civilian_ai,
                 route.as_ref(),
-                target_roll,
             );
             if let Some(state) = new_state {
                 state_changes_to_apply.push((*ship_id, state));
@@ -176,101 +301,61 @@ impl World {
     }
 
     // this is now a pure function that returns decisions, not applying them.
-    #[allow(clippy::too_many_arguments)]
     fn decide_civilian_ship_action(
         &self,
         ship_id: EntityId,
         ai: &crate::world::components::CivilianShipAI,
-        potential_mining_targets: &[(u32, crate::world::types::RawResource)],
         dt: f64,
-        enable_random_ai: bool,
+        enable_autonomous_ai: bool,
         route: Option<&MiningRoute>,
-        // pre-rolled uniform value in [0, 1) used to pick a random in-range
-        // target; passed in so this stays a pure function (no rng ownership).
-        target_roll: f64,
     ) -> (Option<CivilianShipState>, Option<Command>) {
-        let home_base = ai.home_base;
-
         match &ai.state {
             CivilianShipState::Idle => {
-                let ship_pos = match self.get_location_f64(ship_id) {
-                    Some(pos) => pos,
-                    None => return (None, None),
+                let Some(cargo) = self.cargo.get(&ship_id) else {
+                    return (None, None);
                 };
-
-                if let Some(route) = route {
-                    let target_id = route.target_body;
-                    let resource = route.resource;
-                    if let Some(intercept_pos) = predict_orbital_intercept(self, ship_id, target_id)
-                    {
-                        let command = Command::MoveShip {
-                            ship_id,
-                            destination: intercept_pos,
-                        };
-                        let new_state = CivilianShipState::MovingToMine {
-                            target: target_id,
-                            resource,
-                        };
-                        (Some(new_state), Some(command))
-                    } else {
-                        (None, None)
-                    }
-                } else if enable_random_ai {
-                    let max_range_sq = self
-                        .find_star_for_entity(home_base)
-                        .map(|star_id| self.get_system_radius(star_id).powi(2))
-                        .unwrap_or(100.0f64.powi(2));
-
-                    let in_range_targets: Vec<(u32, crate::world::types::RawResource)> =
-                        potential_mining_targets
-                            .iter()
-                            .filter_map(|&(target_id, resource)| {
-                                if target_id == home_base {
-                                    return None;
-                                }
-                                self.get_location_f64(target_id)
-                                    .map(|target_pos| (target_id, resource, target_pos))
-                            })
-                            .filter(|(_, _, target_pos)| {
-                                let dist_sq = (ship_pos.x - target_pos.x).powi(2)
-                                    + (ship_pos.y - target_pos.y).powi(2);
-                                dist_sq <= max_range_sq
-                            })
-                            .map(|(id, resource, _)| (id, resource))
-                            .collect();
-
-                    if !in_range_targets.is_empty() {
-                        let index = ((target_roll * in_range_targets.len() as f64) as usize)
-                            .min(in_range_targets.len() - 1);
-                        let &(target_id, resource) = &in_range_targets[index];
-                        if let Some(intercept_pos) =
-                            predict_orbital_intercept(self, ship_id, target_id)
-                        {
-                            let command = Command::MoveShip {
-                                ship_id,
-                                destination: intercept_pos,
-                            };
-                            let new_state = CivilianShipState::MovingToMine {
-                                target: target_id,
-                                resource,
-                            };
-                            (Some(new_state), Some(command))
-                        } else {
-                            (None, None)
-                        }
-                    } else {
-                        (None, None)
-                    }
+                let selected_trip = if let Some(&manual_route) = route {
+                    let cargo_target = self
+                        .estimate_mining_route(ship_id, manual_route)
+                        .map(|estimate| estimate.sale_quantity)
+                        .unwrap_or(cargo.capacity);
+                    Some((manual_route, cargo_target))
+                } else if enable_autonomous_ai {
+                    self.best_mining_opportunity(ship_id)
+                        .map(|estimate| (estimate.route, estimate.sale_quantity))
                 } else {
-                    (None, None)
-                }
+                    None
+                };
+                let Some((route, cargo_target)) = selected_trip else {
+                    return (None, None);
+                };
+                let cargo_target = cargo_target.max(cargo.current_load).min(cargo.capacity);
+                let Some(intercept_pos) =
+                    predict_orbital_intercept(self, ship_id, route.target_body)
+                else {
+                    return (None, None);
+                };
+                let command = Command::MoveShip {
+                    ship_id,
+                    destination: intercept_pos,
+                };
+                (
+                    Some(CivilianShipState::MovingToMine {
+                        route,
+                        cargo_target,
+                    }),
+                    Some(command),
+                )
             }
-            CivilianShipState::MovingToMine { target, resource } => {
+            CivilianShipState::MovingToMine {
+                route,
+                cargo_target,
+            } => {
                 if !self.move_orders.contains_key(&ship_id) {
                     (
                         Some(CivilianShipState::Mining {
-                            target: *target,
-                            resource: *resource,
+                            route: *route,
+                            cargo_target: *cargo_target,
                             mine_time: 0,
                         }),
                         None,
@@ -280,22 +365,24 @@ impl World {
                 }
             }
             CivilianShipState::Mining {
-                target,
-                resource,
+                route,
+                cargo_target,
                 mine_time,
             } => {
                 if let Some(cargo) = self.cargo.get(&ship_id) {
-                    if cargo.current_load >= cargo.capacity {
-                        let destination = route.map(|route| route.sell_body).unwrap_or(home_base);
+                    if cargo.current_load >= *cargo_target {
                         if let Some(base_pos) =
-                            predict_orbital_intercept(self, ship_id, destination)
+                            predict_orbital_intercept(self, ship_id, route.sell_body)
                         {
                             let command = Command::MoveShip {
                                 ship_id,
                                 destination: base_pos,
                             };
                             (
-                                Some(CivilianShipState::ReturningToSell { destination }),
+                                Some(CivilianShipState::ReturningToSell {
+                                    route: *route,
+                                    cargo_target: *cargo_target,
+                                }),
                                 Some(command),
                             )
                         } else {
@@ -304,8 +391,8 @@ impl World {
                     } else {
                         (
                             Some(CivilianShipState::Mining {
-                                target: *target,
-                                resource: *resource,
+                                route: *route,
+                                cargo_target: *cargo_target,
                                 mine_time: mine_time + (dt * 1000.0) as u64,
                             }),
                             None,
@@ -315,11 +402,15 @@ impl World {
                     (None, None)
                 }
             }
-            CivilianShipState::ReturningToSell { destination } => {
+            CivilianShipState::ReturningToSell {
+                route,
+                cargo_target,
+            } => {
                 if !self.move_orders.contains_key(&ship_id) {
                     (
                         Some(CivilianShipState::WaitingToUnload {
-                            destination: *destination,
+                            route: *route,
+                            cargo_target: *cargo_target,
                         }),
                         None,
                     )
@@ -332,26 +423,33 @@ impl World {
     }
 
     pub(super) fn process_ship_mining(&mut self, dt: f64) {
-        let mining_updates: Vec<(EntityId, EntityId, crate::world::types::RawResource)> = self
+        let mining_updates: Vec<(EntityId, EntityId, crate::world::types::RawResource, f32)> = self
             .civilian_ai
             .iter()
             .filter_map(|(&ship_id, ai)| match ai.state {
                 CivilianShipState::Mining {
-                    target, resource, ..
-                } => Some((ship_id, target, resource)),
+                    route,
+                    cargo_target,
+                    ..
+                } => Some((ship_id, route.target_body, route.resource, cargo_target)),
                 _ => None,
             })
             .collect();
 
-        for (ship_id, target, resource) in mining_updates {
+        for (ship_id, target, resource, cargo_target) in mining_updates {
             if let (Some(cargo), Some(target_data)) = (
                 self.cargo.get_mut(&ship_id),
                 self.celestial_data.get(&target),
             ) {
                 if let Some(yield_rate) = target_data.yields.get(&resource) {
-                    const MINING_RATE: f32 = 1.0; // units per second
-                    let mined_amount = yield_rate * MINING_RATE * dt as f32;
-                    cargo.add(crate::world::types::Storable::Raw(resource), mined_amount);
+                    let mined_amount = yield_rate
+                        * self.civilian_economy_config.mining_units_per_yield_second
+                        * dt as f32;
+                    let remaining = (cargo_target - cargo.current_load).max(0.0);
+                    cargo.add(
+                        crate::world::types::Storable::Raw(resource),
+                        mined_amount.min(remaining),
+                    );
                 }
             }
         }
@@ -362,13 +460,13 @@ impl World {
             .civilian_ai
             .iter()
             .filter_map(|(id, ai)| match ai.state {
-                CivilianShipState::WaitingToUnload { destination }
+                CivilianShipState::WaitingToUnload { route, .. }
                     if self
                         .cargo
                         .get(id)
                         .is_some_and(|cargo| cargo.current_load > 0.0) =>
                 {
-                    Some((*id, ai.home_base, destination))
+                    Some((*id, ai.home_base, route.sell_body))
                 }
                 _ => None,
             })
@@ -480,6 +578,193 @@ mod tests {
         ProcurementPolicy, RawResource,
     };
 
+    fn metals_route(target_body: EntityId, sell_body: EntityId) -> MiningRoute {
+        MiningRoute {
+            target_body,
+            resource: RawResource::Metals,
+            sell_body,
+        }
+    }
+
+    fn mining_market_world() -> (World, EntityId, EntityId, EntityId, EntityId) {
+        let mut world = World::default();
+        let star_id = world.spawn_star("sol".to_string(), Point { x: 0, y: 0 });
+        let home_id = world.spawn_planet("home".to_string(), star_id, 6.0, 0.0, 0.0);
+        let first_mine = world.spawn_planet("first mine".to_string(), star_id, 10.0, 0.0, 0.0);
+        let second_mine = world.spawn_planet("second mine".to_string(), star_id, 10.0, 0.0, 0.0);
+        let buyer_id = world.spawn_planet("buyer".to_string(), star_id, 16.0, 0.0, 0.0);
+        for body_id in [home_id, first_mine, second_mine, buyer_id] {
+            world
+                .celestial_data
+                .get_mut(&body_id)
+                .unwrap()
+                .yields
+                .clear();
+        }
+        world
+            .celestial_data
+            .get_mut(&first_mine)
+            .unwrap()
+            .yields
+            .insert(RawResource::Metals, 1.0);
+        world
+            .celestial_data
+            .get_mut(&second_mine)
+            .unwrap()
+            .yields
+            .insert(RawResource::Metals, 4.0);
+        world.set_player_controlled(buyer_id);
+        world.player_credits = 10_000.0;
+        let infrastructure = world.infrastructure.get_mut(&buyer_id).unwrap();
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDepot, 1);
+        infrastructure
+            .infra
+            .insert(InfrastructureType::OrbitalDock, 1);
+        world
+            .celestial_data
+            .get_mut(&buyer_id)
+            .unwrap()
+            .procurement_policies
+            .insert(
+                ProcurementKey {
+                    layer: ConstructionLayer::Orbit,
+                    resource: Storable::Raw(RawResource::Metals),
+                },
+                ProcurementPolicy {
+                    enabled: true,
+                    reserve_target: 80.0,
+                    maximum_unit_price: 10.0,
+                    periodic_spend_cap: None,
+                },
+            );
+        let ship_id = world.spawn_mining_ship("miner".to_string(), Point { x: 6, y: 0 }, home_id);
+        (world, ship_id, first_mine, second_mine, buyer_id)
+    }
+
+    #[test]
+    fn route_estimate_accounts_for_live_quantity_yield_time_and_costs() {
+        let (world, ship_id, _, mine_id, buyer_id) = mining_market_world();
+
+        let estimate = world
+            .estimate_mining_route(ship_id, metals_route(mine_id, buyer_id))
+            .unwrap();
+
+        assert_eq!(estimate.sale_quantity, 80.0);
+        assert_eq!(estimate.mining_yield, 4.0);
+        assert_eq!(estimate.unit_price, 4.0);
+        assert_eq!(estimate.sale_revenue, 320.0);
+        assert_eq!(estimate.mining_time, 20.0);
+        assert!(estimate.travel_distance > 0.0);
+        assert_eq!(estimate.travel_time, estimate.travel_distance / 2.0);
+        assert_eq!(
+            estimate.operating_cost,
+            estimate.travel_distance * world.civilian_economy_config.travel_cost_per_distance
+                + estimate.mining_time * world.civilian_economy_config.mining_cost_per_second
+                + world.civilian_economy_config.ship_maintenance_per_cycle
+                + world.civilian_economy_config.docking_fee
+        );
+        assert_eq!(
+            estimate.expected_profit,
+            estimate.sale_revenue - estimate.operating_cost
+        );
+    }
+
+    #[test]
+    fn autonomous_route_prefers_profit_per_time_and_ignores_losses() {
+        let (mut world, ship_id, first_mine, second_mine, buyer_id) = mining_market_world();
+
+        let best = world.best_mining_opportunity(ship_id).unwrap();
+        assert_eq!(best.route, metals_route(second_mine, buyer_id));
+
+        world
+            .celestial_data
+            .get_mut(&second_mine)
+            .unwrap()
+            .yields
+            .insert(RawResource::Metals, 1.0);
+        let first = world
+            .estimate_mining_route(ship_id, metals_route(first_mine, buyer_id))
+            .unwrap();
+        let second = world
+            .estimate_mining_route(ship_id, metals_route(second_mine, buyer_id))
+            .unwrap();
+        assert_eq!(first.profit_per_second, second.profit_per_second);
+        assert_eq!(
+            world.best_mining_opportunity(ship_id).unwrap().route,
+            metals_route(first_mine, buyer_id)
+        );
+
+        world.civilian_economy_config.ship_maintenance_per_cycle = 10_000.0;
+        assert!(world.best_mining_opportunity(ship_id).is_none());
+    }
+
+    #[test]
+    fn manual_routes_run_even_when_no_autonomous_route_is_profitable() {
+        let (mut world, ship_id, first_mine, _, buyer_id) = mining_market_world();
+        let manual_route = metals_route(first_mine, buyer_id);
+        world.civilian_economy_config.ship_maintenance_per_cycle = 10_000.0;
+        world.set_mining_route(ship_id, Some(manual_route));
+
+        world.update_civilian_ships(0.0);
+
+        assert_eq!(
+            world.civilian_ai[&ship_id].state,
+            CivilianShipState::MovingToMine {
+                route: manual_route,
+                cargo_target: 80.0,
+            }
+        );
+    }
+
+    #[test]
+    fn autonomous_ship_rechecks_the_market_after_unloading() {
+        let (mut world, ship_id, first_mine, second_mine, buyer_id) = mining_market_world();
+        let completed_route = metals_route(first_mine, buyer_id);
+        world
+            .cargo
+            .get_mut(&ship_id)
+            .unwrap()
+            .add(Storable::Raw(RawResource::Metals), 1.0);
+        world.civilian_ai.get_mut(&ship_id).unwrap().state = CivilianShipState::WaitingToUnload {
+            route: completed_route,
+            cargo_target: 1.0,
+        };
+        world.enable_civilian_ai = true;
+
+        world.process_ship_sales();
+        assert_eq!(world.civilian_ai[&ship_id].state, CivilianShipState::Idle);
+        world.update_civilian_ships(0.0);
+
+        assert_eq!(
+            world.civilian_ai[&ship_id].state,
+            CivilianShipState::MovingToMine {
+                route: metals_route(second_mine, buyer_id),
+                cargo_target: 79.0,
+            }
+        );
+    }
+
+    #[test]
+    fn autonomous_trip_mines_only_the_quoted_quantity() {
+        let (mut world, ship_id, _, mine_id, buyer_id) = mining_market_world();
+        let route = metals_route(mine_id, buyer_id);
+        world.civilian_ai.get_mut(&ship_id).unwrap().state = CivilianShipState::Mining {
+            route,
+            cargo_target: 80.0,
+            mine_time: 0,
+        };
+
+        world.process_ship_mining(100.0);
+
+        assert_eq!(world.cargo[&ship_id].current_load, 80.0);
+        assert_eq!(
+            world.cargo[&ship_id].contents[&Storable::Raw(RawResource::Metals)],
+            80.0
+        );
+    }
+
     #[test]
     fn civilian_ai_keeps_credits_when_shipyard_lacks_mining_ship_resources() {
         let mut world = World::default();
@@ -549,7 +834,8 @@ mod tests {
             .unwrap()
             .add(Storable::Raw(RawResource::Metals), 10.0);
         world.civilian_ai.get_mut(&ship_id).unwrap().state = CivilianShipState::WaitingToUnload {
-            destination: planet_id,
+            route: metals_route(home_id, planet_id),
+            cargo_target: 10.0,
         };
 
         let sales = world.process_ship_sales();
@@ -563,7 +849,8 @@ mod tests {
         assert_eq!(
             world.civilian_ai[&ship_id].state,
             CivilianShipState::WaitingToUnload {
-                destination: planet_id
+                route: metals_route(home_id, planet_id),
+                cargo_target: 10.0,
             }
         );
         assert_eq!(
@@ -636,7 +923,8 @@ mod tests {
             .unwrap()
             .add(Storable::Raw(RawResource::Metals), 150.0);
         world.civilian_ai.get_mut(&ship_id).unwrap().state = CivilianShipState::WaitingToUnload {
-            destination: destination_id,
+            route: metals_route(home_id, destination_id),
+            cargo_target: 150.0,
         };
 
         let sales = world.process_ship_sales();
@@ -704,7 +992,8 @@ mod tests {
                 .add(Storable::Raw(RawResource::Metals), 60.0);
             world.civilian_ai.get_mut(&ship_id).unwrap().state =
                 CivilianShipState::WaitingToUnload {
-                    destination: destination_id,
+                    route: metals_route(first_home, destination_id),
+                    cargo_target: 60.0,
                 };
         }
         assert_eq!(world.ships_waiting_to_unload(destination_id), 2);
@@ -723,7 +1012,8 @@ mod tests {
         assert_eq!(
             world.civilian_ai[&second_ship].state,
             CivilianShipState::WaitingToUnload {
-                destination: destination_id
+                route: metals_route(first_home, destination_id),
+                cargo_target: 60.0,
             }
         );
     }

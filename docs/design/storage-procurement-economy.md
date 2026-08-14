@@ -132,6 +132,10 @@ expected sale revenue
 
 ships prefer positive expected profit per unit of cycle time. estimates include wanted quantity, cargo capacity, mining yield, distance, speed, and expected mining time. manual routes remain authoritative, and equal scores use deterministic entity and resource ordering.
 
+v1 scores each ship from its current position through the mining site to the buyer. the planned cargo is capped by both hold capacity and the buyer's currently quoted quantity, so a ship does not deliberately mine a full hold for a smaller known order. initial tuning uses 0.25 credits per unit of travel distance, 0.1 credits per second of mining, 10 credits of ship maintenance per cycle, and a 5 credit docking fee. these are explicit simulation configuration rather than hidden route-score weights.
+
+autonomous civilian AI can be switched on or off from the f4 debug overlay. selecting a civilian mining ship shows its current state, manual or autonomous mode, route, quoted quantity and price, travel and mining time, revenue, operating cost, and expected profit per cycle and per second.
+
 ### civilian investment
 
 a civilian economy considers commissioning a mining ship only when:

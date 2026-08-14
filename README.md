@@ -35,3 +35,7 @@ it and open its overview. select an owned body on the map to show its attached
 foldout. use `i`, `l`, and `p` to open independent overview, logistics, and
 procurement windows for the selected body. the same actions are available as
 labeled foldout buttons.
+
+press `f4` to show the debug overlay and toggle autonomous civilian AI. select a
+civilian mining ship to inspect its active route, live market quote, expected
+travel and mining time, operating costs, and profit per cycle.
