@@ -33,6 +33,7 @@ the broader faction model distinguishes three kinds of independent power:
 
 - the interface uses a bundled monospace pixel font for a consistent retro technical character across platforms.
 - the base interface palette is catppuccin mocha: crust, mantle, and base provide near-black neutral backgrounds; text and subtext provide high-contrast lettering; brighter colors are reserved for state and resource accents.
+- the intro remains barebones and logo-led: an outlined planet, one tilted orbit, and a single moon sit above compact transparent play and quit controls with clear borders.
 - selecting an owned body should produce a compact map-attached foldout with current stats and direct shortcut actions.
 - dense management controls belong in small independent windows so the player can arrange and compare overview, logistics, and procurement information without entering one monolithic modal.
 - index windows such as owned bodies should remain sparse launchers, showing only enough information to choose what to inspect next.

@@ -545,29 +545,133 @@ fn civilian_ship_state_label(state: &crate::world::components::CivilianShipState
 }
 
 fn main_menu(ctx: &egui::Context, game_state: &mut GameState, controls: &mut ControlState) {
+    let screen = ctx.content_rect();
+    let layout = main_menu_layout(screen);
+    paint_main_menu_logo(ctx, layout);
+
     egui::Area::new("main_menu".into())
-        .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+        .fixed_pos(layout.buttons_position)
         .show(ctx, |ui| {
-            let button_size = Vec2::new(180.0, 44.0);
+            ui.set_width(layout.button_size.x);
+            ui.spacing_mut().item_spacing = Vec2::new(0.0, layout.button_gap);
+            let widgets = &mut ui.style_mut().visuals.widgets;
+            for visuals in [
+                &mut widgets.inactive,
+                &mut widgets.noninteractive,
+                &mut widgets.open,
+            ] {
+                visuals.bg_fill = Color32::TRANSPARENT;
+                visuals.weak_bg_fill = Color32::TRANSPARENT;
+                visuals.bg_stroke = egui::Stroke::new(1.5, palette::SURFACE2);
+            }
+            widgets.hovered.bg_fill = Color32::TRANSPARENT;
+            widgets.hovered.weak_bg_fill = Color32::TRANSPARENT;
+            widgets.hovered.bg_stroke = egui::Stroke::new(2.0, palette::BLUE);
+            widgets.active.bg_fill = Color32::TRANSPARENT;
+            widgets.active.weak_bg_fill = Color32::TRANSPARENT;
+            widgets.active.bg_stroke = egui::Stroke::new(2.0, palette::LAVENDER);
 
-            ui.spacing_mut().item_spacing = Vec2::new(0.0, 12.0);
-
-            ui.vertical_centered(|ui| {
-                if ui
-                    .add_sized(button_size, egui::Button::new("play"))
-                    .clicked()
-                {
+            ui.vertical(|ui| {
+                let play = egui::Button::new(
+                    egui::RichText::new("play")
+                        .text_style(egui::TextStyle::Button)
+                        .color(palette::TEXT),
+                )
+                .corner_radius(2);
+                if ui.add_sized(layout.button_size, play).clicked() {
                     *game_state = GameState::Playing;
                     controls.paused = false;
                 }
-                if ui
-                    .add_sized(button_size, egui::Button::new("quit"))
-                    .clicked()
-                {
+                let quit = egui::Button::new(
+                    egui::RichText::new("quit")
+                        .text_style(egui::TextStyle::Button)
+                        .color(palette::SUBTEXT1),
+                )
+                .corner_radius(2);
+                if ui.add_sized(layout.button_size, quit).clicked() {
                     controls.quit_requested = true;
                 }
             });
         });
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MainMenuLayout {
+    logo_center: Pos2,
+    scale: f32,
+    title_position: Pos2,
+    buttons_position: Pos2,
+    button_size: Vec2,
+    button_gap: f32,
+}
+
+fn main_menu_layout(screen: Rect) -> MainMenuLayout {
+    let scale = (screen.width() / 400.0)
+        .min(screen.height() / 300.0)
+        .clamp(0.72, 1.25);
+    let center = screen.center();
+    let button_size = Vec2::new(118.0, 28.0) * scale;
+    MainMenuLayout {
+        logo_center: center - Vec2::new(0.0, 70.0 * scale),
+        scale,
+        title_position: center - Vec2::new(0.0, 7.0 * scale),
+        buttons_position: Pos2::new(center.x - button_size.x / 2.0, center.y + 20.0 * scale),
+        button_size,
+        button_gap: 10.0 * scale,
+    }
+}
+
+fn paint_main_menu_logo(ctx: &egui::Context, layout: MainMenuLayout) {
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Background,
+        egui::Id::new("main_menu_logo"),
+    ));
+    let scale = layout.scale;
+    let orbit_rotation = -0.48_f32;
+    let orbit_radius = Vec2::new(74.0, 22.0) * scale;
+    let mut orbit = Vec::with_capacity(97);
+    for point in 0..=96 {
+        let angle = std::f32::consts::TAU * point as f32 / 96.0;
+        let local = Vec2::new(orbit_radius.x * angle.cos(), orbit_radius.y * angle.sin());
+        let rotated = Vec2::new(
+            local.x * orbit_rotation.cos() - local.y * orbit_rotation.sin(),
+            local.x * orbit_rotation.sin() + local.y * orbit_rotation.cos(),
+        );
+        orbit.push(layout.logo_center + rotated);
+    }
+    painter.add(egui::Shape::line(
+        orbit,
+        egui::Stroke::new(2.25 * scale, palette::SUBTEXT0),
+    ));
+    painter.circle_stroke(
+        layout.logo_center,
+        38.0 * scale,
+        egui::Stroke::new(2.5 * scale, palette::TEXT),
+    );
+
+    let moon_angle = -0.12_f32;
+    let moon_local = Vec2::new(
+        orbit_radius.x * moon_angle.cos(),
+        orbit_radius.y * moon_angle.sin(),
+    );
+    let moon_offset = Vec2::new(
+        moon_local.x * orbit_rotation.cos() - moon_local.y * orbit_rotation.sin(),
+        moon_local.x * orbit_rotation.sin() + moon_local.y * orbit_rotation.cos(),
+    );
+    let moon_center = layout.logo_center + moon_offset;
+    painter.circle_filled(moon_center, 5.5 * scale, palette::BLUE);
+    painter.circle_stroke(
+        moon_center,
+        5.5 * scale,
+        egui::Stroke::new(1.25 * scale, palette::TEXT),
+    );
+    painter.text(
+        layout.title_position,
+        Align2::CENTER_CENTER,
+        "sim",
+        egui::FontId::new(26.0 * scale, egui::FontFamily::Monospace),
+        palette::TEXT,
+    );
 }
 
 fn game_menu(ctx: &egui::Context, game_state: &mut GameState, controls: &mut ControlState) {
@@ -676,5 +780,24 @@ mod tests {
         assert_eq!(right.pivot, Align2::LEFT_TOP);
         assert_eq!(right.position, Pos2::new(164.0, 12.0));
         assert_eq!(right.connector[2], Pos2::new(158.0, 36.0));
+    }
+
+    #[test]
+    fn main_menu_layout_stays_balanced_on_compact_and_wide_screens() {
+        for size in [Vec2::new(280.0, 180.0), Vec2::new(600.0, 400.0)] {
+            let screen = Rect::from_min_size(Pos2::ZERO, size);
+            let layout = main_menu_layout(screen);
+            let buttons_right = layout.buttons_position.x + layout.button_size.x;
+            let buttons_bottom =
+                layout.buttons_position.y + layout.button_size.y * 2.0 + layout.button_gap;
+
+            assert_eq!(layout.logo_center.x, screen.center().x);
+            assert!(layout.logo_center.y - 42.0 * layout.scale > screen.top());
+            assert!(layout.title_position.y > layout.logo_center.y);
+            assert!(layout.title_position.y < layout.buttons_position.y);
+            assert!(layout.buttons_position.x >= screen.left());
+            assert!(buttons_right <= screen.right());
+            assert!(buttons_bottom <= screen.bottom());
+        }
     }
 }
