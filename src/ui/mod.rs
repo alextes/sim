@@ -68,14 +68,13 @@ fn hud_panels(
     clock: &SimClock,
     viewport: &Viewport,
 ) {
-    // top-left: stardate + credits.
+    // top-left: simulation progression.
     egui::Area::new("hud_top_left".into())
         .anchor(Align2::LEFT_TOP, Vec2::new(8.0, 8.0))
         .show(ctx, |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 let stardate = clock.total_sim_ticks as f64 / 100.0;
                 ui.label(format!("DATE: {stardate:.2}"));
-                ui.label(format!("credits: {:.0}", world.player_credits));
             });
         });
 
