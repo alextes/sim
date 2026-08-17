@@ -283,7 +283,7 @@ fn body_foldout(
     let placement = body_foldout_placement(body_top, screen);
 
     let painter = ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
+        egui::Order::Background,
         egui::Id::new(("body_foldout_connector", body)),
     ));
     let connector_stroke = egui::Stroke::new(1.5, palette::OVERLAY2);
