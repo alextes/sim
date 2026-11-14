@@ -18,8 +18,8 @@ use crate::control_state::ControlState;
 use crate::egui_layer::{EguiLayer, EguiPaintTarget};
 use crate::game_loop::GameLoop;
 use crate::gfx::{GpuState, WorldPrepareContext, WorldRenderer};
+use crate::headless;
 use crate::input;
-use crate::map_generation;
 use crate::palette;
 use crate::sim_clock::SimClock;
 use crate::ui;
@@ -131,14 +131,9 @@ impl App {
     /// runs. `None` leaves the world's entropy-seeded rng (normal interactive
     /// play).
     pub fn with_seed(seed: Option<u64>) -> Self {
-        let mut world = World::default();
-        if let Some(seed) = seed {
-            world.seed_rng(seed);
-        }
-        map_generation::populate_initial_galaxy(&mut world);
-        // draw the background from the same rng so a seeded run is fully
+        // the background is drawn from the same rng so a seeded run is fully
         // reproducible, starfield included.
-        let background = BackgroundLayer::new(&mut world.rng.0);
+        let (world, background) = headless::seeded_world(seed);
 
         let selection = if world.entities.is_empty() {
             vec![]
@@ -174,9 +169,7 @@ impl App {
         }
         app.controls.paused = true;
 
-        for tick in 1..=config.ticks {
-            app.world.update(SIMULATION_DT.as_secs_f64(), tick);
-        }
+        headless::advance(&mut app.world, config.ticks);
         if config.open_planet_overview {
             app.open_owned_bodies();
         }

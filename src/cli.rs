@@ -9,8 +9,9 @@ pub const HELP: &str = "usage: sim [options]\n\
 options:\n\
   --seed S             seed world generation and simulation\n\
   --start STATE        start at main-menu, playing, or planet-overview\n\
-  --ticks N            advance N fixed simulation ticks before capture\n\
+  --ticks N            advance N fixed simulation ticks before capture or dump\n\
   --screenshot PATH    save one rendered frame as a PNG and exit\n\
+  --headless           run without a window and print world state as JSON\n\
   --width PX           capture width in physical pixels (default: 800)\n\
   --height PX          capture height in physical pixels (default: 600)\n\
   -h, --help           print this help\n";
@@ -28,6 +29,7 @@ pub struct CliOptions {
     pub start: Option<StartState>,
     pub ticks: u64,
     pub screenshot: Option<PathBuf>,
+    pub headless: bool,
     pub width: u32,
     pub height: u32,
     pub help: bool,
@@ -40,6 +42,7 @@ impl Default for CliOptions {
             start: None,
             ticks: 0,
             screenshot: None,
+            headless: false,
             width: INITIAL_WINDOW_WIDTH,
             height: INITIAL_WINDOW_HEIGHT,
             help: false,
@@ -76,6 +79,7 @@ impl CliOptions {
                     options.screenshot =
                         Some(PathBuf::from(next_value(&mut args, "--screenshot")?));
                 }
+                "--headless" => options.headless = true,
                 "--width" => options.width = parse_value(&mut args, "--width")?,
                 "--height" => options.height = parse_value(&mut args, "--height")?,
                 _ => bail!("unknown argument {argument:?}\n\n{HELP}"),
@@ -85,8 +89,14 @@ impl CliOptions {
         if options.width == 0 || options.height == 0 {
             bail!("capture dimensions must be greater than zero");
         }
-        if options.screenshot.is_none() && options.ticks != 0 {
-            bail!("--ticks requires --screenshot");
+        if options.headless && options.screenshot.is_some() {
+            bail!("--headless cannot be combined with --screenshot");
+        }
+        if options.headless && options.start.is_some() {
+            bail!("--start has no effect with --headless");
+        }
+        if options.screenshot.is_none() && !options.headless && options.ticks != 0 {
+            bail!("--ticks requires --screenshot or --headless");
         }
         if options.start == Some(StartState::MainMenu) && options.ticks != 0 {
             bail!("--ticks cannot be used with --start main-menu");
@@ -164,6 +174,22 @@ mod tests {
         ])
         .unwrap_err();
         assert!(error.to_string().contains("--start main-menu"));
+    }
+
+    #[test]
+    fn parses_headless_options() {
+        let options = parse(&["--headless", "--seed", "9", "--ticks", "120"]).unwrap();
+
+        assert!(options.headless);
+        assert_eq!(options.seed, Some(9));
+        assert_eq!(options.ticks, 120);
+        assert_eq!(options.screenshot, None);
+    }
+
+    #[test]
+    fn rejects_headless_with_screenshot() {
+        let error = parse(&["--headless", "--screenshot", "capture.png"]).unwrap_err();
+        assert!(error.to_string().contains("--headless cannot be combined"));
     }
 
     #[test]

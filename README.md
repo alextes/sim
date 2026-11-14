@@ -27,6 +27,22 @@ use `--start main-menu` without `--ticks` to capture the main menu.
 use `--start planet-overview` to capture the owned-bodies launcher and selected-body foldout.
 run `cargo run -- --help` for all options.
 
+## headless scenario runs
+
+advance the real seeded world without creating a window and print its final
+state as JSON on stdout:
+
+```bash
+cargo run -- --headless --seed 42 --ticks 6000 > target/world-42.json
+```
+
+the dump covers player credits and every entity sorted by ID: name, type,
+position, body credits, population, stocks, infrastructure, and ship type,
+cargo, civilian AI state, routes, and move orders. it uses the same world setup
+and fixed-tick advance as `--screenshot`, so the same seed and tick count always
+produce a byte-identical dump that can be diffed between builds. logs go to
+stderr. `--seed` defaults to 0.
+
 ## trying the economy inspector
 
 run `cargo run`, start the game, and press `o` to toggle the owned-bodies launcher.

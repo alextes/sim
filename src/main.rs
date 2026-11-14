@@ -6,6 +6,7 @@ mod control_state;
 mod egui_layer;
 mod game_loop;
 mod gfx;
+mod headless;
 mod infrastructure;
 mod input;
 mod location;
@@ -40,6 +41,18 @@ fn main() -> anyhow::Result<()> {
         .with_default_directive(LevelFilter::WARN.into())
         .from_env_lossy()
         .add_directive("sim=debug".parse().expect("valid log directive"));
+
+    if options.headless {
+        // keep stdout clean for the dump; logs go to stderr.
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_writer(std::io::stderr)
+            .init();
+        let seed = options.seed.unwrap_or(0);
+        info!(seed, ticks = options.ticks, "running headless scenario");
+        print!("{}", headless::run(seed, options.ticks));
+        return Ok(());
+    }
 
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
