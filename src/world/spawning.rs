@@ -253,11 +253,13 @@ pub fn spawn_mining_ship(
     world.ships.insert(
         id,
         ShipInfo {
-            speed: 2.0, // slower than frigates
+            speed: crate::ships::MINING_SHIP_SPEED, // slower than frigates
             ship_type: crate::ships::ShipType::MiningShip,
         },
     );
-    world.cargo.insert(id, Cargo::new(100.0));
+    world
+        .cargo
+        .insert(id, Cargo::new(crate::ships::MINING_SHIP_CARGO_CAPACITY));
     world.civilian_ai.insert(
         id,
         CivilianShipAI {

@@ -27,6 +27,28 @@ pub struct MiningRouteEstimate {
     pub profit_per_second: f64,
 }
 
+/// first reason a civilian economy does not commission a mining ship now.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MiningInvestmentBlocker {
+    /// the body has no population and therefore no civilian economy.
+    Unpopulated,
+    /// a mining ship build for this shipyard is already queued.
+    PendingBuild,
+    /// the economy commissioned a ship recently.
+    Cooldown { remaining_seconds: f64 },
+    /// the body already supports the maximum number of mining ships.
+    FleetLimit,
+    /// the shipyard, materials, or civilian credits are insufficient.
+    CannotBuild(crate::world::shipbuilding::ShipBuildBlocker),
+    /// no visible route has positive expected profit for a new ship.
+    NoProfitableRoute,
+    /// the best route would not repay the ship within the configured period.
+    PaybackTooSlow {
+        best: MiningRouteEstimate,
+        payback_seconds: f64,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CivilianEconomyConfig {
     pub mining_units_per_yield_second: f32,
@@ -34,6 +56,13 @@ pub struct CivilianEconomyConfig {
     pub mining_cost_per_second: f64,
     pub ship_maintenance_per_cycle: f64,
     pub docking_fee: f64,
+    /// civilian credits paid to commission one mining ship.
+    pub mining_ship_credit_cost: f64,
+    /// longest payback period, in simulated seconds, that justifies a new
+    /// civilian mining ship: ship credit cost / best route profit per second.
+    pub mining_ship_max_payback_seconds: f64,
+    /// simulated seconds a civilian economy waits after commissioning a ship.
+    pub investment_cooldown_seconds: f64,
 }
 
 impl Default for CivilianEconomyConfig {
@@ -44,6 +73,9 @@ impl Default for CivilianEconomyConfig {
             mining_cost_per_second: 0.1,
             ship_maintenance_per_cycle: 10.0,
             docking_fee: 5.0,
+            mining_ship_credit_cost: 1000.0,
+            mining_ship_max_payback_seconds: 300.0,
+            investment_cooldown_seconds: 30.0,
         }
     }
 }

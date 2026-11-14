@@ -29,6 +29,7 @@ mod maintenance;
 mod movement;
 mod population;
 mod resources;
+pub mod shipbuilding;
 pub mod spawning;
 pub mod types;
 
@@ -103,6 +104,8 @@ pub struct World {
     pub enable_civilian_ai: bool,
     /// tunable costs and production assumptions used by civilian route scoring.
     pub civilian_economy_config: CivilianEconomyConfig,
+    /// simulated seconds left before each civilian economy may invest again.
+    pub(crate) civilian_investment_cooldowns: HashMap<EntityId, f64>,
     /// elapsed simulation time since the last unloading interval.
     delivery_time_accumulator: f64,
     /// elapsed simulation time since the last maintenance interval.

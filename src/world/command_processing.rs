@@ -26,66 +26,30 @@ impl World {
                 ship_type,
                 civilian_credit_cost,
             } => {
-                let Some(buildable) = buildable_ship(ship_type) else {
+                if let Some(blocker) =
+                    self.ship_build_blocker(shipyard_entity_id, ship_type, civilian_credit_cost)
+                {
                     tracing::warn!(
-                        "entity {} cannot build unavailable ship {:?}",
-                        self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
-                        ship_type
-                    );
-                    return;
-                };
-
-                let Some(shipyard_data) = self.celestial_data.get(&shipyard_entity_id) else {
-                    tracing::warn!(
-                        "entity {} cannot build ship {:?}: missing shipyard stocks",
-                        self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
-                        ship_type
-                    );
-                    return;
-                };
-
-                let shortfall = buildable.first_shortfall(
-                    shipyard_data.stocks_at(crate::world::types::ConstructionLayer::Surface),
-                );
-                if let Some(shortfall) = shortfall {
-                    tracing::warn!(
-                        "entity {} cannot afford ship {:?}: not enough {:?} (needs {}, has {})",
+                        "entity {} cannot build ship {:?}: {}",
                         self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
                         ship_type,
-                        shortfall.resource,
-                        shortfall.required,
-                        shortfall.available
+                        blocker
                     );
                     return;
                 }
+                let Some(buildable) = buildable_ship(ship_type) else {
+                    return;
+                };
 
                 let Some(shipyard_loc) = self.locations.get_location(shipyard_entity_id) else {
                     return;
                 };
 
-                if let Some(credit_cost) = civilian_credit_cost {
-                    let credits = self
-                        .celestial_data
-                        .get(&shipyard_entity_id)
-                        .map(|cd| cd.credits)
-                        .unwrap_or(0.0);
-                    if credits < credit_cost {
-                        tracing::warn!(
-                            "entity {} cannot afford ship {:?}: not enough credits (needs {}, has {})",
-                            self.get_entity_name(shipyard_entity_id).unwrap_or_default(),
-                            ship_type,
-                            credit_cost,
-                            credits
-                        );
-                        return;
-                    }
-                }
-
                 // deduct the cost from the shipyard body's stocks.
                 if let Some(cd) = self.celestial_data.get_mut(&shipyard_entity_id) {
                     for cost in buildable.costs {
                         cd.withdraw_at(
-                            crate::world::types::ConstructionLayer::Surface,
+                            crate::world::shipbuilding::SHIP_BUILD_LAYER,
                             cost.resource,
                             cost.quantity,
                         );
@@ -202,7 +166,21 @@ mod tests {
                 ..Default::default()
             },
         );
+        world.add_command(Command::BuildShip {
+            shipyard_entity_id: shipyard_id,
+            ship_type: ShipType::MiningShip,
+            civilian_credit_cost: Some(1000.0),
+        });
+        world.process_commands();
+        assert!(
+            world.ships.is_empty(),
+            "builds require an operational shipyard"
+        );
+        assert_eq!(world.celestial_data[&shipyard_id].credits, 1000.0);
 
+        let mut infrastructure = crate::infrastructure::EntityInfrastructure::new("shipyard");
+        infrastructure.infra.insert(InfrastructureType::Shipyard, 1);
+        world.infrastructure.insert(shipyard_id, infrastructure);
         world.add_command(Command::BuildShip {
             shipyard_entity_id: shipyard_id,
             ship_type: ShipType::MiningShip,

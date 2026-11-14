@@ -9,6 +9,11 @@ pub enum ShipType {
     MiningShip,
 }
 
+/// travel speed of a commissioned mining ship.
+pub const MINING_SHIP_SPEED: f64 = 2.0;
+/// cargo hold capacity of a commissioned mining ship.
+pub const MINING_SHIP_CARGO_CAPACITY: f32 = 100.0;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShipBuildCost {
     pub resource: Storable,
@@ -84,10 +89,6 @@ impl ShipBuildable {
                 available,
             })
         })
-    }
-
-    pub fn can_afford(self, stocks: &HashMap<Storable, f32>) -> bool {
-        self.first_shortfall(stocks).is_none()
     }
 }
 

@@ -1,8 +1,9 @@
 use crate::command::Command;
-use crate::infrastructure::InfrastructureCategory;
 use crate::location::PointF64;
-use crate::ships::{buildable_ship, ShipType};
-use crate::world::components::{CivilianShipState, MiningRoute, MiningRouteEstimate};
+use crate::ships::{ShipType, MINING_SHIP_CARGO_CAPACITY, MINING_SHIP_SPEED};
+use crate::world::components::{
+    CivilianShipState, MiningInvestmentBlocker, MiningRoute, MiningRouteEstimate,
+};
 use crate::world::types::{ConstructionLayer, ProcurementKey, Storable};
 use crate::world::{EntityId, World};
 
@@ -52,6 +53,20 @@ impl World {
     ) -> Option<MiningRouteEstimate> {
         let ship = self.ships.get(&ship_id)?;
         let cargo_capacity = self.cargo.get(&ship_id)?.capacity;
+        let origin = self.get_location_f64(ship_id)?;
+        self.estimate_mining_trip(origin, ship.speed, cargo_capacity, route)
+    }
+
+    /// estimates one mining cycle for a ship with the given speed and hold
+    /// starting at `origin`. used both for live ships and for appraising a
+    /// ship that has not been built yet.
+    pub fn estimate_mining_trip(
+        &self,
+        origin: PointF64,
+        speed: f64,
+        cargo_capacity: f32,
+        route: MiningRoute,
+    ) -> Option<MiningRouteEstimate> {
         let mining_yield = self
             .celestial_data
             .get(&route.target_body)?
@@ -67,17 +82,16 @@ impl World {
         )?;
         let sale_quantity = cargo_capacity.min(quote.wanted_quantity);
         let mining_rate = mining_yield * self.civilian_economy_config.mining_units_per_yield_second;
-        if sale_quantity <= 0.0 || mining_rate <= 0.0 || ship.speed <= 0.0 {
+        if sale_quantity <= 0.0 || mining_rate <= 0.0 || speed <= 0.0 {
             return None;
         }
 
-        let ship_position = self.get_location_f64(ship_id)?;
         let target_position = self.get_location_f64(route.target_body)?;
         let sell_position = self.get_location_f64(route.sell_body)?;
-        let outbound_distance = point_distance(ship_position, target_position);
+        let outbound_distance = point_distance(origin, target_position);
         let delivery_distance = point_distance(target_position, sell_position);
         let travel_distance = outbound_distance + delivery_distance;
-        let travel_time = travel_distance / ship.speed;
+        let travel_time = travel_distance / speed;
         let mining_time = sale_quantity as f64 / mining_rate as f64;
         let cycle_time = travel_time + mining_time;
         if cycle_time <= 0.0 || !cycle_time.is_finite() {
@@ -109,6 +123,20 @@ impl World {
     }
 
     pub fn best_mining_opportunity(&self, ship_id: EntityId) -> Option<MiningRouteEstimate> {
+        let ship = self.ships.get(&ship_id)?;
+        let cargo_capacity = self.cargo.get(&ship_id)?.capacity;
+        let origin = self.get_location_f64(ship_id)?;
+        self.best_mining_opportunity_from(origin, ship.speed, cargo_capacity)
+    }
+
+    /// best positive-profit route for a ship with the given speed and hold
+    /// starting at `origin`, scored by expected profit per second.
+    pub fn best_mining_opportunity_from(
+        &self,
+        origin: PointF64,
+        speed: f64,
+        cargo_capacity: f32,
+    ) -> Option<MiningRouteEstimate> {
         let mut procurement_opportunities = Vec::new();
         for (&sell_id, body) in &self.celestial_data {
             for &key in body.procurement_policies.keys() {
@@ -151,7 +179,9 @@ impl World {
                         resource,
                         sell_body: sell_id,
                     };
-                    let Some(estimate) = self.estimate_mining_route(ship_id, route) else {
+                    let Some(estimate) =
+                        self.estimate_mining_trip(origin, speed, cargo_capacity, route)
+                    else {
                         continue;
                     };
                     if estimate.expected_profit <= 0.0 {
@@ -215,43 +245,108 @@ impl World {
 
                     data.withdraw_at(layer, storable, total_consumption as f32);
                 }
-
-                // decision to build a mining ship
-                const MINING_SHIP_COST: f64 = 1000.0;
-                const MAX_MINING_SHIPS_PER_BODY: usize = 64;
-
-                let existing_ships_for_base = self
-                    .civilian_ai
-                    .values()
-                    .filter(|ai| ai.home_base == entity_id)
-                    .count();
-
-                if data.credits >= MINING_SHIP_COST
-                    && existing_ships_for_base < MAX_MINING_SHIPS_PER_BODY
-                {
-                    if let Some(infrastructure) = self.infrastructure.get(&entity_id) {
-                        let has_shipyard = infrastructure
-                            .operational_units_in_category(InfrastructureCategory::Shipbuilding)
-                            > 0;
-
-                        let can_afford_ship_resources = buildable_ship(ShipType::MiningShip)
-                            .is_some_and(|buildable| buildable.can_afford(data.stocks_at(layer)));
-
-                        if has_shipyard && can_afford_ship_resources {
-                            self.add_command(Command::BuildShip {
-                                shipyard_entity_id: entity_id,
-                                ship_type: ShipType::MiningShip,
-                                civilian_credit_cost: Some(MINING_SHIP_COST),
-                            });
-                            tracing::info!(
-                                "entity {} is building a mining ship",
-                                self.get_entity_name(entity_id)
-                                    .unwrap_or_else(|| "unknown".to_string())
-                            );
-                        }
-                    }
-                }
             }
+        }
+
+        self.update_civilian_investment(dt);
+    }
+
+    /// decides whether a body's civilian economy should commission a mining
+    /// ship now. on success returns the route estimate that justifies it.
+    pub fn appraise_mining_ship_investment(
+        &self,
+        body_id: EntityId,
+    ) -> Result<MiningRouteEstimate, MiningInvestmentBlocker> {
+        const MAX_MINING_SHIPS_PER_BODY: usize = 64;
+        let config = self.civilian_economy_config;
+
+        if self
+            .celestial_data
+            .get(&body_id)
+            .is_none_or(|body| body.population <= 0.0)
+        {
+            return Err(MiningInvestmentBlocker::Unpopulated);
+        }
+        if self.command_queue.iter().any(|command| {
+            matches!(
+                command,
+                Command::BuildShip {
+                    shipyard_entity_id,
+                    ship_type: ShipType::MiningShip,
+                    ..
+                } if *shipyard_entity_id == body_id
+            )
+        }) {
+            return Err(MiningInvestmentBlocker::PendingBuild);
+        }
+        if let Some(&remaining_seconds) = self.civilian_investment_cooldowns.get(&body_id) {
+            if remaining_seconds > 0.0 {
+                return Err(MiningInvestmentBlocker::Cooldown { remaining_seconds });
+            }
+        }
+        let fleet_size = self
+            .civilian_ai
+            .values()
+            .filter(|ai| ai.home_base == body_id)
+            .count();
+        if fleet_size >= MAX_MINING_SHIPS_PER_BODY {
+            return Err(MiningInvestmentBlocker::FleetLimit);
+        }
+        if let Some(blocker) = self.ship_build_blocker(
+            body_id,
+            ShipType::MiningShip,
+            Some(config.mining_ship_credit_cost),
+        ) {
+            return Err(MiningInvestmentBlocker::CannotBuild(blocker));
+        }
+
+        let origin = self
+            .get_location_f64(body_id)
+            .ok_or(MiningInvestmentBlocker::NoProfitableRoute)?;
+        let best = self
+            .best_mining_opportunity_from(origin, MINING_SHIP_SPEED, MINING_SHIP_CARGO_CAPACITY)
+            .filter(|estimate| estimate.profit_per_second > 0.0)
+            .ok_or(MiningInvestmentBlocker::NoProfitableRoute)?;
+        let payback_seconds = config.mining_ship_credit_cost.max(0.0) / best.profit_per_second;
+        if payback_seconds > config.mining_ship_max_payback_seconds {
+            return Err(MiningInvestmentBlocker::PaybackTooSlow {
+                best,
+                payback_seconds,
+            });
+        }
+        Ok(best)
+    }
+
+    /// commissions civilian mining ships where savings, shipyard capability,
+    /// and the best visible route's payback justify them.
+    fn update_civilian_investment(&mut self, dt: f64) {
+        self.civilian_investment_cooldowns.retain(|_, remaining| {
+            *remaining -= dt.max(0.0);
+            *remaining > 0.0
+        });
+
+        let mut body_ids: Vec<EntityId> = self.celestial_data.keys().copied().collect();
+        body_ids.sort_unstable();
+        for body_id in body_ids {
+            let Ok(estimate) = self.appraise_mining_ship_investment(body_id) else {
+                continue;
+            };
+            let config = self.civilian_economy_config;
+            self.add_command(Command::BuildShip {
+                shipyard_entity_id: body_id,
+                ship_type: ShipType::MiningShip,
+                civilian_credit_cost: Some(config.mining_ship_credit_cost),
+            });
+            if config.investment_cooldown_seconds > 0.0 {
+                self.civilian_investment_cooldowns
+                    .insert(body_id, config.investment_cooldown_seconds);
+            }
+            tracing::info!(
+                "entity {} is commissioning a mining ship for {:.1} credits/s",
+                self.get_entity_name(body_id)
+                    .unwrap_or_else(|| "unknown".to_string()),
+                estimate.profit_per_second
+            );
         }
     }
 
@@ -573,6 +668,7 @@ mod tests {
     use super::*;
     use crate::infrastructure::EntityInfrastructure;
     use crate::location::Point;
+    use crate::world::shipbuilding::ShipBuildBlocker;
     use crate::world::types::{
         CelestialBodyData, ConstructionLayer, InfrastructureType, ProcurementKey,
         ProcurementPolicy, RawResource,
@@ -1045,5 +1141,209 @@ mod tests {
                 crate::world::types::RawResource::Volatiles
             ))
         );
+    }
+
+    fn mining_ship_build_command(shipyard_entity_id: EntityId) -> Command {
+        Command::BuildShip {
+            shipyard_entity_id,
+            ship_type: ShipType::MiningShip,
+            civilian_credit_cost: Some(1000.0),
+        }
+    }
+
+    /// market world whose home body can commission a mining ship.
+    fn investment_world() -> (World, EntityId, EntityId, EntityId) {
+        let (mut world, ship_id, _first_mine, _second_mine, buyer_id) = mining_market_world();
+        let home_id = world.civilian_ai[&ship_id].home_base;
+        let home = world.celestial_data.get_mut(&home_id).unwrap();
+        home.population = 1_000_000.0;
+        home.credits = 1000.0;
+        home.demands.clear();
+        home.stocks.insert(Storable::Raw(RawResource::Metals), 50.0);
+        home.stocks
+            .insert(Storable::Raw(RawResource::Crystals), 15.0);
+        world
+            .infrastructure
+            .get_mut(&home_id)
+            .unwrap()
+            .infra
+            .insert(InfrastructureType::Shipyard, 1);
+        (world, home_id, ship_id, buyer_id)
+    }
+
+    #[test]
+    fn investment_requires_credits_materials_and_shipyard() {
+        let (world, home_id, _, _) = investment_world();
+        assert!(world.appraise_mining_ship_investment(home_id).is_ok());
+
+        let mut poor = investment_world().0;
+        poor.celestial_data.get_mut(&home_id).unwrap().credits = 999.0;
+        assert_eq!(
+            poor.appraise_mining_ship_investment(home_id),
+            Err(MiningInvestmentBlocker::CannotBuild(
+                ShipBuildBlocker::Credits {
+                    required: 1000.0,
+                    available: 999.0,
+                }
+            ))
+        );
+
+        let mut no_materials = investment_world().0;
+        no_materials
+            .celestial_data
+            .get_mut(&home_id)
+            .unwrap()
+            .stocks
+            .insert(Storable::Raw(RawResource::Crystals), 14.0);
+        assert!(matches!(
+            no_materials.appraise_mining_ship_investment(home_id),
+            Err(MiningInvestmentBlocker::CannotBuild(
+                ShipBuildBlocker::Materials(_)
+            ))
+        ));
+
+        let mut no_shipyard = investment_world().0;
+        no_shipyard
+            .infrastructure
+            .get_mut(&home_id)
+            .unwrap()
+            .infra
+            .remove(&InfrastructureType::Shipyard);
+        assert_eq!(
+            no_shipyard.appraise_mining_ship_investment(home_id),
+            Err(MiningInvestmentBlocker::CannotBuild(
+                ShipBuildBlocker::NoOperationalShipyard
+            ))
+        );
+
+        for mut blocked in [poor, no_materials, no_shipyard] {
+            blocked.update_civilian_economy(0.0);
+            assert!(blocked.command_queue.is_empty());
+        }
+    }
+
+    #[test]
+    fn investment_requires_best_route_to_meet_payback_threshold() {
+        let (mut world, home_id, _, _) = investment_world();
+        let best = world.appraise_mining_ship_investment(home_id).unwrap();
+        let payback_seconds =
+            world.civilian_economy_config.mining_ship_credit_cost / best.profit_per_second;
+
+        world
+            .civilian_economy_config
+            .mining_ship_max_payback_seconds = payback_seconds * 0.9;
+        assert!(matches!(
+            world.appraise_mining_ship_investment(home_id),
+            Err(MiningInvestmentBlocker::PaybackTooSlow { best: slow, .. }) if slow == best
+        ));
+        world.update_civilian_economy(0.0);
+        assert!(world.command_queue.is_empty());
+
+        world
+            .civilian_economy_config
+            .mining_ship_max_payback_seconds = payback_seconds * 1.1;
+        world.update_civilian_economy(0.0);
+        assert_eq!(
+            world.command_queue.iter().copied().collect::<Vec<_>>(),
+            vec![mining_ship_build_command(home_id)]
+        );
+    }
+
+    #[test]
+    fn pending_build_and_cooldown_prevent_duplicate_build_commands() {
+        let (mut world, home_id, _, _) = investment_world();
+
+        world.update_civilian_economy(0.0);
+        world.update_civilian_economy(0.0);
+        assert_eq!(world.command_queue.len(), 1);
+        assert_eq!(
+            world.appraise_mining_ship_investment(home_id),
+            Err(MiningInvestmentBlocker::PendingBuild)
+        );
+
+        // a rejected or consumed command leaves the cooldown in place.
+        world.command_queue.clear();
+        world.update_civilian_economy(10.0);
+        assert!(world.command_queue.is_empty());
+        assert!(matches!(
+            world.appraise_mining_ship_investment(home_id),
+            Err(MiningInvestmentBlocker::Cooldown { remaining_seconds })
+                if remaining_seconds == 20.0
+        ));
+
+        world.update_civilian_economy(20.0);
+        assert_eq!(
+            world.command_queue.iter().copied().collect::<Vec<_>>(),
+            vec![mining_ship_build_command(home_id)]
+        );
+    }
+
+    #[test]
+    fn delivery_income_funds_later_investment() {
+        let (mut world, home_id, ship_id, buyer_id) = investment_world();
+        world
+            .celestial_data
+            .get_mut(&buyer_id)
+            .unwrap()
+            .procurement_policies
+            .values_mut()
+            .for_each(|policy| policy.reserve_target = 500.0);
+        world.celestial_data.get_mut(&home_id).unwrap().credits = 900.0;
+        assert!(matches!(
+            world.appraise_mining_ship_investment(home_id),
+            Err(MiningInvestmentBlocker::CannotBuild(
+                ShipBuildBlocker::Credits { .. }
+            ))
+        ));
+
+        let route = world.best_mining_opportunity(ship_id).unwrap().route;
+        world
+            .cargo
+            .get_mut(&ship_id)
+            .unwrap()
+            .add(Storable::Raw(RawResource::Metals), 80.0);
+        world.civilian_ai.get_mut(&ship_id).unwrap().state = CivilianShipState::WaitingToUnload {
+            route,
+            cargo_target: 80.0,
+        };
+        let sales = world.process_ship_sales();
+        assert_eq!(sales.len(), 1);
+        assert!(world.celestial_data[&home_id].credits >= 1000.0);
+
+        world.update_civilian_economy(0.0);
+        assert_eq!(
+            world.command_queue.iter().copied().collect::<Vec<_>>(),
+            vec![mining_ship_build_command(home_id)]
+        );
+        let credits_before_build = world.celestial_data[&home_id].credits;
+        world.process_commands();
+        assert_eq!(world.civilian_ai.len(), 2);
+        assert_eq!(
+            world.celestial_data[&home_id].credits,
+            credits_before_build - 1000.0
+        );
+    }
+
+    #[test]
+    fn no_mining_ship_is_commissioned_without_positive_expected_return() {
+        let (mut world, home_id, _, buyer_id) = investment_world();
+        world
+            .celestial_data
+            .get_mut(&buyer_id)
+            .unwrap()
+            .procurement_policies
+            .values_mut()
+            .for_each(|policy| policy.maximum_unit_price = 0.01);
+        world
+            .civilian_economy_config
+            .mining_ship_max_payback_seconds = f64::INFINITY;
+
+        assert_eq!(
+            world.appraise_mining_ship_investment(home_id),
+            Err(MiningInvestmentBlocker::NoProfitableRoute)
+        );
+        world.update_civilian_economy(1.0);
+        assert!(world.command_queue.is_empty());
+        assert_eq!(world.celestial_data[&home_id].credits, 1000.0);
     }
 }

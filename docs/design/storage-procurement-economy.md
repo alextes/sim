@@ -148,6 +148,12 @@ a civilian economy considers commissioning a mining ship only when:
 
 delivery earnings increase civilian savings and can fund later ships. the economy does not build a ship merely because its cash balance crosses a fixed threshold.
 
+v1 appraises a hypothetical mining ship starting at the shipyard body, using the same route scoring as live ships. payback period is the ship's civilian credit cost divided by the best route's expected profit per second; a route with nonpositive expected profit never justifies a ship. construction materials are checked for availability but are not priced into payback. initial tuning uses a 1000 credit ship cost, a 300 second (ten modeled months) maximum payback period, and a 30 second (one modeled month) cooldown after each commissioned ship, all in explicit simulation configuration. a queued mining ship build for the same shipyard counts as pending. the cooldown starts when the build command is issued, so a build rejected during command processing does not trigger an immediate retry.
+
+credit, material, and shipyard checks live in one shared affordability check. `BuildShip` command processing reruns it as the authoritative final validation, so every ship build, player or civilian, requires an operational shipyard.
+
+v1 does not yet subtract cargo that existing ships are already carrying toward a buyer from the quoted quantity, so several economies may invest against the same shortage until delivery reservations exist.
+
 ### infrastructure maintenance
 
 - every completed infrastructure unit has a fixed periodic credit cost.
@@ -194,6 +200,6 @@ the planet overview should expose:
 - how steeply should price rise as stock approaches zero?
 - what maintenance rate makes resilience valuable without making spare capacity punishing?
 - how strongly should expected dock waiting time reduce a route's estimated return?
-- what payback period should trigger new civilian investment?
+- what payback period should trigger new civilian investment? v1 starts at 300 seconds.
 
 these values should be tuned with deterministic multi-tick scenarios after the complete loop exists.
